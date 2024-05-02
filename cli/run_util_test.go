@@ -550,7 +550,7 @@ func Test_activateStepLibStep(t *testing.T) {
 				t.Errorf("failed to create dir for step.yml: %s", err)
 			}
 
-			got, _, err := activateStepLibStep(tt.stepIDData, destination, stepYMLCopyPth, true)
+			got, activatedStep, _, err := activateStepLibStep(tt.stepIDData, destination, stepYMLCopyPth, true, false)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("activateStepLibStep() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -562,12 +562,15 @@ func Test_activateStepLibStep(t *testing.T) {
 			if err != nil {
 				return
 			}
-			if exist, err := pathutil.IsPathExists(filepath.Join(destination, "step.yml")); err != nil || !exist {
-				t.Errorf("step not activate at: %s", destination)
-			}
 
+			require.Equal(t, stepYMLCopyPth, activatedStep.StepYMLPath)
 			if exist, err := pathutil.IsPathExists(stepYMLCopyPth); err != nil || !exist {
 				t.Errorf("step.yml not copied at: %s", stepYMLCopyPth)
+			}
+
+			YMLPath := filepath.Join(destination, "step.yml")
+			if exist, err := pathutil.IsPathExists(YMLPath); err != nil || !exist {
+				t.Errorf("step not activated at: %s", destination)
 			}
 		})
 	}
