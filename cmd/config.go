@@ -83,7 +83,7 @@ type configList struct {
 func newConfigListCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:     "list",
-		Aliases: []string{"view", "ls"},
+		Aliases: []string{"ls"},
 		Short:   "List the current config-file values",
 		Long: `List the values currently saved in the config file.
 

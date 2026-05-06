@@ -71,10 +71,6 @@ func (s *Service) Trigger(_ context.Context, req TriggerRequest) (Build, error) 
 	if req.Workflow == "" {
 		return Build{}, fmt.Errorf("workflow is required")
 	}
-	branch := req.Branch
-	if branch == "" {
-		branch = "main"
-	}
 	now := time.Now().UTC()
 	return Build{
 		Slug:          "stub-" + req.Workflow + "-001",
@@ -82,7 +78,7 @@ func (s *Service) Trigger(_ context.Context, req TriggerRequest) (Build, error) 
 		BuildNumber:   42,
 		Status:        "in-progress",
 		StatusText:    "Build started (stub)",
-		Branch:        branch,
+		Branch:        req.Branch,
 		Workflow:      req.Workflow,
 		CommitHash:    req.CommitHash,
 		CommitMessage: req.CommitMessage,

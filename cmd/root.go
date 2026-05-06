@@ -54,8 +54,8 @@ Configuration (precedence: flag > env > per-dir > global > built-in default):
 
 Tip for automation / agents:
   Pass --output json on every command — or run "bitrise-cli config set output json"
-  once — to get parseable output. Errors and data are written to stdout in JSON
-  mode; only diagnostic messages go to stderr.`,
+  once — to get parseable output. Data is written to stdout; errors and diagnostics
+  always go to stderr, even in JSON mode.`,
 	SilenceUsage:      true,
 	SilenceErrors:     false,
 	PersistentPreRunE: persistentPreRun,

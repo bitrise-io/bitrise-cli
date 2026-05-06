@@ -75,7 +75,7 @@ func (c *Client) newRequest(ctx context.Context, path string, params url.Values)
 	if err != nil {
 		return nil, fmt.Errorf("build request: %w", err)
 	}
-	req.Header.Set("Authorization", c.token)
+	req.Header.Set("Authorization", "token "+c.token)
 	req.Header.Set("Accept", "application/json")
 	return req, nil
 }
