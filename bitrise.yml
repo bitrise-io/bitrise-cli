@@ -84,11 +84,7 @@ workflows:
                   -race \
                   -count=1 \
                   -timeout=5m \
-                  -coverprofile="${BITRISE_DEPLOY_DIR}/coverage.out" \
                   ./...
-                go tool cover \
-                  -html="${BITRISE_DEPLOY_DIR}/coverage.out" \
-                  -o "${BITRISE_DEPLOY_DIR}/coverage.html"
 
       - save-cache@1:
           inputs:
