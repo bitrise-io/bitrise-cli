@@ -64,6 +64,7 @@ func Execute() {
 func init() {
 	rootCmd.PersistentFlags().StringP(cmdutil.FlagOutput, "o", "", `output format: human|json (default "human")`)
 	rootCmd.PersistentFlags().BoolVarP(&quiet, cmdutil.FlagQuiet, "q", false, "suppress non-error diagnostic messages")
+	rootCmd.SetFlagErrorFunc(flagErrorFunc)
 	rootCmd.AddCommand(cmdbuild.NewCmd())
 	rootCmd.AddCommand(cmdapp.NewCmd())
 	rootCmd.AddCommand(cmdconfig.NewCmd())
