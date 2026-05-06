@@ -229,20 +229,3 @@ func TestApp_Single(t *testing.T) {
 		t.Errorf("got %+v", a)
 	}
 }
-
-func TestAppWorkflows(t *testing.T) {
-	fs := newFakeServer(t, func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/apps/my-slug/build-workflows" {
-			t.Errorf("path = %q", r.URL.Path)
-		}
-		_, _ = w.Write([]byte(`{"data":["primary","deploy","nightly"]}`))
-	})
-
-	wfs, err := fs.client("t").AppWorkflows(context.Background(), "my-slug")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(wfs) != 3 || wfs[0] != "primary" || wfs[2] != "nightly" {
-		t.Errorf("got %+v", wfs)
-	}
-}

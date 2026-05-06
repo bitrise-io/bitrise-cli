@@ -17,7 +17,6 @@ func NewCmd() *cobra.Command {
 	c.AddCommand(
 		newListCmd(),
 		newViewCmd(),
-		newWorkflowCmd(),
 	)
 	return c
 }

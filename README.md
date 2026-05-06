@@ -18,7 +18,6 @@ A CLI tool to manage all Bitrise platform resources — CI, RM, RDE, and more �
 |---|---|
 | `app list` | List apps the authenticated user can access |
 | `app view APP_SLUG` | Show details of a single app |
-| `app workflow list APP_SLUG` | List workflows defined on an app |
 
 ### `build` — Trigger, list, and inspect builds
 

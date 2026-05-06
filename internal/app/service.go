@@ -23,11 +23,6 @@ type App struct {
 	IsDisabled  bool   `json:"is_disabled,omitempty"`
 }
 
-// Workflow is a workflow defined on an app's bitrise.yml.
-type Workflow struct {
-	ID string `json:"id"`
-}
-
 // ListOptions paginates and filters app lists. Filter fields map to the
 // query parameters of GET /apps.
 type ListOptions struct {
@@ -42,11 +37,6 @@ type ListOptions struct {
 type AppsResult struct {
 	Items      []App  `json:"items"`
 	NextCursor string `json:"next_cursor,omitempty"`
-}
-
-// WorkflowsResult is the set of workflows on an app.
-type WorkflowsResult struct {
-	Items []Workflow `json:"items"`
 }
 
 // Service exposes app and workflow operations to the cmd layer.
@@ -114,24 +104,4 @@ func (s *Service) View(ctx context.Context, appSlug string) (App, error) {
 		return App{}, err
 	}
 	return fromAPI(a), nil
-}
-
-// ListWorkflows returns the workflow IDs defined on an app's bitrise.yml.
-// Endpoint: GET /apps/{app-slug}/build-workflows.
-func (s *Service) ListWorkflows(ctx context.Context, appSlug string) (WorkflowsResult, error) {
-	if s.client == nil {
-		return WorkflowsResult{}, fmt.Errorf("API client not configured")
-	}
-	if appSlug == "" {
-		return WorkflowsResult{}, fmt.Errorf("app slug is required")
-	}
-	ids, err := s.client.AppWorkflows(ctx, appSlug)
-	if err != nil {
-		return WorkflowsResult{}, err
-	}
-	items := make([]Workflow, 0, len(ids))
-	for _, id := range ids {
-		items = append(items, Workflow{ID: id})
-	}
-	return WorkflowsResult{Items: items}, nil
 }
