@@ -18,6 +18,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
@@ -25,6 +26,18 @@ import (
 // Auth is the on-disk shape of auth.yaml.
 type Auth struct {
 	Token string `yaml:"token,omitempty"`
+}
+
+// TokenType returns "PAT", "WAT", or "unknown" based on the token prefix.
+func TokenType(token string) string {
+	switch {
+	case strings.HasPrefix(token, "bitpat_"):
+		return "PAT"
+	case strings.HasPrefix(token, "bitwat_"):
+		return "WAT"
+	default:
+		return "unknown"
+	}
 }
 
 // Path returns the absolute path to the auth file (whether or not it exists).

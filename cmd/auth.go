@@ -110,9 +110,10 @@ BITRISE_TOKEN environment variable or the legacy 'config set token'.`,
 
 // authStatus is the JSON shape of `bitrise-cli auth status`.
 type authStatus struct {
-	HasToken bool   `json:"has_token"`
-	Source   string `json:"source"`
-	Path     string `json:"path"`
+	HasToken  bool   `json:"has_token"`
+	TokenType string `json:"token_type,omitempty"`
+	Source    string `json:"source"`
+	Path      string `json:"path"`
 }
 
 func newAuthStatusCmd() *cobra.Command {
@@ -136,6 +137,9 @@ Sources, in precedence order:
 				HasToken: r.Token != "",
 				Path:     p,
 				Source:   tokenSource(r.Token),
+			}
+			if r.Token != "" {
+				s.TokenType = auth.TokenType(r.Token)
 			}
 			return output.Render(cmd.OutOrStdout(), resolveFormat(cmd), s, renderAuthStatusHuman)
 		},
@@ -173,6 +177,7 @@ func renderAuthStatusHuman(w io.Writer, st authStatus) error {
 	}
 	ew.F("%s %s\n", s.Success.Render("✓"), s.Bold.Render("Access token configured"))
 	ew.F("%s%s\n", lbl("Token:"), s.Dim.Render("******** (set)"))
+	ew.F("%s%s\n", lbl("Type:"), st.TokenType)
 	ew.F("%s%s\n", lbl("Source:"), st.Source)
 	ew.F("%s%s\n", lbl("Path:"), st.Path)
 	return ew.Err
