@@ -17,7 +17,7 @@ func fakeAPI(t *testing.T, handler http.HandlerFunc) *bitriseapi.Client {
 	t.Helper()
 	srv := httptest.NewServer(handler)
 	t.Cleanup(srv.Close)
-	return bitriseapi.New("test-token", bitriseapi.WithBaseURL(srv.URL))
+	return bitriseapi.New(srv.URL, "test-token")
 }
 
 func TestService_List_MapsAPIShape(t *testing.T) {
