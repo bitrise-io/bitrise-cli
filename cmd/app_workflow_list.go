@@ -44,11 +44,12 @@ Argument:
 
 func renderWorkflowsText(w io.Writer, res app.WorkflowsResult) error {
 	if len(res.Items) == 0 {
-		fmt.Fprintln(w, "No workflows defined.")
-		return nil
+		_, err := fmt.Fprintln(w, "No workflows defined.")
+		return err
 	}
+	ew := newErrWriter(w)
 	for _, wf := range res.Items {
-		fmt.Fprintln(w, wf.ID)
+		ew.ln(wf.ID)
 	}
-	return nil
+	return ew.err
 }

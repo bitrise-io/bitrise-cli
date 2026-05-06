@@ -85,14 +85,15 @@ In JSON mode, all fields are emitted; missing values are omitted.`,
 }
 
 func renderVersionHuman(w io.Writer, v versionInfo) error {
-	fmt.Fprintf(w, "bitrise-cli %s\n", v.Version)
+	ew := newErrWriter(w)
+	ew.f("bitrise-cli %s\n", v.Version)
 	if v.Commit != "" {
-		fmt.Fprintf(w, "commit:     %s\n", v.Commit)
+		ew.f("commit:     %s\n", v.Commit)
 	}
 	if v.BuildTime != "" {
-		fmt.Fprintf(w, "built:      %s\n", v.BuildTime)
+		ew.f("built:      %s\n", v.BuildTime)
 	}
-	fmt.Fprintf(w, "go:         %s\n", v.GoVersion)
-	fmt.Fprintf(w, "platform:   %s/%s\n", v.OS, v.Arch)
-	return nil
+	ew.f("go:         %s\n", v.GoVersion)
+	ew.f("platform:   %s/%s\n", v.OS, v.Arch)
+	return ew.err
 }

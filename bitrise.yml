@@ -107,7 +107,7 @@ workflows:
 
                 APP_NAME="bitrise-cli"
                 VERSION="${BITRISE_GIT_TAG:-$(git rev-parse --short HEAD)}"
-                LDFLAGS="-s -w -X main.Version=${VERSION}"
+                LDFLAGS="-s -w -X github.com/bitrise-io/bitrise-cli/cmd.version=${VERSION}"
                 if [ -n "${BITRISE_BUILD_URL:-}" ]; then
                   OUT_DIR="${BITRISE_DEPLOY_DIR}"
                 else

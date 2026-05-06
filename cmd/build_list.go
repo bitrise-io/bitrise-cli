@@ -76,23 +76,28 @@ Pagination:
 
 func renderBuildListText(w io.Writer, res build.ListResult) error {
 	if len(res.Items) == 0 {
-		fmt.Fprintln(w, "No builds found.")
-		return nil
+		_, err := fmt.Fprintln(w, "No builds found.")
+		return err
 	}
 
 	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
-	fmt.Fprintln(tw, "NUMBER\tSTATUS\tBRANCH\tWORKFLOW\tTRIGGERED\tSLUG")
+	ew := newErrWriter(tw)
+	ew.ln("NUMBER\tSTATUS\tBRANCH\tWORKFLOW\tTRIGGERED\tSLUG")
 	for _, b := range res.Items {
-		fmt.Fprintf(tw, "%d\t%s\t%s\t%s\t%s\t%s\n",
+		ew.f("%d\t%s\t%s\t%s\t%s\t%s\n",
 			b.BuildNumber, b.Status, b.Branch, b.Workflow,
 			b.TriggeredAt.Format("2006-01-02 15:04"), b.Slug,
 		)
+	}
+	if ew.err != nil {
+		return ew.err
 	}
 	if err := tw.Flush(); err != nil {
 		return err
 	}
 	if res.NextCursor != "" {
-		fmt.Fprintf(w, "\nMore results available — pass --cursor %s\n", res.NextCursor)
+		_, err := fmt.Fprintf(w, "\nMore results available — pass --cursor %s\n", res.NextCursor)
+		return err
 	}
 	return nil
 }

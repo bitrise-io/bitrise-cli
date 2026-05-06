@@ -71,7 +71,7 @@ func Load() (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
-	data, err := os.ReadFile(p)
+	data, err := os.ReadFile(p) //nolint:gosec // p is derived from XDG_CONFIG_HOME / user home, not user input
 	if errors.Is(err, fs.ErrNotExist) {
 		return Config{}, nil
 	}
@@ -103,7 +103,7 @@ func LoadDir() (Config, string, error) {
 func loadDirFrom(start string) (Config, string, error) {
 	for dir := start; ; {
 		p := filepath.Join(dir, DirFileName)
-		data, err := os.ReadFile(p)
+		data, err := os.ReadFile(p) //nolint:gosec // p is an ancestor-directory config path, not user input
 		if err == nil {
 			var c Config
 			if err := yaml.Unmarshal(data, &c); err != nil {

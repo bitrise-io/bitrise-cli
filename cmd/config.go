@@ -3,7 +3,6 @@ package cmd
 import (
 	"fmt"
 	"io"
-	"os"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -65,8 +64,8 @@ func newConfigPathCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			fmt.Fprintln(cmd.OutOrStdout(), p)
-			return nil
+			_, err = fmt.Fprintln(cmd.OutOrStdout(), p)
+			return err
 		},
 	}
 }
@@ -113,16 +112,17 @@ they only apply at runtime to other bitrise-cli commands.`,
 }
 
 func renderConfigListHuman(w io.Writer, v configList) error {
-	fmt.Fprintf(w, "Path:          %s\n\n", v.Path)
-	fmt.Fprintf(w, "%-15s%s\n", config.KeyOutput+":", emptyAs(v.Output))
-	fmt.Fprintf(w, "%-15s%s\n", config.KeyAppSlug+":", emptyAs(v.AppSlug))
-	fmt.Fprintf(w, "%-15s%s\n", config.KeyAPIBaseURL+":", emptyAs(v.APIBaseURL))
+	ew := newErrWriter(w)
+	ew.f("Path:          %s\n\n", v.Path)
+	ew.f("%-15s%s\n", config.KeyOutput+":", emptyAs(v.Output))
+	ew.f("%-15s%s\n", config.KeyAppSlug+":", emptyAs(v.AppSlug))
+	ew.f("%-15s%s\n", config.KeyAPIBaseURL+":", emptyAs(v.APIBaseURL))
 	tokenStatus := "(unset)"
 	if v.TokenSet {
 		tokenStatus = "******** (set; use 'bitrise-cli config get token' to reveal)"
 	}
-	fmt.Fprintf(w, "%-15s%s\n", config.KeyToken+":", tokenStatus)
-	return nil
+	ew.f("%-15s%s\n", config.KeyToken+":", tokenStatus)
+	return ew.err
 }
 
 func emptyAs(s string) string {
@@ -154,8 +154,8 @@ used in scripts (e.g. TOKEN=$(bitrise-cli config get token)).`,
 			if err != nil {
 				return err
 			}
-			fmt.Fprintln(cmd.OutOrStdout(), v)
-			return nil
+			_, err = fmt.Fprintln(cmd.OutOrStdout(), v)
+			return err
 		},
 	}
 }
@@ -203,8 +203,9 @@ Use this for tokens to keep them out of shell history:
 				return err
 			}
 			if !quiet {
-				// Confirmation goes to stderr so stdout stays empty for scripts.
-				fmt.Fprintf(cmd.ErrOrStderr(), "Saved %s\n", key)
+				if _, err := fmt.Fprintf(cmd.ErrOrStderr(), "Saved %s\n", key); err != nil {
+					return err
+				}
 			}
 			return nil
 		},
@@ -215,10 +216,6 @@ Use this for tokens to keep them out of shell history:
 // "\n" or "\r\n"). Other whitespace is preserved — tokens may legitimately
 // have surrounding spaces in some flows, though it's rare.
 func readStdinValue(r io.Reader) (string, error) {
-	if f, ok := r.(*os.File); ok && f == os.Stdin {
-		// Pass-through; ReadAll on a TTY would block forever.
-		// Callers should always redirect stdin when using "-".
-	}
 	data, err := io.ReadAll(r)
 	if err != nil {
 		return "", err
@@ -249,7 +246,9 @@ Valid keys: %s`, strings.Join(config.Keys, ", ")),
 				return err
 			}
 			if !quiet {
-				fmt.Fprintf(cmd.ErrOrStderr(), "Cleared %s\n", args[0])
+				if _, err := fmt.Fprintf(cmd.ErrOrStderr(), "Cleared %s\n", args[0]); err != nil {
+					return err
+				}
 			}
 			return nil
 		},

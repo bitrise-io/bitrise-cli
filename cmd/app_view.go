@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"fmt"
 	"io"
 
 	"github.com/spf13/cobra"
@@ -43,18 +42,19 @@ Argument:
 }
 
 func renderAppText(w io.Writer, a app.App) error {
-	fmt.Fprintf(w, "Title:        %s\n", a.Title)
-	fmt.Fprintf(w, "Slug:         %s\n", a.Slug)
-	fmt.Fprintf(w, "Provider:     %s\n", a.Provider)
-	fmt.Fprintf(w, "Repo URL:     %s\n", a.RepoURL)
+	ew := newErrWriter(w)
+	ew.f("Title:        %s\n", a.Title)
+	ew.f("Slug:         %s\n", a.Slug)
+	ew.f("Provider:     %s\n", a.Provider)
+	ew.f("Repo URL:     %s\n", a.RepoURL)
 	if a.OwnerType != "" || a.OwnerSlug != "" {
-		fmt.Fprintf(w, "Owner:        %s/%s\n", a.OwnerType, a.OwnerSlug)
+		ew.f("Owner:        %s/%s\n", a.OwnerType, a.OwnerSlug)
 	}
 	if a.ProjectType != "" {
-		fmt.Fprintf(w, "Project Type: %s\n", a.ProjectType)
+		ew.f("Project Type: %s\n", a.ProjectType)
 	}
 	if a.IsDisabled {
-		fmt.Fprintln(w, "Disabled:     yes")
+		ew.ln("Disabled:     yes")
 	}
-	return nil
+	return ew.err
 }

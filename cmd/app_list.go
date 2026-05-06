@@ -52,12 +52,13 @@ Pagination:
 
 func renderAppListText(w io.Writer, res app.AppsResult) error {
 	if len(res.Items) == 0 {
-		fmt.Fprintln(w, "No apps found.")
-		return nil
+		_, err := fmt.Fprintln(w, "No apps found.")
+		return err
 	}
 
 	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
-	fmt.Fprintln(tw, "TITLE\tPROVIDER\tPROJECT\tOWNER\tDISABLED\tSLUG")
+	ew := newErrWriter(tw)
+	ew.ln("TITLE\tPROVIDER\tPROJECT\tOWNER\tDISABLED\tSLUG")
 	for _, a := range res.Items {
 		owner := a.OwnerSlug
 		if a.OwnerType != "" {
@@ -67,15 +68,19 @@ func renderAppListText(w io.Writer, res app.AppsResult) error {
 		if a.IsDisabled {
 			disabled = "yes"
 		}
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\n",
+		ew.f("%s\t%s\t%s\t%s\t%s\t%s\n",
 			a.Title, a.Provider, a.ProjectType, owner, disabled, a.Slug,
 		)
+	}
+	if ew.err != nil {
+		return ew.err
 	}
 	if err := tw.Flush(); err != nil {
 		return err
 	}
 	if res.NextCursor != "" {
-		fmt.Fprintf(w, "\nMore results available — pass --cursor %s\n", res.NextCursor)
+		_, err := fmt.Fprintf(w, "\nMore results available — pass --cursor %s\n", res.NextCursor)
+		return err
 	}
 	return nil
 }

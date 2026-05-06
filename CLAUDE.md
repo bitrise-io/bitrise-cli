@@ -99,7 +99,12 @@ of an unrelated change:
 ## Build, vet, run
 
 - `go build -o ./bitrise-cli .` — binary lands at the repo root, gitignored
-- `go vet ./...` — only check beyond the compiler today; no tests yet
+- `go mod tidy && git diff --exit-code go.mod go.sum` — dependency hygiene check
+- `gofmt -l .` — formatting check (must produce no output)
+- `go vet ./...` — static analysis
+- `go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.1.6 && golangci-lint run ./...` — lint
+- `go test -race -count=1 -timeout=5m ./...` — tests
+- Run all of the above via `bitrise run test`
 - When adding tests, put them in the same package as the file under test
 - `go.mod` is at module path `github.com/bitrise-io/bitrise-cli`
 
@@ -109,7 +114,8 @@ of an unrelated change:
 real values via `-ldflags`:
 
 ```
-go build -ldflags "-X github.com/bitrise-io/bitrise-cli/cmd.version=X.Y.Z \
+go build -ldflags "-s -w \
+                  -X github.com/bitrise-io/bitrise-cli/cmd.version=X.Y.Z \
                   -X github.com/bitrise-io/bitrise-cli/cmd.commit=$GIT_SHA"
 ```
 

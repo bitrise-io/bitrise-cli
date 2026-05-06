@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"fmt"
 	"io"
 
 	"github.com/spf13/cobra"
@@ -70,26 +69,27 @@ Optional flags:
 // renderBuildText prints a single build as key/value lines.
 // Shared by trigger and view since both return one Build.
 func renderBuildText(w io.Writer, b build.Build) error {
-	fmt.Fprintf(w, "Build:        #%d (%s)\n", b.BuildNumber, b.Slug)
-	fmt.Fprintf(w, "App:          %s\n", b.AppSlug)
-	fmt.Fprintf(w, "Status:       %s\n", b.Status)
+	ew := newErrWriter(w)
+	ew.f("Build:        #%d (%s)\n", b.BuildNumber, b.Slug)
+	ew.f("App:          %s\n", b.AppSlug)
+	ew.f("Status:       %s\n", b.Status)
 	if b.StatusText != "" {
-		fmt.Fprintf(w, "Status Text:  %s\n", b.StatusText)
+		ew.f("Status Text:  %s\n", b.StatusText)
 	}
-	fmt.Fprintf(w, "Workflow:     %s\n", b.Workflow)
-	fmt.Fprintf(w, "Branch:       %s\n", b.Branch)
+	ew.f("Workflow:     %s\n", b.Workflow)
+	ew.f("Branch:       %s\n", b.Branch)
 	if b.CommitHash != "" {
-		fmt.Fprintf(w, "Commit:       %s\n", b.CommitHash)
+		ew.f("Commit:       %s\n", b.CommitHash)
 	}
 	if b.CommitMessage != "" {
-		fmt.Fprintf(w, "Message:      %s\n", b.CommitMessage)
+		ew.f("Message:      %s\n", b.CommitMessage)
 	}
-	fmt.Fprintf(w, "Triggered:    %s\n", b.TriggeredAt.Format("2006-01-02 15:04:05 MST"))
+	ew.f("Triggered:    %s\n", b.TriggeredAt.Format("2006-01-02 15:04:05 MST"))
 	if b.FinishedAt != nil {
-		fmt.Fprintf(w, "Finished:     %s\n", b.FinishedAt.Format("2006-01-02 15:04:05 MST"))
+		ew.f("Finished:     %s\n", b.FinishedAt.Format("2006-01-02 15:04:05 MST"))
 	}
 	if b.BuildURL != "" {
-		fmt.Fprintf(w, "URL:          %s\n", b.BuildURL)
+		ew.f("URL:          %s\n", b.BuildURL)
 	}
-	return nil
+	return ew.err
 }
