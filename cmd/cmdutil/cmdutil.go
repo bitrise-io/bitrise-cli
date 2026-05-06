@@ -18,6 +18,7 @@ const (
 	FlagOutput = "output"
 	FlagApp    = "app"
 	FlagQuiet  = "quiet"
+	FlagWeb    = "web"
 )
 
 // IsQuiet reports whether the persistent --quiet flag was set.

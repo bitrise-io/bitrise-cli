@@ -13,16 +13,22 @@ import (
 )
 
 func newViewCmd() *cobra.Command {
-	return &cobra.Command{
+	var web bool
+
+	c := &cobra.Command{
 		Use:   "view APP_SLUG",
 		Short: "Show details of a single app",
 		Long: `Show details for a single app identified by its slug.
 
 Argument:
   APP_SLUG           the unique slug of the app (visible in app URLs);
-                     falls back to BITRISE_APP_SLUG when omitted`,
+                     falls back to BITRISE_APP_SLUG when omitted
+
+Flags:
+  --web              open the app page in the browser instead of printing`,
 		Example: `  bitrise-cli app view stub-app-aaa
   bitrise-cli app view stub-app-aaa --output json
+  bitrise-cli app view stub-app-aaa --web
   BITRISE_APP_SLUG=stub-app-aaa bitrise-cli app view`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -30,6 +36,18 @@ Argument:
 			if err != nil {
 				return err
 			}
+
+			if web {
+				url := fmt.Sprintf("%s/app/%s", cmdutil.WebBaseURL, appSlug)
+				if err := cmdutil.OpenBrowser(url); err != nil {
+					return err
+				}
+				if !cmdutil.IsQuiet(cmd) {
+					fmt.Fprintf(cmd.ErrOrStderr(), "Opening: %s\n", url)
+				}
+				return nil
+			}
+
 			format := cmdutil.ResolveFormat(cmd)
 
 			client, err := cmdutil.NewAPIClient(cmd)
@@ -45,6 +63,9 @@ Argument:
 			return output.Render(cmd.OutOrStdout(), format, a, renderAppText)
 		},
 	}
+
+	c.Flags().BoolVar(&web, cmdutil.FlagWeb, false, "open the app page in the browser")
+	return c
 }
 
 func renderAppText(w io.Writer, a internalapp.App) error {
