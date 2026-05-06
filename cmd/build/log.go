@@ -40,7 +40,5 @@ Note:
 		},
 	}
 
-	c.Flags().String(cmdutil.FlagApp, "", "app slug, alias: --project (or set BITRISE_APP_SLUG)")
-	cmdutil.AddAppProjectAlias(c)
 	return c
 }

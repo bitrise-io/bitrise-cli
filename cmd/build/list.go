@@ -112,7 +112,6 @@ Pagination:
 		},
 	}
 
-	c.Flags().String(cmdutil.FlagApp, "", "app slug, alias: --project (or set BITRISE_APP_SLUG)")
 	c.Flags().StringVar(&branch, "branch", "", "filter by branch")
 	c.Flags().StringVar(&workflow, "workflow", "", "filter by workflow ID")
 	c.Flags().StringVar(&status, "status", "", "filter by status (success, failed, in-progress, aborted, aborted-with-success)")
@@ -126,7 +125,6 @@ Pagination:
 	c.Flags().BoolVar(&pipelineBuild, "pipeline-build", false, "show only pipeline builds (omit to show all)")
 	c.Flags().IntVar(&limit, "limit", 0, "max items per page (server default if 0)")
 	c.Flags().StringVar(&cursor, "cursor", "", "pagination cursor from a previous response")
-	cmdutil.AddAppProjectAlias(c)
 
 	return c
 }

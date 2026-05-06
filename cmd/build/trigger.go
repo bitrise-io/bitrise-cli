@@ -99,7 +99,6 @@ Optional flags:
 		},
 	}
 
-	c.Flags().String(cmdutil.FlagApp, "", "app slug, alias: --project (or set BITRISE_APP_SLUG)")
 	c.Flags().StringVar(&workflow, "workflow", "", "workflow ID to trigger (mutually exclusive with --pipeline)")
 	c.Flags().StringVar(&pipeline, "pipeline", "", "pipeline ID to trigger (mutually exclusive with --workflow)")
 	c.Flags().StringVar(&branch, "branch", "", `branch to build (default "main" for branch builds)`)
@@ -111,7 +110,6 @@ Optional flags:
 	c.Flags().IntVar(&priority, "priority", 0, "build priority (-1 = low, 0 = normal, 1 = high)")
 	c.Flags().IntVar(&pullRequestID, "pull-request-id", 0, "pull request ID for PR builds")
 	c.MarkFlagsMutuallyExclusive("workflow", "pipeline")
-	cmdutil.AddAppProjectAlias(c)
 
 	return c
 }
