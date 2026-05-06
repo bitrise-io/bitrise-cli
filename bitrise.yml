@@ -12,6 +12,11 @@ workflows:
   # Run on every push and pull request.
   # Checks dependency hygiene, formatting, static analysis, linting, and tests.
   test:
+    triggers:
+      push:
+        - branch: main
+      pull_request:
+        - target_branch: main
     steps:
       - activate-ssh-key@4: {}
       - git-clone@8: {}
