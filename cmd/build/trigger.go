@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"time"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -26,6 +27,8 @@ func newTriggerCmd() *cobra.Command {
 		envJSON       string
 		priority      int
 		pullRequestID int
+		wait          bool
+		interval      time.Duration
 	)
 
 	c := &cobra.Command{
@@ -47,12 +50,18 @@ Optional flags:
   --commit-message MSG   commit message to record
   --pull-request-id ID   pull request ID for PR builds
   --priority N           build priority (-1 = low, 0 = normal, 1 = high)
-  --env JSON             environment variables as a JSON object, e.g. '{"KEY":"value"}'`,
+  --env JSON             environment variables as a JSON object, e.g. '{"KEY":"value"}'
+  --wait                 stream logs and wait for the build to finish; exits 0 on success,
+                         1 on failure. With --output json the final build record is written
+                         to stdout and logs go to stderr.
+  --interval DURATION    log polling interval when --wait is set (default 3s)`,
 		Example: `  bitrise-cli build trigger --app my-app-slug --workflow primary
   bitrise-cli build trigger --app my-app-slug --workflow deploy --branch release/1.2 --output json
   bitrise-cli build trigger --app my-app-slug --pipeline my-pipeline --branch main
   bitrise-cli build trigger --app my-app-slug --workflow primary --tag v1.2.3
-  bitrise-cli build trigger --app my-app-slug --workflow primary --env '{"MY_VAR":"hello","OTHER":"world"}'`,
+  bitrise-cli build trigger --app my-app-slug --workflow primary --env '{"MY_VAR":"hello","OTHER":"world"}'
+  bitrise-cli build trigger --app my-app-slug --workflow primary --wait
+  bitrise-cli build trigger --app my-app-slug --workflow primary --wait --output json`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			appSlug, err := cmdutil.ResolveAppSlug(cmd)
 			if err != nil {
@@ -98,7 +107,17 @@ Optional flags:
 				return err
 			}
 
-			return output.Render(cmd.OutOrStdout(), format, b, renderTriggerHero)
+			if !wait {
+				return output.Render(cmd.OutOrStdout(), format, b, renderTriggerHero)
+			}
+
+			// --wait: stream logs then exit with a code reflecting the build outcome.
+			// In JSON mode logs go to stderr so stdout carries only the final build JSON.
+			logWriter := io.Writer(cmd.OutOrStdout())
+			if format == output.JSON {
+				logWriter = cmd.ErrOrStderr()
+			}
+			return runWatch(cmd, svc, b, interval, logWriter, format)
 		},
 	}
 
@@ -112,6 +131,8 @@ Optional flags:
 	c.Flags().StringVar(&envJSON, "env", "", `environment variables as a JSON object, e.g. '{"KEY":"value"}'`)
 	c.Flags().IntVar(&priority, "priority", 0, "build priority (-1 = low, 0 = normal, 1 = high)")
 	c.Flags().IntVar(&pullRequestID, "pull-request-id", 0, "pull request ID for PR builds")
+	c.Flags().BoolVar(&wait, "wait", false, "stream logs and wait for the build to finish (exit code reflects build outcome)")
+	c.Flags().DurationVar(&interval, "interval", 3*time.Second, "log polling interval when --wait is set")
 	c.MarkFlagsMutuallyExclusive("workflow", "pipeline")
 
 	return c

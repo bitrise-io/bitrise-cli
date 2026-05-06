@@ -5,8 +5,10 @@ package build
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"strconv"
 	"time"
 
@@ -196,6 +198,109 @@ func (s *Service) View(ctx context.Context, appSlug, buildSlug string) (Build, e
 		return Build{}, err
 	}
 	return fromAPI(b, appSlug), nil
+}
+
+// Watch streams the build log to w using the API's delta-log protocol,
+// blocking until the build finishes. Returns the final Build so the caller
+// can determine the exit code. Ctrl-C (context cancellation) causes Watch to
+// return context.Canceled; the build continues running on Bitrise.
+//
+// For builds that are already finished when Watch is called, the archived log
+// is fetched and streamed immediately.
+func (s *Service) Watch(ctx context.Context, appSlug, buildSlug string, w io.Writer, interval time.Duration) (Build, error) {
+	if s.client == nil {
+		return Build{}, fmt.Errorf("API client not configured")
+	}
+	if appSlug == "" {
+		return Build{}, fmt.Errorf("app slug is required")
+	}
+	if buildSlug == "" {
+		return Build{}, fmt.Errorf("build slug is required")
+	}
+	if interval <= 0 {
+		interval = 3 * time.Second
+	}
+
+	manifest, err := s.client.BuildLogManifest(ctx, appSlug, buildSlug, "")
+	if err != nil {
+		// 404 means the build hasn't started yet; wait one interval and retry once.
+		var apiErr *bitriseapi.APIError
+		if !errors.As(err, &apiErr) || apiErr.StatusCode != http.StatusNotFound {
+			return Build{}, err
+		}
+		select {
+		case <-ctx.Done():
+			return Build{}, ctx.Err()
+		case <-time.After(interval):
+		}
+		manifest, err = s.client.BuildLogManifest(ctx, appSlug, buildSlug, "")
+		if err != nil {
+			return Build{}, err
+		}
+	}
+
+	// Already finished: stream the archived log via the existing Log path.
+	if manifest.IsArchived || manifest.ExpiringRawLogURL != "" {
+		if err := s.Log(ctx, appSlug, buildSlug, w); err != nil {
+			return Build{}, err
+		}
+		return s.View(ctx, appSlug, buildSlug)
+	}
+
+	// In-progress: write the first batch of chunks, then poll for more.
+	for _, chunk := range manifest.LogChunks {
+		if _, err := io.WriteString(w, chunk.Chunk); err != nil {
+			return Build{}, fmt.Errorf("write log chunk: %w", err)
+		}
+	}
+
+	lastAfterTimestamp := ""
+	afterTimestamp := manifest.NextAfterTimestamp
+	for afterTimestamp != "" {
+		select {
+		case <-ctx.Done():
+			return Build{}, ctx.Err()
+		case <-time.After(interval):
+		}
+		manifest, err = s.client.BuildLogManifest(ctx, appSlug, buildSlug, afterTimestamp)
+		if err != nil {
+			return Build{}, err
+		}
+		for _, chunk := range manifest.LogChunks {
+			if _, err := io.WriteString(w, chunk.Chunk); err != nil {
+				return Build{}, fmt.Errorf("write log chunk: %w", err)
+			}
+		}
+		lastAfterTimestamp = afterTimestamp
+		afterTimestamp = manifest.NextAfterTimestamp
+		if manifest.IsArchived {
+			break
+		}
+		// Exit early as soon as the build is no longer in-progress (status 0),
+		// without waiting for the log archive to become available.
+		current, err := s.client.Build(ctx, appSlug, buildSlug)
+		if err != nil {
+			return Build{}, err
+		}
+		if current.Status != 0 {
+			break
+		}
+	}
+
+	// One final call to flush any chunks buffered after the last poll.
+	if lastAfterTimestamp != "" {
+		final, err := s.client.BuildLogManifest(ctx, appSlug, buildSlug, lastAfterTimestamp)
+		if err != nil {
+			return Build{}, err
+		}
+		for _, chunk := range final.LogChunks {
+			if _, err := io.WriteString(w, chunk.Chunk); err != nil {
+				return Build{}, fmt.Errorf("write log chunk: %w", err)
+			}
+		}
+	}
+
+	return s.View(ctx, appSlug, buildSlug)
 }
 
 // Log streams the build log for the given build to w. For finished
