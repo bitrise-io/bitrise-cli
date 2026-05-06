@@ -1,0 +1,147 @@
+format_version: "13"
+default_step_lib_source: https://github.com/bitrise-io/bitrise-steplib.git
+
+app:
+  envs:
+    - GOLANGCI_LINT_VERSION: v2.1.6
+    - GOTOOLCHAIN: auto
+
+workflows:
+
+  # ── Quality gate ──────────────────────────────────────────────────────────
+  # Run on every push and pull request.
+  # Checks dependency hygiene, formatting, static analysis, linting, and tests.
+  test:
+    steps:
+      - git-clone@8: {}
+
+      - restore-cache@3:
+          inputs:
+            - key: |
+                go-mod-{{ checksum "go.sum" }}
+                go-mod-
+
+      - script@1:
+          title: Verify dependencies
+          inputs:
+            - content: |
+                #!/usr/bin/env bash
+                set -euo pipefail
+                go mod verify
+                go mod tidy
+                git diff --exit-code go.mod
+                [ ! -f go.sum ] || git diff --exit-code go.sum
+
+      - script@1:
+          title: Check formatting
+          inputs:
+            - content: |
+                #!/usr/bin/env bash
+                set -euo pipefail
+                unformatted=$(gofmt -l .)
+                if [ -n "$unformatted" ]; then
+                  echo "The following files are not gofmt-formatted:"
+                  echo "$unformatted"
+                  exit 1
+                fi
+
+      - script@1:
+          title: Static analysis
+          inputs:
+            - content: |
+                #!/usr/bin/env bash
+                set -euo pipefail
+                go vet ./...
+
+      - script@1:
+          title: Lint
+          inputs:
+            - content: |
+                #!/usr/bin/env bash
+                set -euo pipefail
+                go install "github.com/golangci/golangci-lint/v2/cmd/golangci-lint@${GOLANGCI_LINT_VERSION}"
+                golangci-lint run ./...
+
+      - script@1:
+          title: Run tests
+          inputs:
+            - content: |
+                #!/usr/bin/env bash
+                set -euo pipefail
+                go test \
+                  -race \
+                  -count=1 \
+                  -timeout=5m \
+                  -coverprofile="${BITRISE_DEPLOY_DIR}/coverage.out" \
+                  ./...
+                go tool cover \
+                  -html="${BITRISE_DEPLOY_DIR}/coverage.out" \
+                  -o "${BITRISE_DEPLOY_DIR}/coverage.html"
+
+      - save-cache@1:
+          inputs:
+            - key: go-mod-{{ checksum "go.sum" }}
+            - paths: ~/go/pkg/mod
+
+      - deploy-to-bitrise-io@2: {}
+
+  # ── Release build ─────────────────────────────────────────────────────────
+  # Run on the main branch or tags.
+  # Cross-compiles binaries for all supported platforms and uploads them.
+  build:
+    steps:
+      - git-clone@8: {}
+
+      - restore-cache@3:
+          inputs:
+            - key: |
+                go-mod-{{ checksum "go.sum" }}
+                go-mod-
+
+      - script@1:
+          title: Cross-compile binaries
+          inputs:
+            - content: |
+                #!/usr/bin/env bash
+                set -euo pipefail
+
+                APP_NAME="bitrise-cli"
+                VERSION="${BITRISE_GIT_TAG:-$(git rev-parse --short HEAD)}"
+                LDFLAGS="-s -w -X main.Version=${VERSION}"
+                if [ -n "${BITRISE_BUILD_URL:-}" ]; then
+                  OUT_DIR="${BITRISE_DEPLOY_DIR}"
+                else
+                  OUT_DIR="${BITRISE_SOURCE_DIR}/.bin"
+                fi
+                mkdir -p "$OUT_DIR"
+
+                platforms=(
+                  "linux/amd64"
+                  "darwin/amd64"
+                  "darwin/arm64"
+                  "windows/amd64"
+                )
+
+                for platform in "${platforms[@]}"; do
+                  GOOS="${platform%/*}"
+                  GOARCH="${platform#*/}"
+                  out="${OUT_DIR}/${APP_NAME}-${VERSION}-${GOOS}-${GOARCH}"
+                  [ "$GOOS" = "windows" ] && out="${out}.exe"
+
+                  echo "Building ${GOOS}/${GOARCH}..."
+                  GOOS="$GOOS" GOARCH="$GOARCH" go build \
+                    -trimpath \
+                    -ldflags="$LDFLAGS" \
+                    -o "$out" \
+                    .
+                done
+
+                echo "Built binaries:"
+                ls -lh "$OUT_DIR"
+
+      - save-cache@1:
+          inputs:
+            - key: go-mod-{{ checksum "go.sum" }}
+            - paths: ~/go/pkg/mod
+
+      - deploy-to-bitrise-io@2: {}

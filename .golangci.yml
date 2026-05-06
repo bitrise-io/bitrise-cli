@@ -1,0 +1,19 @@
+version: "2"
+
+linters:
+  enable:
+    - errcheck        # unhandled errors — critical for CLI tools
+    - govet           # standard Go vet analysis
+    - staticcheck     # advanced static analysis
+    - gosec           # security vulnerability scanning
+    - ineffassign     # unused variable assignments
+    - misspell        # typos in strings and comments
+    - godot           # comment sentences should end with a period
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+
+issues:
+  max-same-issues: 0

@@ -10,7 +10,7 @@ type User struct {
 }
 
 // Me returns the profile of the authenticated user.
-// Endpoint: GET /me
+// Endpoint: GET /me.
 func (c *Client) Me(ctx context.Context) (*User, error) {
 	user, err := get[User](ctx, c, "/me", nil)
 	if err != nil {

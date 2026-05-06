@@ -62,11 +62,6 @@ type envelope[T any] struct {
 	Data T `json:"data"`
 }
 
-type pagedEnvelope[T any] struct {
-	Data   []T    `json:"data"`
-	Paging Paging `json:"paging"`
-}
-
 func (c *Client) newRequest(ctx context.Context, path string, params url.Values) (*http.Request, error) {
 	u, err := url.Parse(c.baseURL + path)
 	if err != nil {
@@ -90,7 +85,7 @@ func (c *Client) do(req *http.Request) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -124,23 +119,4 @@ func get[T any](ctx context.Context, c *Client, path string, params url.Values) 
 		return zero, fmt.Errorf("decode response: %w", err)
 	}
 	return env.Data, nil
-}
-
-// getPage performs a GET request and decodes a paginated list response.
-func getPage[T any](ctx context.Context, c *Client, path string, params url.Values) (Page[T], error) {
-	req, err := c.newRequest(ctx, path, params)
-	if err != nil {
-		return Page[T]{}, err
-	}
-
-	body, err := c.do(req)
-	if err != nil {
-		return Page[T]{}, err
-	}
-
-	var env pagedEnvelope[T]
-	if err := json.Unmarshal(body, &env); err != nil {
-		return Page[T]{}, fmt.Errorf("decode response: %w", err)
-	}
-	return Page[T]{Items: env.Data, Paging: env.Paging}, nil
 }

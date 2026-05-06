@@ -1,10 +1,5 @@
 package bitriseapi
 
-import (
-	"net/url"
-	"strconv"
-)
-
 // Paging holds cursor-based pagination metadata returned by list endpoints.
 type Paging struct {
 	TotalItemCount int    `json:"total_item_count"`
@@ -28,15 +23,4 @@ type ListOptions struct {
 	// Cursor is the opaque token for the next page, taken from Page.Paging.Next.
 	// Leave empty to start from the first page.
 	Cursor string
-}
-
-func (o ListOptions) params() url.Values {
-	p := url.Values{}
-	if o.Limit > 0 {
-		p.Set("limit", strconv.Itoa(o.Limit))
-	}
-	if o.Cursor != "" {
-		p.Set("next", o.Cursor)
-	}
-	return p
 }
