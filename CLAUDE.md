@@ -116,6 +116,33 @@ of an unrelated change:
 - When adding tests, put them in the same package as the file under test
 - `go.mod` is at module path `github.com/bitrise-io/bitrise-cli`
 
+## Lint compliance — required before declaring any task done
+
+**Always run `./bin/golangci-lint-v2.12.2 run ./...` and fix all issues before
+reporting work as complete.** `go vet` alone is not sufficient.
+
+### errcheck — the most common failure
+
+Every `fmt.Fprintf` / `fmt.Fprintln` / `fmt.Fprint` return value must be
+captured. Two patterns cover all cases:
+
+**Single write with early return** — capture inline:
+```go
+_, err := fmt.Fprintln(w, "message")
+return err
+```
+
+**Multiple sequential writes** — use `cmdutil.NewErrWriter`, check once at the end:
+```go
+ew := cmdutil.NewErrWriter(w)   // or NewErrWriter(tabwriter)
+ew.Ln("header")
+ew.F("row %s\n", value)
+return ew.Err
+```
+
+Never write `fmt.Fprintln(w, x)` or `fmt.Fprintf(w, ...)` without capturing
+the return. The linter will reject it every time.
+
 ## Versioning hooks
 
 `cmd.version` and `cmd.commit` are package-level `var`s so CI can inject
