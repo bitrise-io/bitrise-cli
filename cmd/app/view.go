@@ -43,7 +43,7 @@ Flags:
 					return err
 				}
 				if !cmdutil.IsQuiet(cmd) {
-					_, err = fmt.Fprintf(cmd.ErrOrStderr(), "Opening: %s\n", url)
+					_, err = fmt.Fprintf(cmd.ErrOrStderr(), "Opened %s\n", url)
 					if err != nil {
 						return err
 					}
@@ -75,7 +75,7 @@ func renderAppText(w io.Writer, a internalapp.App) error {
 	s := style.New(w)
 	ew := cmdutil.NewErrWriter(w)
 	lbl := func(label string) string {
-		return s.Label.Render(fmt.Sprintf("%-14s", label))
+		return s.Label.Render(fmt.Sprintf("%-16s", label))
 	}
 	ew.F("%s%s\n", lbl("Title:"), a.Title)
 	ew.F("%s%s\n", lbl("Slug:"), s.Slug.Render(a.Slug))
@@ -88,7 +88,7 @@ func renderAppText(w io.Writer, a internalapp.App) error {
 		ew.F("%s%s\n", lbl("Project Type:"), a.ProjectType)
 	}
 	if a.IsDisabled {
-		ew.F("%s%s\n", lbl("Disabled:"), s.Warn.Render("yes"))
+		ew.F("%s%s\n", lbl("Disabled:"), s.Dim.Render("yes"))
 	}
 	return ew.Err
 }

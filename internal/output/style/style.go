@@ -115,8 +115,9 @@ func (s Styles) HasColor() bool {
 	return s.r.ColorProfile() != termenv.Ascii
 }
 
-// CellStyler renders a single cell content string. row==-1 means the
-// header row. Return the styled string; do not change the visible width.
+// CellStyler renders a single cell content string. Only called for data rows
+// (row >= 0); header cells are styled uniformly by Table using hdrStyle.
+// Return the styled string; do not change the visible width.
 type CellStyler func(row, col int, content string) string
 
 // Table renders a borderless table with two-space gutters. Column widths
