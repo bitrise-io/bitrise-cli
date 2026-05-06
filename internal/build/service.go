@@ -16,18 +16,30 @@ import (
 // Build is the CLI-facing build record. JSON tags define the stable
 // `--output json` shape; rename fields with care.
 type Build struct {
-	Slug          string     `json:"slug"`
-	AppSlug       string     `json:"app_slug"`
-	BuildNumber   int        `json:"build_number"`
-	Status        string     `json:"status"`
-	StatusText    string     `json:"status_text,omitempty"`
-	Branch        string     `json:"branch,omitempty"`
-	Workflow      string     `json:"workflow,omitempty"`
-	CommitHash    string     `json:"commit_hash,omitempty"`
-	CommitMessage string     `json:"commit_message,omitempty"`
-	TriggeredAt   time.Time  `json:"triggered_at,omitempty"`
-	FinishedAt    *time.Time `json:"finished_at,omitempty"`
-	BuildURL      string     `json:"build_url,omitempty"`
+	Slug                    string     `json:"slug"`
+	AppSlug                 string     `json:"app_slug"`
+	BuildNumber             int        `json:"build_number"`
+	Status                  string     `json:"status"`
+	StatusText              string     `json:"status_text,omitempty"`
+	AbortReason             string     `json:"abort_reason,omitempty"`
+	IsOnHold                bool       `json:"is_on_hold,omitempty"`
+	Rebuildable             bool       `json:"rebuildable,omitempty"`
+	Workflow                string     `json:"workflow,omitempty"`
+	PipelineWorkflowID      string     `json:"pipeline_workflow_id,omitempty"`
+	Branch                  string     `json:"branch,omitempty"`
+	Tag                     string     `json:"tag,omitempty"`
+	PullRequestID           int        `json:"pull_request_id,omitempty"`
+	PullRequestTargetBranch string     `json:"pull_request_target_branch,omitempty"`
+	PullRequestViewURL      string     `json:"pull_request_view_url,omitempty"`
+	CommitHash              string     `json:"commit_hash,omitempty"`
+	CommitMessage           string     `json:"commit_message,omitempty"`
+	TriggeredAt             time.Time  `json:"triggered_at,omitempty"`
+	TriggeredBy             string     `json:"triggered_by,omitempty"`
+	FinishedAt              *time.Time `json:"finished_at,omitempty"`
+	StackIdentifier         string     `json:"stack_identifier,omitempty"`
+	MachineTypeID           string     `json:"machine_type_id,omitempty"`
+	CreditCost              int        `json:"credit_cost,omitempty"`
+	BuildURL                string     `json:"build_url,omitempty"`
 }
 
 // TriggerRequest describes a build to start.
@@ -42,13 +54,23 @@ type TriggerRequest struct {
 // ListOptions filters and paginates build lists. Status is a CLI-friendly
 // string ("success", "failed", "aborted", "aborted-with-success",
 // "in-progress"); the service translates it to the API's integer value.
+// After/Before are optional time bounds; the service converts them to unix timestamps.
+// IsPipelineBuild is a tri-state: nil = no filter, true = pipeline builds only, false = non-pipeline only.
 type ListOptions struct {
-	AppSlug  string
-	Branch   string
-	Workflow string
-	Status   string
-	Limit    int
-	Cursor   string
+	AppSlug          string
+	Branch           string
+	Workflow         string
+	CommitMessage    string
+	TriggerEventType string
+	PullRequestID    int
+	BuildNumber      int
+	After            *time.Time
+	Before           *time.Time
+	Status           string
+	SortBy           string
+	IsPipelineBuild  *bool
+	Limit            int
+	Cursor           string
 }
 
 // ListResult is one page of builds plus the cursor for the next page.
@@ -108,13 +130,26 @@ func (s *Service) List(ctx context.Context, opts ListOptions) (ListResult, error
 	if err != nil {
 		return ListResult{}, err
 	}
-	page, err := s.client.Builds(ctx, opts.AppSlug, bitriseapi.BuildsListOptions{
-		Branch:   opts.Branch,
-		Workflow: opts.Workflow,
-		Status:   statusInt,
-		Limit:    opts.Limit,
-		Next:     opts.Cursor,
-	})
+	apiOpts := bitriseapi.BuildsListOptions{
+		SortBy:           opts.SortBy,
+		Branch:           opts.Branch,
+		Workflow:         opts.Workflow,
+		CommitMessage:    opts.CommitMessage,
+		TriggerEventType: opts.TriggerEventType,
+		PullRequestID:    opts.PullRequestID,
+		BuildNumber:      opts.BuildNumber,
+		Status:           statusInt,
+		IsPipelineBuild:  opts.IsPipelineBuild,
+		Limit:            opts.Limit,
+		Next:             opts.Cursor,
+	}
+	if opts.After != nil {
+		apiOpts.After = int(opts.After.Unix())
+	}
+	if opts.Before != nil {
+		apiOpts.Before = int(opts.Before.Unix())
+	}
+	page, err := s.client.Builds(ctx, opts.AppSlug, apiOpts)
 	if err != nil {
 		return ListResult{}, err
 	}
@@ -167,15 +202,27 @@ func (s *Service) Log(ctx context.Context, appSlug, buildSlug string, w io.Write
 // doesn't echo it back.
 func fromAPI(b bitriseapi.Build, appSlug string) Build {
 	out := Build{
-		Slug:          b.Slug,
-		AppSlug:       appSlug,
-		BuildNumber:   b.BuildNumber,
-		Status:        statusString(b.Status),
-		StatusText:    b.StatusText,
-		Branch:        b.Branch,
-		Workflow:      b.TriggeredWorkflow,
-		CommitHash:    b.CommitHash,
-		CommitMessage: b.CommitMessage,
+		Slug:                    b.Slug,
+		AppSlug:                 appSlug,
+		BuildNumber:             b.BuildNumber,
+		Status:                  statusString(b.Status),
+		StatusText:              b.StatusText,
+		AbortReason:             b.AbortReason,
+		IsOnHold:                b.IsOnHold,
+		Rebuildable:             b.Rebuildable,
+		Workflow:                b.TriggeredWorkflow,
+		PipelineWorkflowID:      b.PipelineWorkflowID,
+		Branch:                  b.Branch,
+		Tag:                     b.Tag,
+		PullRequestID:           b.PullRequestID,
+		PullRequestTargetBranch: b.PullRequestTargetBranch,
+		PullRequestViewURL:      b.PullRequestViewURL,
+		CommitHash:              b.CommitHash,
+		CommitMessage:           b.CommitMessage,
+		TriggeredBy:             b.TriggeredBy,
+		StackIdentifier:         b.StackIdentifier,
+		MachineTypeID:           b.MachineTypeID,
+		CreditCost:              b.CreditCost,
 	}
 	if !b.TriggeredAt.IsZero() {
 		out.TriggeredAt = b.TriggeredAt.UTC()

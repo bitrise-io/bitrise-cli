@@ -4,11 +4,13 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/bitrise-io/bitrise-cli/bitriseapi"
 )
@@ -83,6 +85,48 @@ func TestService_List_StatusInProgressMapsToZero(t *testing.T) {
 	}
 	if !strings.Contains(gotQuery, "status=0") {
 		t.Errorf("expected status=0 in query for in-progress, got %q", gotQuery)
+	}
+}
+
+func TestService_List_NewFiltersPassedThrough(t *testing.T) {
+	var gotQuery string
+	client := fakeAPI(t, func(w http.ResponseWriter, r *http.Request) {
+		gotQuery = r.URL.RawQuery
+		_, _ = w.Write([]byte(`{"data":[]}`))
+	})
+	svc := NewService(client)
+
+	after := time.Date(2024, 1, 15, 0, 0, 0, 0, time.UTC)
+	before := time.Date(2024, 6, 1, 0, 0, 0, 0, time.UTC)
+	isPipeline := true
+
+	_, err := svc.List(context.Background(), ListOptions{
+		AppSlug:          "my-app",
+		SortBy:           "running_first",
+		CommitMessage:    "fix bug",
+		TriggerEventType: "push",
+		PullRequestID:    42,
+		BuildNumber:      99,
+		After:            &after,
+		Before:           &before,
+		IsPipelineBuild:  &isPipeline,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"sort_by=running_first",
+		"commit_message=fix+bug",
+		"trigger_event_type=push",
+		"pull_request_id=42",
+		"build_number=99",
+		"after=" + fmt.Sprintf("%d", after.Unix()),
+		"before=" + fmt.Sprintf("%d", before.Unix()),
+		"is_pipeline_build=true",
+	} {
+		if !strings.Contains(gotQuery, want) {
+			t.Errorf("expected %q in query, got %q", want, gotQuery)
+		}
 	}
 }
 
