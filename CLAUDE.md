@@ -37,6 +37,7 @@ cmd/                 cobra presentation only: flag parsing, output formatting,
                      calling into services. NO business logic, NO HTTP.
 internal/build       service stubs for build operations
 internal/app         service stubs for app + workflow operations
+internal/auth        Auth file (auth.yaml): the access token only
 internal/config      Config + Path/Load/Save, LoadDir, Resolve, ctx helpers
 internal/output      Format + generic Render; Human and JSON formats
 bitriseapi/          HTTP client (existing). Not yet called from cmd handlers.
@@ -54,7 +55,7 @@ internal services gain a `*bitriseapi.Client`.
 - **stdout vs stderr**: stdout carries the answer (data, JSON, table rows).
   stderr carries diagnostics, confirmations, progress. JSON mode never
   mixes diagnostics into stdout. Errors via cobra's RunE go to stderr.
-- **Config precedence** (5 layers, highest to lowest):
+- **Config precedence** (highest to lowest):
   1. CLI flag (`--output` folded in by `persistentPreRun`; per-command
      flags like `--app` are layered in the command handler itself)
   2. Environment variables (`BITRISE_TOKEN`, `BITRISE_APP_SLUG`,
@@ -62,8 +63,14 @@ internal services gain a `*bitriseapi.Client`.
   3. Per-directory file: `.bitrise-cli.yml` in CWD or any ancestor
   4. Global file: `$XDG_CONFIG_HOME/bitrise/config.yaml`
      (falls back to `~/.config/bitrise/config.yaml`)
-  5. Built-in defaults
-- **File perms**: global config 0600, parent dir 0700 (token-bearing).
+  5. Auth file (token + type only): `$XDG_CONFIG_HOME/bitrise/auth.yaml`
+  6. Built-in defaults
+- **Token storage**: `bitrise-cli auth login` writes the token to
+  `auth.yaml`. PAT and WAT tokens are stored identically (same wire format —
+  no type field). The legacy `config set token` still works (writes to
+  `config.yaml`) but is deprecated and emits a stderr hint pointing at
+  `auth login`. Resolve order for tokens: env > auth.yaml > legacy config.
+- **File perms**: both `config.yaml` and `auth.yaml` are 0600; parent dir 0700.
 - **Bitrise verbs**: `build trigger` (not create); `build abort` (not
   cancel) when added; `build rerun` for re-runs; `view` is the detail verb.
 - **Singular nouns**: `app`, `build`, `workflow` — never plural.
@@ -83,14 +90,17 @@ of an unrelated change:
 
 - `--web` flag (open in dashboard) — needs real URLs first
 - `bitrise-cli api` raw HTTP wrapper
-- `bitrise-cli auth login|logout|status` dedicated surface
+- OAuth login flow (current `auth login` is token-paste only, no OAuth)
 - `--json fields` projection + `--jq` expression
 - Color support + `NO_COLOR`/`FORCE_COLOR`
 - `--watch` / `--wait` (build streaming)
 - `--dry-run` for mutating commands
 - Workspace concept (`workspace use`, `--workspace`)
 - Confirmation prompts on destructive ops (no destructive ops exist yet)
-- OS-keychain token storage (currently in `config.yaml` 0600)
+- OS-keychain token storage (currently in `auth.yaml` 0600)
+- PAT vs WAT type tagging — they have identical wire format, so we store
+  them as one opaque token. Add a type field back if/when cross-workspace
+  operations gain WAT-aware warnings.
 - `bitrise.yml`-based context auto-detection
 - Telemetry, update checks, plugin system, `init` wizard
 - Per-directory config writing via `bitrise-cli config set` (currently

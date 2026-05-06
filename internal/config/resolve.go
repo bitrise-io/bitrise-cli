@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 
+	"github.com/bitrise-io/bitrise-cli/internal/auth"
 	"github.com/bitrise-io/bitrise-cli/internal/output"
 )
 
@@ -25,8 +26,13 @@ const DefaultAPIBaseURL = "https://api.bitrise.io/v0.1"
 //     per-command flags like --app are layered in the command handlers)
 //  2. Environment variables
 //  3. Per-directory config (.bitrise-cli.yml in CWD or ancestors)
-//  4. Global config file (~/.config/bitrise/config.yaml)
-//  5. Built-in defaults
+//  4. Global config file (~/.config/bitrise/config.yaml) — for non-secret keys
+//  5. auth.yaml (~/.config/bitrise/auth.yaml) — for the token only
+//  6. Built-in defaults
+//
+// Token resolution layers env > auth.yaml > legacy config-file token. The
+// legacy fallback exists because earlier versions stored the token via
+// `config set token`; new code should use `auth login` instead.
 type Resolved struct {
 	Output     output.Format
 	AppSlug    string
@@ -34,10 +40,11 @@ type Resolved struct {
 	APIBaseURL string
 }
 
-// Resolve merges global and per-directory configs with environment variables
-// and the persistent --output flag value. flagOutput may be empty when unset.
-// dirCfg is the zero Config when no per-directory file was found.
-func Resolve(globalCfg, dirCfg Config, flagOutput string) (Resolved, error) {
+// Resolve merges global config, per-directory config, the auth file, and
+// environment variables with the persistent --output flag value. flagOutput
+// may be empty when unset. dirCfg / authData are zero values when their
+// respective files were not found.
+func Resolve(globalCfg, dirCfg Config, authData auth.Auth, flagOutput string) (Resolved, error) {
 	var r Resolved
 
 	rawOutput := flagOutput
@@ -51,8 +58,8 @@ func Resolve(globalCfg, dirCfg Config, flagOutput string) (Resolved, error) {
 	r.Output = f
 
 	r.AppSlug = firstNonEmpty(os.Getenv(EnvAppSlug), dirCfg.AppSlug, globalCfg.AppSlug)
-	r.Token = firstNonEmpty(os.Getenv(EnvToken), dirCfg.Token, globalCfg.Token)
 	r.APIBaseURL = firstNonEmpty(os.Getenv(EnvAPIBaseURL), dirCfg.APIBaseURL, globalCfg.APIBaseURL, DefaultAPIBaseURL)
+	r.Token = firstNonEmpty(os.Getenv(EnvToken), authData.Token, dirCfg.Token, globalCfg.Token)
 
 	return r, nil
 }

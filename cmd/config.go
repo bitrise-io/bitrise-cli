@@ -206,6 +206,11 @@ Use this for tokens to keep them out of shell history:
 				if _, err := fmt.Fprintf(cmd.ErrOrStderr(), "Saved %s\n", key); err != nil {
 					return err
 				}
+				if key == config.KeyToken {
+					if _, err := fmt.Fprintln(cmd.ErrOrStderr(), "Note: storing tokens via 'config set' is deprecated. Prefer 'bitrise-cli auth login' which keeps credentials in a separate auth.yaml file."); err != nil {
+						return err
+					}
+				}
 			}
 			return nil
 		},
