@@ -29,7 +29,11 @@ Argument:
 			}
 			format := cmdutil.ResolveFormat(cmd)
 
-			svc := internalbuild.NewService()
+			client, err := cmdutil.NewAPIClient(cmd)
+			if err != nil {
+				return err
+			}
+			svc := internalbuild.NewService(client)
 			b, err := svc.View(cmd.Context(), appSlug, args[0])
 			if err != nil {
 				return err

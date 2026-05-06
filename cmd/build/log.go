@@ -31,7 +31,11 @@ Note:
 				return err
 			}
 
-			svc := internalbuild.NewService()
+			client, err := cmdutil.NewAPIClient(cmd)
+			if err != nil {
+				return err
+			}
+			svc := internalbuild.NewService(client)
 			return svc.Log(cmd.Context(), appSlug, args[0], cmd.OutOrStdout())
 		},
 	}

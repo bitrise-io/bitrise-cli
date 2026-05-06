@@ -1,8 +1,6 @@
 // Package app holds the business-logic layer for app and workflow operations.
 //
-// The List method calls the real Bitrise API via the bitriseapi client.
-// View and ListWorkflows are still stubbed and ignore the client; they will
-// be wired through in follow-up changes.
+// All methods call the Bitrise API via the bitriseapi client.
 package app
 
 import (
@@ -57,8 +55,7 @@ type Service struct {
 }
 
 // NewService returns a Service backed by the given API client. The client
-// must be non-nil for List; View and ListWorkflows tolerate nil for now
-// (still stubbed).
+// must be non-nil — every method in this Service makes a network call.
 func NewService(client *bitriseapi.Client) *Service {
 	return &Service{client: client}
 }
@@ -103,34 +100,38 @@ func fromAPI(a bitriseapi.App) App {
 	}
 }
 
-// View returns details of a single app by slug. STUB — to be wired to
-// GET /apps/{slug} in a follow-up.
-func (s *Service) View(_ context.Context, appSlug string) (App, error) {
+// View returns details of a single app by slug.
+// Endpoint: GET /apps/{app-slug}.
+func (s *Service) View(ctx context.Context, appSlug string) (App, error) {
+	if s.client == nil {
+		return App{}, fmt.Errorf("API client not configured")
+	}
 	if appSlug == "" {
 		return App{}, fmt.Errorf("app slug is required")
 	}
-	return App{
-		Slug:        appSlug,
-		Title:       "android-sample",
-		Provider:    "github",
-		RepoURL:     "https://github.com/bitrise-io/android-sample",
-		OwnerType:   "Organization",
-		OwnerSlug:   "bitrise-io",
-		ProjectType: "android",
-	}, nil
+	a, err := s.client.App(ctx, appSlug)
+	if err != nil {
+		return App{}, err
+	}
+	return fromAPI(a), nil
 }
 
-// ListWorkflows returns the workflows defined on an app. STUB — to be
-// wired to GET /apps/{slug}/build-workflows in a follow-up.
-func (s *Service) ListWorkflows(_ context.Context, appSlug string) (WorkflowsResult, error) {
+// ListWorkflows returns the workflow IDs defined on an app's bitrise.yml.
+// Endpoint: GET /apps/{app-slug}/build-workflows.
+func (s *Service) ListWorkflows(ctx context.Context, appSlug string) (WorkflowsResult, error) {
+	if s.client == nil {
+		return WorkflowsResult{}, fmt.Errorf("API client not configured")
+	}
 	if appSlug == "" {
 		return WorkflowsResult{}, fmt.Errorf("app slug is required")
 	}
-	return WorkflowsResult{
-		Items: []Workflow{
-			{ID: "primary"},
-			{ID: "deploy"},
-			{ID: "nightly"},
-		},
-	}, nil
+	ids, err := s.client.AppWorkflows(ctx, appSlug)
+	if err != nil {
+		return WorkflowsResult{}, err
+	}
+	items := make([]Workflow, 0, len(ids))
+	for _, id := range ids {
+		items = append(items, Workflow{ID: id})
+	}
+	return WorkflowsResult{Items: items}, nil
 }

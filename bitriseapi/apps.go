@@ -74,3 +74,15 @@ func (o AppsListOptions) params() url.Values {
 func (c *Client) Apps(ctx context.Context, opts AppsListOptions) (Page[App], error) {
 	return getPage[App](ctx, c, "/apps", opts.params())
 }
+
+// App returns the details of a single app by slug.
+// Endpoint: GET /apps/{app-slug}.
+func (c *Client) App(ctx context.Context, appSlug string) (App, error) {
+	return get[App](ctx, c, "/apps/"+appSlug, nil)
+}
+
+// AppWorkflows returns the list of workflow IDs defined in the app's
+// bitrise.yml. Endpoint: GET /apps/{app-slug}/build-workflows.
+func (c *Client) AppWorkflows(ctx context.Context, appSlug string) ([]string, error) {
+	return get[[]string](ctx, c, "/apps/"+appSlug+"/build-workflows", nil)
+}

@@ -1,31 +1,31 @@
 // Package build holds the business-logic layer for build operations.
 //
-// The service is intentionally decoupled from any presentation concern
-// (cobra, flag parsing, output formatting). Today it returns canned
-// data; once we wire the bitriseapi client through, only this layer
-// changes — the cmd handlers stay the same.
+// All methods call the Bitrise API via the bitriseapi client.
 package build
 
 import (
 	"context"
 	"fmt"
 	"io"
+	"strconv"
 	"time"
+
+	"github.com/bitrise-io/bitrise-cli/bitriseapi"
 )
 
-// Build represents a single CI build. The JSON tags define the stable
-// shape emitted by `--output json`, so rename fields with care.
+// Build is the CLI-facing build record. JSON tags define the stable
+// `--output json` shape; rename fields with care.
 type Build struct {
 	Slug          string     `json:"slug"`
 	AppSlug       string     `json:"app_slug"`
 	BuildNumber   int        `json:"build_number"`
 	Status        string     `json:"status"`
 	StatusText    string     `json:"status_text,omitempty"`
-	Branch        string     `json:"branch"`
-	Workflow      string     `json:"workflow"`
+	Branch        string     `json:"branch,omitempty"`
+	Workflow      string     `json:"workflow,omitempty"`
 	CommitHash    string     `json:"commit_hash,omitempty"`
 	CommitMessage string     `json:"commit_message,omitempty"`
-	TriggeredAt   time.Time  `json:"triggered_at"`
+	TriggeredAt   time.Time  `json:"triggered_at,omitempty"`
 	FinishedAt    *time.Time `json:"finished_at,omitempty"`
 	BuildURL      string     `json:"build_url,omitempty"`
 }
@@ -39,7 +39,9 @@ type TriggerRequest struct {
 	CommitMessage string
 }
 
-// ListOptions filters and paginates build lists.
+// ListOptions filters and paginates build lists. Status is a CLI-friendly
+// string ("success", "failed", "aborted", "aborted-with-success",
+// "in-progress"); the service translates it to the API's integer value.
 type ListOptions struct {
 	AppSlug  string
 	Branch   string
@@ -55,129 +57,217 @@ type ListResult struct {
 	NextCursor string  `json:"next_cursor,omitempty"`
 }
 
-// Service exposes build operations to the cmd layer. It will eventually
-// be backed by *bitriseapi.Client; today it returns stub data so the
-// CLI surface can be exercised end-to-end without network calls.
-type Service struct{}
+// Service exposes build operations to the cmd layer.
+type Service struct {
+	client *bitriseapi.Client
+}
 
-// NewService returns a stub Service.
-func NewService() *Service { return &Service{} }
+// NewService returns a Service backed by the given API client. The client
+// must be non-nil — every method makes a network call.
+func NewService(client *bitriseapi.Client) *Service {
+	return &Service{client: client}
+}
 
-// Trigger pretends to start a build and returns a fake "in-progress" record.
-func (s *Service) Trigger(_ context.Context, req TriggerRequest) (Build, error) {
+// Trigger starts a new build for the given app + workflow.
+// Endpoint: POST /apps/{app-slug}/builds.
+func (s *Service) Trigger(ctx context.Context, req TriggerRequest) (Build, error) {
+	if s.client == nil {
+		return Build{}, fmt.Errorf("API client not configured")
+	}
 	if req.AppSlug == "" {
 		return Build{}, fmt.Errorf("app slug is required")
 	}
 	if req.Workflow == "" {
 		return Build{}, fmt.Errorf("workflow is required")
 	}
-	now := time.Now().UTC()
-	return Build{
-		Slug:          "stub-" + req.Workflow + "-001",
-		AppSlug:       req.AppSlug,
-		BuildNumber:   42,
-		Status:        "in-progress",
-		StatusText:    "Build started (stub)",
-		Branch:        req.Branch,
-		Workflow:      req.Workflow,
-		CommitHash:    req.CommitHash,
-		CommitMessage: req.CommitMessage,
-		TriggeredAt:   now,
-		BuildURL:      fmt.Sprintf("https://app.bitrise.io/build/stub-%s-001", req.Workflow),
-	}, nil
+	resp, err := s.client.TriggerBuild(ctx, req.AppSlug, bitriseapi.BuildTriggerParams{
+		HookInfo: bitriseapi.BuildTriggerHookInfo{Type: "bitrise"},
+		BuildParams: bitriseapi.BuildTriggerBuildParams{
+			WorkflowID:    req.Workflow,
+			Branch:        req.Branch,
+			CommitHash:    req.CommitHash,
+			CommitMessage: req.CommitMessage,
+		},
+	})
+	if err != nil {
+		return Build{}, err
+	}
+	return triggerRespToBuild(resp, req), nil
 }
 
-// List returns a stub page of builds for the given app.
-func (s *Service) List(_ context.Context, opts ListOptions) (ListResult, error) {
+// List returns one page of builds for an app.
+// Endpoint: GET /apps/{app-slug}/builds.
+func (s *Service) List(ctx context.Context, opts ListOptions) (ListResult, error) {
+	if s.client == nil {
+		return ListResult{}, fmt.Errorf("API client not configured")
+	}
 	if opts.AppSlug == "" {
 		return ListResult{}, fmt.Errorf("app slug is required")
 	}
-	now := time.Now().UTC()
-	finished := now.Add(-10 * time.Minute)
-	return ListResult{
-		Items: []Build{
-			{
-				Slug:        "stub-build-aaa",
-				AppSlug:     opts.AppSlug,
-				BuildNumber: 42,
-				Status:      "in-progress",
-				Branch:      "main",
-				Workflow:    "primary",
-				TriggeredAt: now.Add(-2 * time.Minute),
-				BuildURL:    "https://app.bitrise.io/build/stub-build-aaa",
-			},
-			{
-				Slug:        "stub-build-bbb",
-				AppSlug:     opts.AppSlug,
-				BuildNumber: 41,
-				Status:      "success",
-				Branch:      "main",
-				Workflow:    "primary",
-				TriggeredAt: now.Add(-30 * time.Minute),
-				FinishedAt:  &finished,
-				BuildURL:    "https://app.bitrise.io/build/stub-build-bbb",
-			},
-			{
-				Slug:        "stub-build-ccc",
-				AppSlug:     opts.AppSlug,
-				BuildNumber: 40,
-				Status:      "failed",
-				Branch:      "feature/x",
-				Workflow:    "deploy",
-				TriggeredAt: now.Add(-2 * time.Hour),
-				FinishedAt:  &finished,
-				BuildURL:    "https://app.bitrise.io/build/stub-build-ccc",
-			},
-		},
-	}, nil
+	statusInt, err := parseStatusFilter(opts.Status)
+	if err != nil {
+		return ListResult{}, err
+	}
+	page, err := s.client.Builds(ctx, opts.AppSlug, bitriseapi.BuildsListOptions{
+		Branch:   opts.Branch,
+		Workflow: opts.Workflow,
+		Status:   statusInt,
+		Limit:    opts.Limit,
+		Next:     opts.Cursor,
+	})
+	if err != nil {
+		return ListResult{}, err
+	}
+	items := make([]Build, 0, len(page.Items))
+	for _, b := range page.Items {
+		items = append(items, fromAPI(b, opts.AppSlug))
+	}
+	return ListResult{Items: items, NextCursor: page.Paging.Next}, nil
 }
 
 // View returns details for a single build.
-func (s *Service) View(_ context.Context, appSlug, buildSlug string) (Build, error) {
+// Endpoint: GET /apps/{app-slug}/builds/{build-slug}.
+func (s *Service) View(ctx context.Context, appSlug, buildSlug string) (Build, error) {
+	if s.client == nil {
+		return Build{}, fmt.Errorf("API client not configured")
+	}
 	if appSlug == "" {
 		return Build{}, fmt.Errorf("app slug is required")
 	}
 	if buildSlug == "" {
 		return Build{}, fmt.Errorf("build slug is required")
 	}
-	now := time.Now().UTC()
-	finished := now.Add(-1 * time.Minute)
-	return Build{
-		Slug:          buildSlug,
-		AppSlug:       appSlug,
-		BuildNumber:   42,
-		Status:        "success",
-		StatusText:    "Build succeeded (stub)",
-		Branch:        "main",
-		Workflow:      "primary",
-		CommitHash:    "deadbeefcafef00d",
-		CommitMessage: "stub: example commit",
-		TriggeredAt:   now.Add(-5 * time.Minute),
-		FinishedAt:    &finished,
-		BuildURL:      fmt.Sprintf("https://app.bitrise.io/build/%s", buildSlug),
-	}, nil
+	b, err := s.client.Build(ctx, appSlug, buildSlug)
+	if err != nil {
+		return Build{}, err
+	}
+	return fromAPI(b, appSlug), nil
 }
 
-// Log streams the build log for the given build to w.
-// In stub mode it writes a few canned lines.
-func (s *Service) Log(_ context.Context, appSlug, buildSlug string, w io.Writer) error {
+// Log streams the build log for the given build to w. For finished
+// builds the full archived log is streamed; for in-progress builds the
+// chunks available so far are written.
+// Endpoint: GET /apps/{app-slug}/builds/{build-slug}/log.
+func (s *Service) Log(ctx context.Context, appSlug, buildSlug string, w io.Writer) error {
+	if s.client == nil {
+		return fmt.Errorf("API client not configured")
+	}
 	if appSlug == "" {
 		return fmt.Errorf("app slug is required")
 	}
 	if buildSlug == "" {
 		return fmt.Errorf("build slug is required")
 	}
-	lines := []string{
-		fmt.Sprintf("[stub] log for app=%s build=%s", appSlug, buildSlug),
-		"[stub] step 1/3: git-clone        ✓",
-		"[stub] step 2/3: yarn-install     ✓",
-		"[stub] step 3/3: deploy-to-bitrise ✓",
-		"[stub] build finished",
+	_, err := s.client.BuildLog(ctx, appSlug, buildSlug, w)
+	return err
+}
+
+// fromAPI maps a bitriseapi.Build (wire shape) into the CLI's Build type.
+// appSlug is taken from the request context because the API response
+// doesn't echo it back.
+func fromAPI(b bitriseapi.Build, appSlug string) Build {
+	out := Build{
+		Slug:          b.Slug,
+		AppSlug:       appSlug,
+		BuildNumber:   b.BuildNumber,
+		Status:        statusString(b.Status),
+		StatusText:    b.StatusText,
+		Branch:        b.Branch,
+		Workflow:      b.TriggeredWorkflow,
+		CommitHash:    b.CommitHash,
+		CommitMessage: b.CommitMessage,
 	}
-	for _, line := range lines {
-		if _, err := fmt.Fprintln(w, line); err != nil {
-			return err
+	if !b.TriggeredAt.IsZero() {
+		out.TriggeredAt = b.TriggeredAt.UTC()
+	}
+	if !b.FinishedAt.IsZero() {
+		t := b.FinishedAt.UTC()
+		out.FinishedAt = &t
+	}
+	return out
+}
+
+// triggerRespToBuild collapses the trigger response into our Build shape,
+// preferring the modern Results[0] over the deprecated top-level fields.
+func triggerRespToBuild(resp bitriseapi.BuildTriggerResp, req TriggerRequest) Build {
+	slug := resp.BuildSlug
+	number := resp.BuildNumber
+	url := resp.BuildURL
+	workflow := resp.TriggeredWorkflow
+	if len(resp.Results) > 0 {
+		r := resp.Results[0]
+		if r.BuildSlug != "" {
+			slug = r.BuildSlug
+		}
+		if r.BuildNumber != 0 {
+			number = r.BuildNumber
+		}
+		if r.BuildURL != "" {
+			url = r.BuildURL
+		}
+		if r.TriggeredWorkflow != "" {
+			workflow = r.TriggeredWorkflow
 		}
 	}
-	return nil
+	if workflow == "" {
+		workflow = req.Workflow
+	}
+	return Build{
+		Slug:          slug,
+		AppSlug:       req.AppSlug,
+		BuildNumber:   number,
+		Status:        "in-progress",
+		StatusText:    resp.Message,
+		Branch:        req.Branch,
+		Workflow:      workflow,
+		CommitHash:    req.CommitHash,
+		CommitMessage: req.CommitMessage,
+		TriggeredAt:   time.Now().UTC(),
+		BuildURL:      url,
+	}
+}
+
+// statusString translates the API's integer status into a stable string
+// for `--output json`. Unknown values fall through as the integer for
+// forward-compat with new statuses.
+func statusString(n int) string {
+	switch n {
+	case 0:
+		return "in-progress"
+	case 1:
+		return "success"
+	case 2:
+		return "failed"
+	case 3:
+		return "aborted"
+	case 4:
+		return "aborted-with-success"
+	default:
+		return strconv.Itoa(n)
+	}
+}
+
+// parseStatusFilter is the inverse of statusString. Returns nil when no
+// filter is requested. Returns an error for unknown values so users see
+// a quick message instead of a silent passthrough.
+func parseStatusFilter(s string) (*int, error) {
+	if s == "" {
+		return nil, nil //nolint:nilnil // intentional — nil pointer signals "no filter"
+	}
+	var n int
+	switch s {
+	case "in-progress":
+		n = 0
+	case "success":
+		n = 1
+	case "failed":
+		n = 2
+	case "aborted":
+		n = 3
+	case "aborted-with-success":
+		n = 4
+	default:
+		return nil, fmt.Errorf("unknown build status %q (expected: in-progress, success, failed, aborted, aborted-with-success)", s)
+	}
+	return &n, nil
 }

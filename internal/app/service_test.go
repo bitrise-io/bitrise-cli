@@ -128,18 +128,67 @@ func TestService_List_PropagatesAPIError(t *testing.T) {
 	}
 }
 
-// View and ListWorkflows are still stub; sanity-check they validate input
-// and return the canned data we expect to keep current help/examples honest.
-func TestService_ViewStub_RequiresSlug(t *testing.T) {
-	svc := NewService(nil)
+func TestService_View_HitsCorrectPath(t *testing.T) {
+	client := fakeAPI(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/apps/my-app" {
+			t.Errorf("path = %q", r.URL.Path)
+		}
+		_, _ = w.Write([]byte(`{"data":{"slug":"my-app","title":"App","provider":"github","owner":{"slug":"acme","account_type":"User"}}}`))
+	})
+	svc := NewService(client)
+
+	got, err := svc.View(context.Background(), "my-app")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := App{Slug: "my-app", Title: "App", Provider: "github", OwnerType: "User", OwnerSlug: "acme"}
+	if got != want {
+		t.Errorf("got %+v, want %+v", got, want)
+	}
+}
+
+func TestService_ListWorkflows_HitsCorrectPath(t *testing.T) {
+	client := fakeAPI(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/apps/my-app/build-workflows" {
+			t.Errorf("path = %q", r.URL.Path)
+		}
+		_, _ = w.Write([]byte(`{"data":["primary","deploy"]}`))
+	})
+	svc := NewService(client)
+
+	res, err := svc.ListWorkflows(context.Background(), "my-app")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Items) != 2 || res.Items[0].ID != "primary" || res.Items[1].ID != "deploy" {
+		t.Errorf("got %+v", res.Items)
+	}
+}
+
+func TestService_View_RequiresSlug(t *testing.T) {
+	svc := NewService(fakeAPI(t, func(http.ResponseWriter, *http.Request) {}))
 	if _, err := svc.View(context.Background(), ""); err == nil {
 		t.Fatal("View with empty slug should fail")
 	}
 }
 
-func TestService_ListWorkflowsStub_RequiresSlug(t *testing.T) {
-	svc := NewService(nil)
+func TestService_ListWorkflows_RequiresSlug(t *testing.T) {
+	svc := NewService(fakeAPI(t, func(http.ResponseWriter, *http.Request) {}))
 	if _, err := svc.ListWorkflows(context.Background(), ""); err == nil {
 		t.Fatal("ListWorkflows with empty slug should fail")
+	}
+}
+
+func TestService_View_NilClientFails(t *testing.T) {
+	svc := NewService(nil)
+	if _, err := svc.View(context.Background(), "x"); err == nil {
+		t.Fatal("expected error when client is nil")
+	}
+}
+
+func TestService_ListWorkflows_NilClientFails(t *testing.T) {
+	svc := NewService(nil)
+	if _, err := svc.ListWorkflows(context.Background(), "x"); err == nil {
+		t.Fatal("expected error when client is nil")
 	}
 }

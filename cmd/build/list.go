@@ -47,7 +47,11 @@ Pagination:
 			}
 			format := cmdutil.ResolveFormat(cmd)
 
-			svc := internalbuild.NewService()
+			client, err := cmdutil.NewAPIClient(cmd)
+			if err != nil {
+				return err
+			}
+			svc := internalbuild.NewService(client)
 			res, err := svc.List(cmd.Context(), internalbuild.ListOptions{
 				AppSlug:  appSlug,
 				Branch:   branch,

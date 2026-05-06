@@ -1,6 +1,7 @@
 package bitriseapi
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -137,4 +138,37 @@ func getPage[T any](ctx context.Context, c *Client, path string, params url.Valu
 		return Page[T]{}, fmt.Errorf("decode response: %w", err)
 	}
 	return Page[T]{Items: env.Data, Paging: env.Paging}, nil
+}
+
+// postDecode marshals body as JSON, POSTs to path, and decodes the response
+// directly into Resp. Used for endpoints whose responses don't use the
+// standard {"data": ...} envelope (e.g. POST /apps/{slug}/builds).
+func postDecode[Req, Resp any](ctx context.Context, c *Client, path string, body Req) (Resp, error) {
+	var zero Resp
+
+	data, err := json.Marshal(body)
+	if err != nil {
+		return zero, fmt.Errorf("marshal request: %w", err)
+	}
+	u, err := url.Parse(c.baseURL + path)
+	if err != nil {
+		return zero, fmt.Errorf("parse URL: %w", err)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, u.String(), bytes.NewReader(data))
+	if err != nil {
+		return zero, fmt.Errorf("build request: %w", err)
+	}
+	req.Header.Set("Authorization", "token "+c.token)
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Content-Type", "application/json")
+
+	respBody, err := c.do(req)
+	if err != nil {
+		return zero, err
+	}
+	var resp Resp
+	if err := json.Unmarshal(respBody, &resp); err != nil {
+		return zero, fmt.Errorf("decode response: %w", err)
+	}
+	return resp, nil
 }
