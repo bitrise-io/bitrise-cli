@@ -55,6 +55,10 @@ internal services gain a `*bitriseapi.Client`.
 - **stdout vs stderr**: stdout carries the answer (data, JSON, table rows).
   stderr carries diagnostics, confirmations, progress. JSON mode never
   mixes diagnostics into stdout. Errors via cobra's RunE go to stderr.
+- **Output scheme**: colors, symbols (`✓` / `✗` / `→`), table layout,
+  key/value patterns, ErrWriter usage, and JSON contracts are documented
+  in `docs/output-scheme.md`. Follow it when adding or changing any
+  human-readable output.
 - **Config precedence** (highest to lowest):
   1. CLI flag (`--output` folded in by `persistentPreRun`; per-command
      flags like `--app` are layered in the command handler itself)
