@@ -43,7 +43,10 @@ Flags:
 					return err
 				}
 				if !cmdutil.IsQuiet(cmd) {
-					fmt.Fprintf(cmd.ErrOrStderr(), "Opening: %s\n", url)
+					_, err := fmt.Fprintf(cmd.ErrOrStderr(), "Opening: %s\n", url)
+					if err != nil {
+						return err
+					}
 				}
 				return nil
 			}
