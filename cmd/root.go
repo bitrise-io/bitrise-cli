@@ -6,6 +6,7 @@
 package cmd
 
 import (
+	"fmt"
 	"os"
 
 	"github.com/spf13/cobra"
@@ -71,6 +72,17 @@ func init() {
 	rootCmd.PersistentFlags().StringP(cmdutil.FlagOutput, "o", "", `output format: human|json (default "human")`)
 	rootCmd.PersistentFlags().BoolVarP(&quiet, cmdutil.FlagQuiet, "q", false, "suppress non-error diagnostic messages")
 	rootCmd.PersistentFlags().BoolVar(&noColor, "no-color", false, "disable ANSI colors (NO_COLOR env is also honored)")
+
+	// Prepend the Purr Request mascot to the root help / default page so
+	// `bitrise-cli` and `bitrise-cli --help` both lead with it. Subcommand
+	// helps are unaffected because their own SetHelpFunc isn't overridden.
+	defaultHelp := rootCmd.HelpFunc()
+	rootCmd.SetHelpFunc(func(cmd *cobra.Command, args []string) {
+		if cmd == rootCmd {
+			_, _ = fmt.Fprint(cmd.OutOrStdout(), banner)
+		}
+		defaultHelp(cmd, args)
+	})
 	rootCmd.SetFlagErrorFunc(flagErrorFunc)
 	rootCmd.SetHelpCommand(&cobra.Command{Hidden: true})
 	rootCmd.AddCommand(cmdbuild.NewCmd())
