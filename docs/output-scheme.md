@@ -42,7 +42,8 @@ In JSON mode `renderHumanFn` is never called; `data` is marshalled directly.
 
 ## 3. Unicode symbols
 
-Symbols appear in human-readable output to convey semantic meaning at a glance.
+Symbols appear only in human-format output. JSON output never contains them —
+the JSON path never calls the human renderer.
 
 | Symbol | Unicode | Color | Meaning |
 |--------|---------|-------|---------|
@@ -53,9 +54,10 @@ Symbols appear in human-readable output to convey semantic meaning at a glance.
 **Current uses in the codebase:**
 
 ```
-✓  auth status: access token is configured
-✗  auth status: no access token configured
-→  build view: Pull Request: #42 → main
+✓  auth status: access token configured  (renderAuthStatusHuman → stdout)
+✗  auth status: no token configured      (renderAuthStatusHuman → stdout)
+✓  build trigger: build triggered        (renderTriggerHero → stdout)
+→  build view: Pull Request: #42 → main  (renderBuildText → stdout)
 ```
 
 No symbol is used for neutral info or hint text — plain text only.
