@@ -92,3 +92,15 @@ func (ew *ErrWriter) Ln(a ...any) {
 	}
 	_, ew.Err = fmt.Fprintln(ew.w, a...)
 }
+
+// DelegateToList forwards a bare parent invocation to its "list" subcommand,
+// propagating the parent's context so resolved config is available.
+func DelegateToList(cmd *cobra.Command, args []string) error {
+	for _, sub := range cmd.Commands() {
+		if sub.Name() == "list" {
+			sub.SetContext(cmd.Context())
+			return sub.RunE(sub, args)
+		}
+	}
+	return cmd.Help()
+}

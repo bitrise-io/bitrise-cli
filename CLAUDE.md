@@ -141,6 +141,12 @@ When ldflags aren't set, `runtime/debug.ReadBuildInfo()` fills in
   or deleting the file. A `config reset` escape hatch is a reasonable
   follow-up.
 
+## README command list
+
+`README.md` contains a full command reference table. **Keep it in sync**:
+whenever a command is added, renamed, or removed, update the corresponding
+row (or section) in the README as part of the same change.
+
 ## When in doubt
 
 Open the patterns guide (https://bitrise.atlassian.net/wiki/x/EoBwKQE) and
