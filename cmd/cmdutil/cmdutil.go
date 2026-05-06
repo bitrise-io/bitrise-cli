@@ -80,7 +80,7 @@ func NewAPIClient(cmd *cobra.Command) (*bitriseapi.Client, error) {
 	if r.Token == "" {
 		return nil, ErrNoToken
 	}
-	return bitriseapi.New(r.Token, bitriseapi.WithBaseURL(r.APIBaseURL)), nil
+	return bitriseapi.New(r.APIBaseURL, r.Token), nil
 }
 
 // ErrWriter wraps an io.Writer and captures the first write error so callers
