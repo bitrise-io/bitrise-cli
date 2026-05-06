@@ -3,12 +3,15 @@ package build
 import (
 	"encoding/json"
 	"fmt"
+	"io"
+	"strings"
 
 	"github.com/spf13/cobra"
 
 	"github.com/bitrise-io/bitrise-cli/cmd/cmdutil"
 	internalbuild "github.com/bitrise-io/bitrise-cli/internal/build"
 	"github.com/bitrise-io/bitrise-cli/internal/output"
+	"github.com/bitrise-io/bitrise-cli/internal/output/style"
 )
 
 func newTriggerCmd() *cobra.Command {
@@ -95,7 +98,7 @@ Optional flags:
 				return err
 			}
 
-			return output.Render(cmd.OutOrStdout(), format, b, renderBuildText)
+			return output.Render(cmd.OutOrStdout(), format, b, renderTriggerHero)
 		},
 	}
 
@@ -114,4 +117,38 @@ Optional flags:
 	cmdutil.AddAppProjectAlias(c)
 
 	return c
+}
+
+// renderTriggerHero is the human-format response for `build trigger` —
+// a short success line plus the URL on its own line. The full build
+// detail view would be misleading here because most fields aren't
+// returned by the trigger response (the build hasn't run yet).
+func renderTriggerHero(w io.Writer, b internalbuild.Build) error {
+	s := style.New(w)
+	ew := cmdutil.NewErrWriter(w)
+
+	headline := strings.Builder{}
+	headline.WriteString(s.Success.Render("✓"))
+	headline.WriteString(" ")
+	headline.WriteString(s.Bold.Render("Build triggered"))
+	if b.BuildNumber > 0 {
+		headline.WriteString(s.Dim.Render(fmt.Sprintf("  #%d", b.BuildNumber)))
+	}
+	if b.Workflow != "" {
+		headline.WriteString("  ")
+		headline.WriteString(b.Workflow)
+	}
+	switch {
+	case b.Branch != "":
+		headline.WriteString(s.Dim.Render(" on "))
+		headline.WriteString(b.Branch)
+	case b.Tag != "":
+		headline.WriteString(s.Dim.Render(" tag "))
+		headline.WriteString(b.Tag)
+	}
+	ew.F("%s\n", headline.String())
+	if b.BuildURL != "" {
+		ew.F("  %s\n", s.URL.Render(b.BuildURL))
+	}
+	return ew.Err
 }

@@ -10,6 +10,7 @@ import (
 	"github.com/bitrise-io/bitrise-cli/cmd/cmdutil"
 	internalconfig "github.com/bitrise-io/bitrise-cli/internal/config"
 	"github.com/bitrise-io/bitrise-cli/internal/output"
+	"github.com/bitrise-io/bitrise-cli/internal/output/style"
 )
 
 // NewCmd returns the `bitrise-cli config` parent command and its subcommands.
@@ -105,19 +106,22 @@ to other bitrise-cli commands.`,
 }
 
 func renderListHuman(w io.Writer, v configList) error {
+	s := style.New(w)
 	ew := cmdutil.NewErrWriter(w)
-	ew.F("Path:          %s\n\n", v.Path)
-	ew.F("%-15s%s\n", internalconfig.KeyOutput+":", emptyAs(v.Output))
-	ew.F("%-15s%s\n", internalconfig.KeyAppSlug+":", emptyAs(v.AppSlug))
-	ew.F("%-15s%s\n", internalconfig.KeyAPIBaseURL+":", emptyAs(v.APIBaseURL))
-	return ew.Err
-}
-
-func emptyAs(s string) string {
-	if s == "" {
-		return "(unset)"
+	lbl := func(label string) string {
+		return s.Label.Render(fmt.Sprintf("%-15s", label))
 	}
-	return s
+	value := func(v string) string {
+		if v == "" {
+			return s.Dim.Render("(unset)")
+		}
+		return v
+	}
+	ew.F("%s%s\n\n", lbl("Path:"), s.Slug.Render(v.Path))
+	ew.F("%s%s\n", lbl(internalconfig.KeyOutput+":"), value(v.Output))
+	ew.F("%s%s\n", lbl(internalconfig.KeyAppSlug+":"), value(v.AppSlug))
+	ew.F("%s%s\n", lbl(internalconfig.KeyAPIBaseURL+":"), value(v.APIBaseURL))
+	return ew.Err
 }
 
 func newGetCmd() *cobra.Command {

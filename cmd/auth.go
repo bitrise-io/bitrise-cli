@@ -14,6 +14,7 @@ import (
 	"github.com/bitrise-io/bitrise-cli/internal/auth"
 	"github.com/bitrise-io/bitrise-cli/internal/config"
 	"github.com/bitrise-io/bitrise-cli/internal/output"
+	"github.com/bitrise-io/bitrise-cli/internal/output/style"
 )
 
 // newAuthCmd returns the `bitrise-cli auth` parent command and its subcommands.
@@ -158,18 +159,22 @@ func tokenSource(resolvedToken string) string {
 	return "legacy config (config.yaml)"
 }
 
-func renderAuthStatusHuman(w io.Writer, s authStatus) error {
+func renderAuthStatusHuman(w io.Writer, st authStatus) error {
+	s := style.New(w)
 	ew := cmdutil.NewErrWriter(w)
-	if !s.HasToken {
-		ew.Ln("No access token configured.")
-		ew.Ln()
+	if !st.HasToken {
+		ew.F("%s No access token configured.\n\n", s.Failure.Render("✗"))
 		ew.Ln("Run 'bitrise-cli auth login' to save one,")
 		ew.Ln("or set the BITRISE_TOKEN environment variable.")
 		return ew.Err
 	}
-	ew.F("Token:    ******** (set)\n")
-	ew.F("Source:   %s\n", s.Source)
-	ew.F("Path:     %s\n", s.Path)
+	lbl := func(label string) string {
+		return s.Label.Render(fmt.Sprintf("%-9s", label))
+	}
+	ew.F("%s %s\n", s.Success.Render("✓"), s.Bold.Render("Access token configured"))
+	ew.F("%s%s\n", lbl("Token:"), s.Dim.Render("******** (set)"))
+	ew.F("%s%s\n", lbl("Source:"), st.Source)
+	ew.F("%s%s\n", lbl("Path:"), st.Path)
 	return ew.Err
 }
 

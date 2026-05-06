@@ -1,6 +1,7 @@
 package app
 
 import (
+	"fmt"
 	"io"
 
 	"github.com/spf13/cobra"
@@ -8,6 +9,7 @@ import (
 	"github.com/bitrise-io/bitrise-cli/cmd/cmdutil"
 	internalapp "github.com/bitrise-io/bitrise-cli/internal/app"
 	"github.com/bitrise-io/bitrise-cli/internal/output"
+	"github.com/bitrise-io/bitrise-cli/internal/output/style"
 )
 
 func newViewCmd() *cobra.Command {
@@ -46,19 +48,23 @@ Argument:
 }
 
 func renderAppText(w io.Writer, a internalapp.App) error {
+	s := style.New(w)
 	ew := cmdutil.NewErrWriter(w)
-	ew.F("Title:        %s\n", a.Title)
-	ew.F("Slug:         %s\n", a.Slug)
-	ew.F("Provider:     %s\n", a.Provider)
-	ew.F("Repo URL:     %s\n", a.RepoURL)
+	lbl := func(label string) string {
+		return s.Label.Render(fmt.Sprintf("%-14s", label))
+	}
+	ew.F("%s%s\n", lbl("Title:"), a.Title)
+	ew.F("%s%s\n", lbl("Slug:"), s.Slug.Render(a.Slug))
+	ew.F("%s%s\n", lbl("Provider:"), a.Provider)
+	ew.F("%s%s\n", lbl("Repo URL:"), s.URL.Render(a.RepoURL))
 	if a.OwnerType != "" || a.OwnerSlug != "" {
-		ew.F("Owner:        %s/%s\n", a.OwnerType, a.OwnerSlug)
+		ew.F("%s%s/%s\n", lbl("Owner:"), a.OwnerType, a.OwnerSlug)
 	}
 	if a.ProjectType != "" {
-		ew.F("Project Type: %s\n", a.ProjectType)
+		ew.F("%s%s\n", lbl("Project Type:"), a.ProjectType)
 	}
 	if a.IsDisabled {
-		ew.Ln("Disabled:     yes")
+		ew.F("%s%s\n", lbl("Disabled:"), s.Warn.Render("yes"))
 	}
 	return ew.Err
 }

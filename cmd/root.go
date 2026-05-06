@@ -17,11 +17,17 @@ import (
 	"github.com/bitrise-io/bitrise-cli/internal/auth"
 	"github.com/bitrise-io/bitrise-cli/internal/config"
 	"github.com/bitrise-io/bitrise-cli/internal/output"
+	"github.com/bitrise-io/bitrise-cli/internal/output/style"
 )
 
 // quiet is set by the persistent --quiet/-q flag. Commands in this package
 // (auth) check it directly; subpackages use cmdutil.IsQuiet(cmd).
 var quiet bool
+
+// noColor is set by the persistent --no-color flag. NO_COLOR / FORCE_COLOR
+// env vars are honored automatically by the underlying termenv detection;
+// this flag is the explicit override surfaced in --help.
+var noColor bool
 
 var rootCmd = &cobra.Command{
 	Use:     "bitrise-cli",
@@ -64,6 +70,7 @@ func Execute() {
 func init() {
 	rootCmd.PersistentFlags().StringP(cmdutil.FlagOutput, "o", "", `output format: human|json (default "human")`)
 	rootCmd.PersistentFlags().BoolVarP(&quiet, cmdutil.FlagQuiet, "q", false, "suppress non-error diagnostic messages")
+	rootCmd.PersistentFlags().BoolVar(&noColor, "no-color", false, "disable ANSI colors (NO_COLOR env is also honored)")
 	rootCmd.SetFlagErrorFunc(flagErrorFunc)
 	rootCmd.SetHelpCommand(&cobra.Command{Hidden: true})
 	rootCmd.AddCommand(cmdbuild.NewCmd())
@@ -77,6 +84,8 @@ func init() {
 // merges them with env + flags, and stores the Resolved settings on
 // cmd.Context() so subcommand handlers can read them.
 func persistentPreRun(cmd *cobra.Command, _ []string) error {
+	style.Configure(noColor)
+
 	globalCfg, err := config.Load()
 	if err != nil {
 		return err
