@@ -278,3 +278,52 @@ func TestBuildLog_PropagatesManifestError(t *testing.T) {
 		t.Errorf("buffer should be untouched on error, got %q", buf.String())
 	}
 }
+
+func TestBuildLogManifest_SendsAfterTimestampParam(t *testing.T) {
+	fs := newFakeServer(t, func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"is_archived":false}`))
+	})
+
+	_, err := fs.client("t").BuildLogManifest(context.Background(), "my-app", "my-build", "ts-abc")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := fs.lastReq.URL.Query().Get("after_timestamp"); got != "ts-abc" {
+		t.Errorf("after_timestamp = %q, want ts-abc", got)
+	}
+}
+
+func TestBuildLogManifest_OmitsAfterTimestampWhenEmpty(t *testing.T) {
+	fs := newFakeServer(t, func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"is_archived":false}`))
+	})
+
+	_, err := fs.client("t").BuildLogManifest(context.Background(), "my-app", "my-build", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fs.lastReq.URL.Query().Has("after_timestamp") {
+		t.Error("after_timestamp should be omitted on first call (empty string)")
+	}
+}
+
+func TestBuildLogManifest_ParsesNextAfterTimestamp(t *testing.T) {
+	fs := newFakeServer(t, func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{
+  "is_archived": false,
+  "next_after_timestamp": "2026-05-06T10:01:00Z",
+  "log_chunks": [{"chunk": "hello\n", "position": 0}]
+}`))
+	})
+
+	manifest, err := fs.client("t").BuildLogManifest(context.Background(), "my-app", "my-build", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if manifest.NextAfterTimestamp != "2026-05-06T10:01:00Z" {
+		t.Errorf("NextAfterTimestamp = %q", manifest.NextAfterTimestamp)
+	}
+	if len(manifest.LogChunks) != 1 || manifest.LogChunks[0].Chunk != "hello\n" {
+		t.Errorf("LogChunks = %+v", manifest.LogChunks)
+	}
+}

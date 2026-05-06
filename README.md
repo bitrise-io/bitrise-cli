@@ -26,7 +26,9 @@ A CLI tool to manage all Bitrise platform resources — CI, RM, RDE, and more �
 | `build list` | List builds for an app |
 | `build view BUILD_SLUG` | Show details of a single build |
 | `build trigger` | Start a new build |
+| `build trigger --wait` | Start a new build and stream logs until it finishes |
 | `build log BUILD_SLUG` | Print the build log |
+| `build watch BUILD_SLUG` | Stream logs for a running build until it finishes |
 
 ### `config` — Manage CLI configuration
 

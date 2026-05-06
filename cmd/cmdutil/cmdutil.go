@@ -110,6 +110,17 @@ func (ew *ErrWriter) Ln(a ...any) {
 	_, ew.Err = fmt.Fprintln(ew.w, a...)
 }
 
+// SilenceRootErrors prevents cobra from printing a returned error to stderr by
+// setting SilenceErrors on both the command and its root. Use this when the
+// command has already printed its own error summary and the automatic
+// "Error: ..." line would be redundant.
+func SilenceRootErrors(cmd *cobra.Command) {
+	cmd.SilenceErrors = true
+	if root := cmd.Root(); root != nil {
+		root.SilenceErrors = true
+	}
+}
+
 // DelegateToList forwards a bare parent invocation to its "list" subcommand,
 // propagating the parent's context so resolved config is available.
 func DelegateToList(cmd *cobra.Command, args []string) error {

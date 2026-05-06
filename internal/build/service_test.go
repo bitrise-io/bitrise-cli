@@ -4,11 +4,13 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -373,6 +375,256 @@ func TestService_NilClientFails(t *testing.T) {
 	}
 	if err := svc.Log(context.Background(), "a", "b", io.Discard); err == nil {
 		t.Fatal("Log with nil client should fail")
+	}
+	if _, err := svc.Watch(context.Background(), "a", "b", io.Discard, time.Second); err == nil {
+		t.Fatal("Watch with nil client should fail")
+	}
+}
+
+func TestService_Watch_DeltaStreaming(t *testing.T) {
+	// Three log polls: chunk1 (ts1), chunk2 (ts2), chunk3 (empty next ts).
+	// Build status returns in-progress until the log stream ends naturally,
+	// then the final-flush call and a View call complete the sequence.
+	var logCalls, buildCalls atomic.Int32
+	var logTimestamps []string
+
+	client := fakeAPI(t, func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/apps/my-app/builds/b-1/log":
+			n := int(logCalls.Add(1))
+			logTimestamps = append(logTimestamps, r.URL.Query().Get("after_timestamp"))
+			switch n {
+			case 1:
+				_, _ = w.Write([]byte(`{"is_archived":false,"log_chunks":[{"chunk":"chunk1\n","position":0}],"next_after_timestamp":"ts1"}`))
+			case 2:
+				_, _ = w.Write([]byte(`{"is_archived":false,"log_chunks":[{"chunk":"chunk2\n","position":1}],"next_after_timestamp":"ts2"}`))
+			case 3:
+				// Empty next_after_timestamp: loop exits after this poll.
+				_, _ = w.Write([]byte(`{"is_archived":false,"log_chunks":[{"chunk":"chunk3\n","position":2}]}`))
+			default: // final flush
+				_, _ = w.Write([]byte(`{"is_archived":false,"log_chunks":[{"chunk":"final\n","position":3}]}`))
+			}
+		case "/apps/my-app/builds/b-1":
+			n := int(buildCalls.Add(1))
+			// Stay in-progress while the log stream is active so we can observe
+			// all chunks; return success on the final View call.
+			if n <= 2 {
+				_, _ = w.Write([]byte(`{"data":{"slug":"b-1","build_number":1,"status":0}}`))
+			} else {
+				_, _ = w.Write([]byte(`{"data":{"slug":"b-1","build_number":1,"status":1,"triggered_workflow":"primary","branch":"main"}}`))
+			}
+		}
+	})
+	svc := NewService(client)
+
+	var buf bytes.Buffer
+	build, err := svc.Watch(context.Background(), "my-app", "b-1", &buf, time.Millisecond)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// All chunks must appear in order.
+	got := buf.String()
+	for _, want := range []string{"chunk1", "chunk2", "chunk3", "final"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("output missing %q; got %q", want, got)
+		}
+	}
+
+	// Verify after_timestamp progression for log calls: "", ts1, ts2, ts2 (final flush).
+	wantTimestamps := []string{"", "ts1", "ts2", "ts2"}
+	if len(logTimestamps) < len(wantTimestamps) {
+		t.Fatalf("expected at least %d log calls, got %d", len(wantTimestamps), len(logTimestamps))
+	}
+	for i, want := range wantTimestamps {
+		if logTimestamps[i] != want {
+			t.Errorf("log call %d after_timestamp = %q, want %q", i+1, logTimestamps[i], want)
+		}
+	}
+
+	if build.Status != "success" {
+		t.Errorf("final status = %q, want success", build.Status)
+	}
+}
+
+func TestService_Watch_AlreadyArchived(t *testing.T) {
+	rawSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte("ARCHIVED LOG\n"))
+	}))
+	t.Cleanup(rawSrv.Close)
+
+	var logCallCount atomic.Int32
+	client := fakeAPI(t, func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/apps/my-app/builds/b-done/log":
+			logCallCount.Add(1)
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"is_archived":          true,
+				"expiring_raw_log_url": rawSrv.URL,
+			})
+		case "/apps/my-app/builds/b-done":
+			_, _ = w.Write([]byte(`{"data":{"slug":"b-done","build_number":5,"status":1}}`))
+		}
+	})
+	svc := NewService(client)
+
+	var buf bytes.Buffer
+	build, err := svc.Watch(context.Background(), "my-app", "b-done", &buf, time.Millisecond)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(buf.String(), "ARCHIVED LOG") {
+		t.Errorf("expected archived log content, got %q", buf.String())
+	}
+	if build.Status != "success" {
+		t.Errorf("final status = %q, want success", build.Status)
+	}
+}
+
+func TestService_Watch_RetriesOn404(t *testing.T) {
+	// First log call returns 404 (build not yet started); second succeeds.
+	var callCount atomic.Int32
+	client := fakeAPI(t, func(w http.ResponseWriter, r *http.Request) {
+		n := int(callCount.Add(1))
+		switch r.URL.Path {
+		case "/apps/my-app/builds/b-1/log":
+			if n == 1 {
+				w.WriteHeader(http.StatusNotFound)
+				_, _ = w.Write([]byte(`{"message":"build not found"}`))
+				return
+			}
+			// Second call: build has started, archived immediately.
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"is_archived": true,
+				"log_chunks":  []map[string]any{{"chunk": "log line\n", "position": 0}},
+			})
+		case "/apps/my-app/builds/b-1":
+			_, _ = w.Write([]byte(`{"data":{"slug":"b-1","build_number":1,"status":1}}`))
+		}
+	})
+	svc := NewService(client)
+
+	var buf bytes.Buffer
+	build, err := svc.Watch(context.Background(), "my-app", "b-1", &buf, time.Millisecond)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if build.Status != "success" {
+		t.Errorf("status = %q, want success", build.Status)
+	}
+}
+
+func TestService_Watch_FailsOnSecond404(t *testing.T) {
+	// Both log calls return 404; Watch should return an error.
+	client := fakeAPI(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/apps/my-app/builds/b-1/log" {
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = w.Write([]byte(`{"message":"build not found"}`))
+		}
+	})
+	svc := NewService(client)
+
+	_, err := svc.Watch(context.Background(), "my-app", "b-1", io.Discard, time.Millisecond)
+	if err == nil {
+		t.Fatal("expected error on persistent 404")
+	}
+	var apiErr *bitriseapi.APIError
+	if !errors.As(err, &apiErr) || apiErr.StatusCode != http.StatusNotFound {
+		t.Errorf("expected 404 APIError, got %v", err)
+	}
+}
+
+func TestService_Watch_StopsOnIsArchived(t *testing.T) {
+	// Poll returns IsArchived=true with a non-empty NextAfterTimestamp; Watch
+	// must stop and not loop indefinitely.
+	var logCallCount atomic.Int32
+	client := fakeAPI(t, func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/apps/my-app/builds/b-1/log":
+			n := int(logCallCount.Add(1))
+			if n == 1 {
+				// First call: in-progress with a next timestamp
+				_, _ = w.Write([]byte(`{"is_archived":false,"log_chunks":[{"chunk":"line1\n","position":0}],"next_after_timestamp":"ts1"}`))
+				return
+			}
+			// Second call: archived but NextAfterTimestamp still set — this is the bug scenario
+			_, _ = w.Write([]byte(`{"is_archived":true,"log_chunks":[{"chunk":"line2\n","position":1}],"next_after_timestamp":"ts2"}`))
+		case "/apps/my-app/builds/b-1":
+			_, _ = w.Write([]byte(`{"data":{"slug":"b-1","build_number":1,"status":1}}`))
+		}
+	})
+	svc := NewService(client)
+
+	var buf bytes.Buffer
+	build, err := svc.Watch(context.Background(), "my-app", "b-1", &buf, time.Millisecond)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(buf.String(), "line1") || !strings.Contains(buf.String(), "line2") {
+		t.Errorf("expected both chunks in output, got %q", buf.String())
+	}
+	if build.Status != "success" {
+		t.Errorf("status = %q, want success", build.Status)
+	}
+}
+
+func TestService_Watch_ContextCancel(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+
+	client := fakeAPI(t, func(w http.ResponseWriter, _ *http.Request) {
+		// Return a next timestamp so Watch will enter the sleep-poll loop,
+		// then cancel the context so the select fires.
+		_, _ = w.Write([]byte(`{"is_archived":false,"log_chunks":[{"chunk":"line\n","position":0}],"next_after_timestamp":"ts1"}`))
+		cancel()
+	})
+	svc := NewService(client)
+
+	var buf bytes.Buffer
+	_, err := svc.Watch(ctx, "my-app", "b-1", &buf, 10*time.Millisecond)
+	if !errors.Is(err, context.Canceled) {
+		t.Errorf("expected context.Canceled, got %v", err)
+	}
+}
+
+func TestService_Watch_StopsOnBuildStatus(t *testing.T) {
+	// Watch should exit the poll loop when the build status is no longer
+	// in-progress (0), without waiting for the log to be archived.
+	var logCalls, buildCalls atomic.Int32
+	client := fakeAPI(t, func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/apps/my-app/builds/b-1/log":
+			n := int(logCalls.Add(1))
+			if n == 1 {
+				// Initial call: in-progress, gives first chunks.
+				_, _ = w.Write([]byte(`{"is_archived":false,"log_chunks":[{"chunk":"line1\n","position":0}],"next_after_timestamp":"ts1"}`))
+			} else {
+				// Poll: more chunks arrive but is_archived stays false.
+				_, _ = w.Write([]byte(`{"is_archived":false,"log_chunks":[{"chunk":"line2\n","position":1}],"next_after_timestamp":"ts2"}`))
+			}
+		case "/apps/my-app/builds/b-1":
+			buildCalls.Add(1)
+			_, _ = w.Write([]byte(`{"data":{"slug":"b-1","build_number":5,"status":1,"status_text":"success"}}`))
+		}
+	})
+	svc := NewService(client)
+
+	var buf bytes.Buffer
+	build, err := svc.Watch(context.Background(), "my-app", "b-1", &buf, time.Millisecond)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(buf.String(), "line1") || !strings.Contains(buf.String(), "line2") {
+		t.Errorf("expected both log lines, got %q", buf.String())
+	}
+	if build.Status != "success" {
+		t.Errorf("status = %q, want success", build.Status)
+	}
+	if n := int(buildCalls.Load()); n < 1 {
+		t.Errorf("expected at least 1 build status call, got %d", n)
+	}
+	// Should have stopped after a single poll cycle, not looped many times.
+	if n := int(logCalls.Load()); n > 3 {
+		t.Errorf("too many log calls (%d), Watch did not stop on build status", n)
 	}
 }
 

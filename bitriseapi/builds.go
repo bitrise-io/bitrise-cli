@@ -198,15 +198,17 @@ func (c *Client) TriggerBuild(ctx context.Context, appSlug string, params BuildT
 //   - For finished/archived builds, ExpiringRawLogURL points at a
 //     time-limited URL (typically S3) holding the full log; LogChunks
 //     may be empty.
-//   - For in-progress builds, LogChunks holds the log so far. Polling
-//     the endpoint again returns more chunks; finished builds eventually
-//     archive the full log to ExpiringRawLogURL.
+//   - For in-progress builds, LogChunks holds the new chunks since the
+//     requested after_timestamp, and NextAfterTimestamp carries the value
+//     to pass on the next poll. An empty NextAfterTimestamp signals that
+//     polling should stop.
 type BuildLogResponse struct {
 	ExpiringRawLogURL     string          `json:"expiring_raw_log_url,omitempty"`
 	IsArchived            bool            `json:"is_archived"`
 	GeneratedLogChunksNum int             `json:"generated_log_chunks_num,omitempty"`
 	LogChunks             []BuildLogChunk `json:"log_chunks,omitempty"`
 	Timestamp             string          `json:"timestamp,omitempty"`
+	NextAfterTimestamp    string          `json:"next_after_timestamp,omitempty"`
 }
 
 // BuildLogChunk is one piece of build log output.
@@ -215,12 +217,17 @@ type BuildLogChunk struct {
 	Position int    `json:"position"`
 }
 
-// BuildLogManifest fetches the log manifest for a build (the structured
-// JSON response). Most callers want BuildLog, which streams the log text
-// directly to a writer.
+// BuildLogManifest fetches the log manifest for a build. afterTimestamp is
+// passed as the after_timestamp query parameter to request only log chunks
+// newer than that value; pass "" for the first call or a full log fetch.
+// Most callers watching a live build should use Service.Watch instead.
 // Endpoint: GET /apps/{app-slug}/builds/{build-slug}/log.
-func (c *Client) BuildLogManifest(ctx context.Context, appSlug, buildSlug string) (BuildLogResponse, error) {
-	req, err := c.newRequest(ctx, "/apps/"+appSlug+"/builds/"+buildSlug+"/log", nil)
+func (c *Client) BuildLogManifest(ctx context.Context, appSlug, buildSlug, afterTimestamp string) (BuildLogResponse, error) {
+	var params url.Values
+	if afterTimestamp != "" {
+		params = url.Values{"after_timestamp": {afterTimestamp}}
+	}
+	req, err := c.newRequest(ctx, "/apps/"+appSlug+"/builds/"+buildSlug+"/log", params)
 	if err != nil {
 		return BuildLogResponse{}, err
 	}
@@ -242,7 +249,7 @@ func (c *Client) BuildLogManifest(ctx context.Context, appSlug, buildSlug string
 // available — the caller can re-run to see more. Returns the manifest so
 // callers can inspect IsArchived (e.g. to print a "still running" hint).
 func (c *Client) BuildLog(ctx context.Context, appSlug, buildSlug string, w io.Writer) (BuildLogResponse, error) {
-	manifest, err := c.BuildLogManifest(ctx, appSlug, buildSlug)
+	manifest, err := c.BuildLogManifest(ctx, appSlug, buildSlug, "")
 	if err != nil {
 		return manifest, err
 	}
