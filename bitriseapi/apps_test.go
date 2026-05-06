@@ -28,7 +28,7 @@ func newFakeServer(t *testing.T, handler http.HandlerFunc) *fakeServer {
 }
 
 func (fs *fakeServer) client(token string) *Client {
-	return New(token, WithBaseURL(fs.srv.URL))
+	return New(fs.srv.URL, token)
 }
 
 func TestApps_PassesAuthHeaderAndPath(t *testing.T) {
