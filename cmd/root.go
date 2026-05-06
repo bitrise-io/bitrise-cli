@@ -12,6 +12,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 
+	"github.com/bitrise-io/bitrise-cli/internal/auth"
 	"github.com/bitrise-io/bitrise-cli/internal/config"
 	"github.com/bitrise-io/bitrise-cli/internal/output"
 )
@@ -75,12 +76,13 @@ func init() {
 	rootCmd.AddCommand(newBuildCmd())
 	rootCmd.AddCommand(newAppCmd())
 	rootCmd.AddCommand(newConfigCmd())
+	rootCmd.AddCommand(newAuthCmd())
 	rootCmd.AddCommand(newVersionCmd())
 }
 
-// persistentPreRun loads global + per-directory config, merges env + flags,
-// and stores the Resolved settings on cmd.Context() so subcommand handlers
-// can read them.
+// persistentPreRun loads global config, per-directory config, and auth.yaml,
+// merges them with env + flags, and stores the Resolved settings on
+// cmd.Context() so subcommand handlers can read them.
 func persistentPreRun(cmd *cobra.Command, _ []string) error {
 	globalCfg, err := config.Load()
 	if err != nil {
@@ -90,8 +92,12 @@ func persistentPreRun(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return err
 	}
+	authData, err := auth.Load()
+	if err != nil {
+		return err
+	}
 	flagOut, _ := cmd.Flags().GetString(flagOutput)
-	r, err := config.Resolve(globalCfg, dirCfg, flagOut)
+	r, err := config.Resolve(globalCfg, dirCfg, authData, flagOut)
 	if err != nil {
 		return err
 	}
