@@ -10,6 +10,7 @@ import (
 
 	"github.com/bitrise-io/bitrise-cli/cmd/cmdutil"
 	"github.com/bitrise-io/bitrise-cli/internal/output"
+	"github.com/bitrise-io/bitrise-cli/internal/output/style"
 )
 
 // Build-info variables. Defaults are used when the binary is built with a
@@ -86,15 +87,19 @@ In JSON mode, all fields are emitted; missing values are omitted.`,
 }
 
 func renderVersionHuman(w io.Writer, v versionInfo) error {
+	s := style.New(w)
 	ew := cmdutil.NewErrWriter(w)
-	ew.F("bitrise-cli %s\n", v.Version)
+	lbl := func(label string) string {
+		return s.Dim.Render(fmt.Sprintf("%-12s", label))
+	}
+	ew.F("%s %s\n", s.Bold.Render("bitrise-cli"), v.Version)
 	if v.Commit != "" {
-		ew.F("commit:     %s\n", v.Commit)
+		ew.F("%s%s\n", lbl("commit:"), s.Slug.Render(v.Commit))
 	}
 	if v.BuildTime != "" {
-		ew.F("built:      %s\n", v.BuildTime)
+		ew.F("%s%s\n", lbl("built:"), v.BuildTime)
 	}
-	ew.F("go:         %s\n", v.GoVersion)
-	ew.F("platform:   %s/%s\n", v.OS, v.Arch)
+	ew.F("%s%s\n", lbl("go:"), v.GoVersion)
+	ew.F("%s%s/%s\n", lbl("platform:"), v.OS, v.Arch)
 	return ew.Err
 }

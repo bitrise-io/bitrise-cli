@@ -3,7 +3,7 @@ package build
 import (
 	"fmt"
 	"io"
-	"text/tabwriter"
+	"strconv"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -11,6 +11,7 @@ import (
 	"github.com/bitrise-io/bitrise-cli/cmd/cmdutil"
 	internalbuild "github.com/bitrise-io/bitrise-cli/internal/build"
 	"github.com/bitrise-io/bitrise-cli/internal/output"
+	"github.com/bitrise-io/bitrise-cli/internal/output/style"
 )
 
 func newListCmd() *cobra.Command {
@@ -135,27 +136,43 @@ func renderListText(w io.Writer, res internalbuild.ListResult) error {
 		return err
 	}
 
-	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
-	ew := cmdutil.NewErrWriter(tw)
-	ew.Ln("NUMBER\tSTATUS\tBRANCH\tWORKFLOW\tTRIGGERED\tSLUG")
+	s := style.New(w)
+	headers := []string{"NUMBER", "STATUS", "BRANCH", "WORKFLOW", "TRIGGERED", "SLUG"}
+	rows := make([][]string, 0, len(res.Items))
+	statuses := make([]string, 0, len(res.Items))
 	for _, b := range res.Items {
 		status := b.Status
 		if b.IsOnHold {
 			status += " (held)"
 		}
-		ew.F("%d\t%s\t%s\t%s\t%s\t%s\n",
-			b.BuildNumber, status, b.Branch, b.Workflow,
-			b.TriggeredAt.Format("2006-01-02 15:04"), b.Slug,
-		)
+		statuses = append(statuses, b.Status)
+		rows = append(rows, []string{
+			strconv.Itoa(b.BuildNumber),
+			status,
+			b.Branch,
+			b.Workflow,
+			b.TriggeredAt.Format("2006-01-02 15:04"),
+			b.Slug,
+		})
 	}
-	if ew.Err != nil {
-		return ew.Err
+	const (
+		colStatus = 1
+		colSlug   = 5
+	)
+	styler := func(row, col int, content string) string {
+		switch col {
+		case colStatus:
+			return s.BuildStatus(statuses[row]).Render(content)
+		case colSlug:
+			return s.Slug.Render(content)
+		}
+		return content
 	}
-	if err := tw.Flush(); err != nil {
+	if err := style.Table(w, headers, rows, s.Header, styler); err != nil {
 		return err
 	}
 	if res.NextCursor != "" {
-		_, err := fmt.Fprintf(w, "\nMore results available — pass --cursor %s\n", res.NextCursor)
+		_, err := fmt.Fprintf(w, "\n%s\n", s.Dim.Render("More results available — pass --cursor "+res.NextCursor))
 		return err
 	}
 	return nil

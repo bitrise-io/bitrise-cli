@@ -3,13 +3,13 @@ package app
 import (
 	"fmt"
 	"io"
-	"text/tabwriter"
 
 	"github.com/spf13/cobra"
 
 	"github.com/bitrise-io/bitrise-cli/cmd/cmdutil"
 	internalapp "github.com/bitrise-io/bitrise-cli/internal/app"
 	"github.com/bitrise-io/bitrise-cli/internal/output"
+	"github.com/bitrise-io/bitrise-cli/internal/output/style"
 )
 
 func newListCmd() *cobra.Command {
@@ -75,30 +75,38 @@ func renderListText(w io.Writer, res internalapp.AppsResult) error {
 		return err
 	}
 
-	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
-	ew := cmdutil.NewErrWriter(tw)
-	ew.Ln("TITLE\tPROVIDER\tPROJECT\tOWNER\tDISABLED\tSLUG")
+	s := style.New(w)
+	headers := []string{"TITLE", "PROVIDER", "PROJECT", "OWNER", "DISABLED", "SLUG"}
+	rows := make([][]string, 0, len(res.Items))
+	disabled := make([]bool, 0, len(res.Items))
 	for _, a := range res.Items {
 		owner := a.OwnerSlug
 		if a.OwnerType != "" {
 			owner = fmt.Sprintf("%s/%s", a.OwnerType, a.OwnerSlug)
 		}
-		disabled := ""
+		dis := ""
 		if a.IsDisabled {
-			disabled = "yes"
+			dis = "yes"
 		}
-		ew.F("%s\t%s\t%s\t%s\t%s\t%s\n",
-			a.Title, a.Provider, a.ProjectType, owner, disabled, a.Slug,
-		)
+		disabled = append(disabled, a.IsDisabled)
+		rows = append(rows, []string{a.Title, a.Provider, a.ProjectType, owner, dis, a.Slug})
 	}
-	if ew.Err != nil {
-		return ew.Err
+	const colSlug = 5
+	styler := func(row, col int, content string) string {
+		if disabled[row] {
+			// Whole row dimmed when the app is disabled.
+			return s.Dim.Render(content)
+		}
+		if col == colSlug {
+			return s.Slug.Render(content)
+		}
+		return content
 	}
-	if err := tw.Flush(); err != nil {
+	if err := style.Table(w, headers, rows, s.Header, styler); err != nil {
 		return err
 	}
 	if res.NextCursor != "" {
-		_, err := fmt.Fprintf(w, "\nMore results available — pass --cursor %s\n", res.NextCursor)
+		_, err := fmt.Fprintf(w, "\n%s\n", s.Dim.Render("More results available — pass --cursor "+res.NextCursor))
 		return err
 	}
 	return nil
