@@ -9,8 +9,6 @@ import (
 	"net/url"
 )
 
-const defaultBaseURL = "https://api.bitrise.io/v0.1"
-
 // Client is an authenticated HTTP client for the Bitrise API.
 type Client struct {
 	baseURL    string
@@ -26,15 +24,10 @@ func WithHTTPClient(hc *http.Client) Option {
 	return func(c *Client) { c.httpClient = hc }
 }
 
-// WithBaseURL overrides the default API base URL, useful for testing.
-func WithBaseURL(u string) Option {
-	return func(c *Client) { c.baseURL = u }
-}
-
-// New creates a Client authenticated with the given token.
-func New(token string, opts ...Option) *Client {
+// New creates a Client authenticated with the given token and base URL.
+func New(baseURL, token string, opts ...Option) *Client {
 	c := &Client{
-		baseURL:    defaultBaseURL,
+		baseURL:    baseURL,
 		token:      token,
 		httpClient: &http.Client{},
 	}
