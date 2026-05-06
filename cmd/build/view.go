@@ -1,6 +1,8 @@
 package build
 
 import (
+	"fmt"
+
 	"github.com/spf13/cobra"
 
 	"github.com/bitrise-io/bitrise-cli/cmd/cmdutil"
@@ -9,6 +11,8 @@ import (
 )
 
 func newViewCmd() *cobra.Command {
+	var web bool
+
 	c := &cobra.Command{
 		Use:   "view BUILD_SLUG",
 		Short: "Show details of a single build",
@@ -18,15 +22,32 @@ Required flags:
   --app SLUG         (or BITRISE_APP_SLUG env var)
 
 Argument:
-  BUILD_SLUG         the unique slug of the build (visible in build URLs)`,
+  BUILD_SLUG         the unique slug of the build (visible in build URLs)
+
+Flags:
+  --web              open the build page in the browser instead of printing`,
 		Example: `  bitrise-cli build view --app my-app-slug stub-build-aaa
-  bitrise-cli build view --app my-app-slug stub-build-aaa --output json`,
+  bitrise-cli build view --app my-app-slug stub-build-aaa --output json
+  bitrise-cli build view --app my-app-slug stub-build-aaa --web`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			appSlug, err := cmdutil.ResolveAppSlug(cmd)
 			if err != nil {
 				return err
 			}
+			buildSlug := args[0]
+
+			if web {
+				url := fmt.Sprintf("%s/app/%s/build/%s", cmdutil.WebBaseURL, appSlug, buildSlug)
+				if err := cmdutil.OpenBrowser(url); err != nil {
+					return err
+				}
+				if !cmdutil.IsQuiet(cmd) {
+					fmt.Fprintf(cmd.ErrOrStderr(), "Opening: %s\n", url)
+				}
+				return nil
+			}
+
 			format := cmdutil.ResolveFormat(cmd)
 
 			client, err := cmdutil.NewAPIClient(cmd)
@@ -34,7 +55,7 @@ Argument:
 				return err
 			}
 			svc := internalbuild.NewService(client)
-			b, err := svc.View(cmd.Context(), appSlug, args[0])
+			b, err := svc.View(cmd.Context(), appSlug, buildSlug)
 			if err != nil {
 				return err
 			}
@@ -43,5 +64,6 @@ Argument:
 		},
 	}
 
+	c.Flags().BoolVar(&web, cmdutil.FlagWeb, false, "open the build page in the browser")
 	return c
 }
