@@ -110,7 +110,7 @@ of an unrelated change:
 - `go mod tidy && git diff --exit-code go.mod go.sum` — dependency hygiene check
 - `gofmt -l .` — formatting check (must produce no output)
 - `go vet ./...` — static analysis
-- `go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.1.6 && golangci-lint run ./...` — lint
+- Lint: binary is cached at `./bin/golangci-lint-<version>` and downloaded on first use via the official install script (see the `Lint` step in `bitrise.yml`). Run `./bin/golangci-lint-v2.12.2 run ./...` locally once it exists.
 - `go test -race -count=1 -timeout=5m ./...` — tests
 - Run all of the above via `bitrise run test`
 - When adding tests, put them in the same package as the file under test

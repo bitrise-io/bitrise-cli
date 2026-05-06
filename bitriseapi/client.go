@@ -19,15 +19,24 @@ type Client struct {
 // Option configures a Client.
 type Option func(*Client)
 
+// defaultBaseURL is the production Bitrise API base URL.
+const defaultBaseURL = "https://api.bitrise.io/v0.1"
+
+// WithBaseURL overrides the API base URL (useful for tests or staging).
+func WithBaseURL(url string) Option {
+	return func(c *Client) { c.baseURL = url }
+}
+
 // WithHTTPClient replaces the default HTTP client.
 func WithHTTPClient(hc *http.Client) Option {
 	return func(c *Client) { c.httpClient = hc }
 }
 
-// New creates a Client authenticated with the given token and base URL.
-func New(baseURL, token string, opts ...Option) *Client {
+// New creates a Client authenticated with the given token.
+// The base URL defaults to the production Bitrise API; override with WithBaseURL.
+func New(token string, opts ...Option) *Client {
 	c := &Client{
-		baseURL:    baseURL,
+		baseURL:    defaultBaseURL,
 		token:      token,
 		httpClient: &http.Client{},
 	}

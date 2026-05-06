@@ -3,7 +3,7 @@ default_step_lib_source: https://github.com/bitrise-io/bitrise-steplib.git
 
 app:
   envs:
-    - GOLANGCI_LINT_VERSION: v2.1.6
+    - GOLANGCI_LINT_VERSION: v2.12.2
     - GOTOOLCHAIN: auto
 
 workflows:
@@ -32,7 +32,7 @@ workflows:
           inputs:
             - content: |
                 #!/usr/bin/env bash
-                set -euo pipefail
+                set -xeuo pipefail
                 go mod verify
                 go mod tidy
                 git diff --exit-code go.mod
@@ -43,7 +43,7 @@ workflows:
           inputs:
             - content: |
                 #!/usr/bin/env bash
-                set -euo pipefail
+                set -xeuo pipefail
                 unformatted=$(gofmt -l .)
                 if [ -n "$unformatted" ]; then
                   echo "The following files are not gofmt-formatted:"
@@ -56,7 +56,7 @@ workflows:
           inputs:
             - content: |
                 #!/usr/bin/env bash
-                set -euo pipefail
+                set -xeuo pipefail
                 go vet ./...
 
       - script@1:
@@ -64,17 +64,22 @@ workflows:
           inputs:
             - content: |
                 #!/usr/bin/env bash
-                set -euo pipefail
-                go install "github.com/golangci/golangci-lint/v2/cmd/golangci-lint@${GOLANGCI_LINT_VERSION}"
-                export PATH="$(go env GOPATH)/bin:$PATH"
-                golangci-lint run ./...
+                set -xeuo pipefail
+                LINT_BIN="./bin/golangci-lint-${GOLANGCI_LINT_VERSION}"
+                if [ ! -x "${LINT_BIN}" ]; then
+                  mkdir -p bin
+                  curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/HEAD/install.sh \
+                    | sh -s -- -b bin "${GOLANGCI_LINT_VERSION}"
+                  mv bin/golangci-lint "${LINT_BIN}"
+                fi
+                "${LINT_BIN}" run ./...
 
       - script@1:
           title: Run tests
           inputs:
             - content: |
                 #!/usr/bin/env bash
-                set -euo pipefail
+                set -xeuo pipefail
                 go test \
                   -race \
                   -count=1 \
@@ -111,7 +116,7 @@ workflows:
           inputs:
             - content: |
                 #!/usr/bin/env bash
-                set -euo pipefail
+                set -xeuo pipefail
 
                 APP_NAME="bitrise-cli"
                 VERSION="${BITRISE_GIT_TAG:-$(git rev-parse --short HEAD)}"
