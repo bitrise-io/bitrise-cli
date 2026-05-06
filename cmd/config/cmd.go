@@ -22,10 +22,8 @@ func NewCmd() *cobra.Command {
 Storage:
   Global file: YAML at $XDG_CONFIG_HOME/bitrise/config.yaml
                (falls back to ~/.config/bitrise/config.yaml).
-               Written with 0600 permissions because it may hold a token.
   Per-dir:     .bitrise-cli.yml in the current directory or any ancestor.
-               Useful for per-project app_slug pinning. Avoid storing tokens
-               here — the file may be committed to the repo.
+               Useful for per-project app_slug pinning.
 
 Precedence at runtime:
   flag > env > per-directory file > global file > built-in default
@@ -37,7 +35,9 @@ Environment overrides for the same values:
   %s, %s, %s, %s
 
 Note: 'set'/'unset' modify only the global file. Per-directory files must be
-edited by hand.`,
+edited by hand.
+
+To manage your access token, use 'bitrise-cli auth login/logout/status'.`,
 			strings.Join(internalconfig.Keys, ", "),
 			internalconfig.EnvOutput, internalconfig.EnvAppSlug, internalconfig.EnvToken, internalconfig.EnvAPIBaseURL,
 		),
@@ -72,7 +72,6 @@ type configList struct {
 	Output     string `json:"output,omitempty"`
 	AppSlug    string `json:"app_slug,omitempty"`
 	APIBaseURL string `json:"api_base_url,omitempty"`
-	TokenSet   bool   `json:"token_set"`
 	Path       string `json:"path"`
 }
 
@@ -83,9 +82,8 @@ func newListCmd() *cobra.Command {
 		Short:   "List the current config-file values",
 		Long: `List the values currently saved in the config file.
 
-The token value is masked. To retrieve the raw token, use
-"bitrise-cli config get token". Env-var overrides are NOT shown by this command —
-they only apply at runtime to other bitrise-cli commands.`,
+Env-var overrides are NOT shown by this command — they only apply at runtime
+to other bitrise-cli commands.`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			cfg, err := internalconfig.Load()
 			if err != nil {
@@ -99,7 +97,6 @@ they only apply at runtime to other bitrise-cli commands.`,
 				Output:     cfg.Output,
 				AppSlug:    cfg.AppSlug,
 				APIBaseURL: cfg.APIBaseURL,
-				TokenSet:   cfg.Token != "",
 				Path:       p,
 			}
 			return output.Render(cmd.OutOrStdout(), cmdutil.ResolveFormat(cmd), v, renderListHuman)
@@ -113,11 +110,6 @@ func renderListHuman(w io.Writer, v configList) error {
 	ew.F("%-15s%s\n", internalconfig.KeyOutput+":", emptyAs(v.Output))
 	ew.F("%-15s%s\n", internalconfig.KeyAppSlug+":", emptyAs(v.AppSlug))
 	ew.F("%-15s%s\n", internalconfig.KeyAPIBaseURL+":", emptyAs(v.APIBaseURL))
-	tokenStatus := "(unset)"
-	if v.TokenSet {
-		tokenStatus = "******** (set; use 'bitrise-cli config get token' to reveal)"
-	}
-	ew.F("%-15s%s\n", internalconfig.KeyToken+":", tokenStatus)
 	return ew.Err
 }
 
@@ -134,10 +126,7 @@ func newGetCmd() *cobra.Command {
 		Short: "Print the value of a single config key (raw, unmasked)",
 		Long: fmt.Sprintf(`Print the raw value of one config key.
 
-Valid keys: %s
-
-This command returns the unmasked value — including the token — so it can be
-used in scripts (e.g. TOKEN=$(bitrise-cli config get token)).`,
+Valid keys: %s`,
 			strings.Join(internalconfig.Keys, ", "),
 		),
 		Args: cobra.ExactArgs(1),
@@ -167,16 +156,11 @@ Valid keys: %s
 The value is validated before being saved (e.g. "output" must be human or json,
 "api_base_url" must be a valid URL). The file is written with 0600 permissions.
 
-If VALUE is "-", the value is read from stdin (trailing newline trimmed).
-Use this for tokens to keep them out of shell history:
-
-  echo "$BITRISE_TOKEN" | bitrise-cli config set token -
-  pbpaste | bitrise-cli config set token -`,
+If VALUE is "-", the value is read from stdin (trailing newline trimmed).`,
 			strings.Join(internalconfig.Keys, ", "),
 		),
 		Example: `  bitrise-cli config set output json
-  bitrise-cli config set app_slug 5db8b1d8-cae8-4cea-b943-ddc8f48e5e7c
-  echo "$BITRISE_TOKEN" | bitrise-cli config set token -`,
+  bitrise-cli config set app_slug 5db8b1d8-cae8-4cea-b943-ddc8f48e5e7c`,
 		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			key := args[0]
@@ -201,11 +185,6 @@ Use this for tokens to keep them out of shell history:
 			if !cmdutil.IsQuiet(cmd) {
 				if _, err := fmt.Fprintf(cmd.ErrOrStderr(), "Saved %s\n", key); err != nil {
 					return err
-				}
-				if key == internalconfig.KeyToken {
-					if _, err := fmt.Fprintln(cmd.ErrOrStderr(), "Note: storing tokens via 'config set' is deprecated. Prefer 'bitrise-cli auth login' which keeps credentials in a separate auth.yaml file."); err != nil {
-						return err
-					}
 				}
 			}
 			return nil

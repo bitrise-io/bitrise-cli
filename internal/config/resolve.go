@@ -30,9 +30,7 @@ const DefaultAPIBaseURL = "https://api.bitrise.io/v0.1"
 //  5. auth.yaml (~/.config/bitrise/auth.yaml) — for the token only
 //  6. Built-in defaults
 //
-// Token resolution layers env > auth.yaml > legacy config-file token. The
-// legacy fallback exists because earlier versions stored the token via
-// `config set token`; new code should use `auth login` instead.
+// Token resolution: env > auth.yaml.
 type Resolved struct {
 	Output     output.Format
 	AppSlug    string
@@ -59,7 +57,7 @@ func Resolve(globalCfg, dirCfg Config, authData auth.Auth, flagOutput string) (R
 
 	r.AppSlug = firstNonEmpty(os.Getenv(EnvAppSlug), dirCfg.AppSlug, globalCfg.AppSlug)
 	r.APIBaseURL = firstNonEmpty(os.Getenv(EnvAPIBaseURL), dirCfg.APIBaseURL, globalCfg.APIBaseURL, DefaultAPIBaseURL)
-	r.Token = firstNonEmpty(os.Getenv(EnvToken), authData.Token, dirCfg.Token, globalCfg.Token)
+	r.Token = firstNonEmpty(os.Getenv(EnvToken), authData.Token)
 
 	return r, nil
 }

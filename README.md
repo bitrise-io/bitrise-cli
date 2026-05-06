@@ -35,7 +35,7 @@ A CLI tool to manage all Bitrise platform resources â€” CI, RM, RDE, and more â€
 |---|---|
 | `config path` | Print the absolute path of the config file |
 | `config list` | List the current config-file values |
-| `config get KEY` | Print the value of a single config key (raw, unmasked) |
+| `config get KEY` | Print the value of a single config key |
 | `config set KEY VALUE` | Set a config key and save the file |
 | `config unset KEY` | Remove a config key and save the file |
 

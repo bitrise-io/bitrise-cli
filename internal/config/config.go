@@ -1,8 +1,7 @@
 // Package config persists and reads the user's CLI defaults.
 //
 // Storage: YAML at $XDG_CONFIG_HOME/bitrise/config.yaml, falling back to
-// ~/.config/bitrise/config.yaml. The file may contain a token, so it's
-// written with 0600 permissions.
+// ~/.config/bitrise/config.yaml. Written with 0600 permissions.
 //
 // The package is the single source of truth for: known config keys, env
 // var names, default values, and validation rules. The cmd layer composes
@@ -28,19 +27,17 @@ import (
 const (
 	KeyOutput     = "output"
 	KeyAppSlug    = "app_slug"
-	KeyToken      = "token"
 	KeyAPIBaseURL = "api_base_url"
 )
 
 // Keys is the registered list of config keys, used for validation and help.
-var Keys = []string{KeyOutput, KeyAppSlug, KeyToken, KeyAPIBaseURL}
+var Keys = []string{KeyOutput, KeyAppSlug, KeyAPIBaseURL}
 
 // Config is the on-disk shape. Fields use omitempty so unset values
 // don't appear in the saved YAML.
 type Config struct {
 	Output     string `yaml:"output,omitempty"`
 	AppSlug    string `yaml:"app_slug,omitempty"`
-	Token      string `yaml:"token,omitempty"`
 	APIBaseURL string `yaml:"api_base_url,omitempty"`
 }
 
@@ -175,8 +172,6 @@ func (c *Config) Get(key string) (string, error) {
 		return c.Output, nil
 	case KeyAppSlug:
 		return c.AppSlug, nil
-	case KeyToken:
-		return c.Token, nil
 	case KeyAPIBaseURL:
 		return c.APIBaseURL, nil
 	default:
@@ -191,8 +186,6 @@ func (c *Config) Set(key, value string) error {
 		c.Output = value
 	case KeyAppSlug:
 		c.AppSlug = value
-	case KeyToken:
-		c.Token = value
 	case KeyAPIBaseURL:
 		c.APIBaseURL = value
 	default:

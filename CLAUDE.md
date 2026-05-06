@@ -67,9 +67,7 @@ internal services gain a `*bitriseapi.Client`.
   6. Built-in defaults
 - **Token storage**: `bitrise-cli auth login` writes the token to
   `auth.yaml`. PAT and WAT tokens are stored identically (same wire format —
-  no type field). The legacy `config set token` still works (writes to
-  `config.yaml`) but is deprecated and emits a stderr hint pointing at
-  `auth login`. Resolve order for tokens: env > auth.yaml > legacy config.
+  no type field). Resolve order for tokens: env > auth.yaml.
 - **File perms**: both `config.yaml` and `auth.yaml` are 0600; parent dir 0700.
 - **Bitrise verbs**: `build trigger` (not create); `build abort` (not
   cancel) when added; `build rerun` for re-runs; `view` is the detail verb.
