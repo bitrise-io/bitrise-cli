@@ -1,15 +1,19 @@
 // Package app holds the business-logic layer for app and workflow operations.
 //
-// Mirrors internal/build: cobra-free, returns canned data today, will hold
-// a *bitriseapi.Client once we wire real API calls.
+// The List method calls the real Bitrise API via the bitriseapi client.
+// View and ListWorkflows are still stubbed and ignore the client; they will
+// be wired through in follow-up changes.
 package app
 
 import (
 	"context"
 	"fmt"
+
+	"github.com/bitrise-io/bitrise-cli/bitriseapi"
 )
 
-// App represents a registered Bitrise app (project).
+// App represents a registered Bitrise app (project), trimmed to the fields
+// the CLI surfaces. The full set of fields is on bitriseapi.App.
 type App struct {
 	Slug        string `json:"slug"`
 	Title       string `json:"title"`
@@ -26,10 +30,14 @@ type Workflow struct {
 	ID string `json:"id"`
 }
 
-// ListOptions paginates app and workflow lists.
+// ListOptions paginates and filters app lists. Filter fields map to the
+// query parameters of GET /apps.
 type ListOptions struct {
-	Limit  int
-	Cursor string
+	Limit       int
+	Cursor      string
+	SortBy      string
+	Title       string
+	ProjectType string
 }
 
 // AppsResult is one page of apps.
@@ -44,48 +52,59 @@ type WorkflowsResult struct {
 }
 
 // Service exposes app and workflow operations to the cmd layer.
-type Service struct{}
+type Service struct {
+	client *bitriseapi.Client
+}
 
-// NewService returns a stub Service.
-func NewService() *Service { return &Service{} }
+// NewService returns a Service backed by the given API client. The client
+// must be non-nil for List; View and ListWorkflows tolerate nil for now
+// (still stubbed).
+func NewService(client *bitriseapi.Client) *Service {
+	return &Service{client: client}
+}
 
-// List returns a canned page of apps.
-func (s *Service) List(_ context.Context, _ ListOptions) (AppsResult, error) {
+// List returns one page of apps the authenticated user can access by
+// calling GET /apps on the Bitrise API.
+func (s *Service) List(ctx context.Context, opts ListOptions) (AppsResult, error) {
+	if s.client == nil {
+		return AppsResult{}, fmt.Errorf("API client not configured")
+	}
+	page, err := s.client.Apps(ctx, bitriseapi.AppsListOptions{
+		SortBy:      opts.SortBy,
+		Next:        opts.Cursor,
+		Limit:       opts.Limit,
+		Title:       opts.Title,
+		ProjectType: opts.ProjectType,
+	})
+	if err != nil {
+		return AppsResult{}, err
+	}
+	items := make([]App, 0, len(page.Items))
+	for _, a := range page.Items {
+		items = append(items, fromAPI(a))
+	}
 	return AppsResult{
-		Items: []App{
-			{
-				Slug:        "stub-app-aaa",
-				Title:       "android-sample",
-				Provider:    "github",
-				RepoURL:     "https://github.com/bitrise-io/android-sample",
-				OwnerType:   "Organization",
-				OwnerSlug:   "bitrise-io",
-				ProjectType: "android",
-			},
-			{
-				Slug:        "stub-app-bbb",
-				Title:       "ios-sample",
-				Provider:    "github",
-				RepoURL:     "https://github.com/bitrise-io/ios-sample",
-				OwnerType:   "Organization",
-				OwnerSlug:   "bitrise-io",
-				ProjectType: "ios",
-			},
-			{
-				Slug:        "stub-app-ccc",
-				Title:       "legacy-flutter",
-				Provider:    "gitlab",
-				RepoURL:     "https://gitlab.com/example/legacy-flutter",
-				OwnerType:   "User",
-				OwnerSlug:   "example",
-				ProjectType: "flutter",
-				IsDisabled:  true,
-			},
-		},
+		Items:      items,
+		NextCursor: page.Paging.Next,
 	}, nil
 }
 
-// View returns details of a single app by slug.
+// fromAPI maps the wire-format bitriseapi.App into the trimmed CLI shape.
+func fromAPI(a bitriseapi.App) App {
+	return App{
+		Slug:        a.Slug,
+		Title:       a.Title,
+		Provider:    a.Provider,
+		RepoURL:     a.RepoURL,
+		OwnerType:   a.Owner.AccountType,
+		OwnerSlug:   a.Owner.Slug,
+		ProjectType: a.ProjectType,
+		IsDisabled:  a.IsDisabled,
+	}
+}
+
+// View returns details of a single app by slug. STUB — to be wired to
+// GET /apps/{slug} in a follow-up.
 func (s *Service) View(_ context.Context, appSlug string) (App, error) {
 	if appSlug == "" {
 		return App{}, fmt.Errorf("app slug is required")
@@ -101,7 +120,8 @@ func (s *Service) View(_ context.Context, appSlug string) (App, error) {
 	}, nil
 }
 
-// ListWorkflows returns the workflows defined on an app.
+// ListWorkflows returns the workflows defined on an app. STUB — to be
+// wired to GET /apps/{slug}/build-workflows in a follow-up.
 func (s *Service) ListWorkflows(_ context.Context, appSlug string) (WorkflowsResult, error) {
 	if appSlug == "" {
 		return WorkflowsResult{}, fmt.Errorf("app slug is required")

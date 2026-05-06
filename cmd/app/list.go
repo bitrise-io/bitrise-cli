@@ -14,8 +14,11 @@ import (
 
 func newListCmd() *cobra.Command {
 	var (
-		limit  int
-		cursor string
+		limit       int
+		cursor      string
+		sortBy      string
+		title       string
+		projectType string
 	)
 
 	c := &cobra.Command{
@@ -23,19 +26,31 @@ func newListCmd() *cobra.Command {
 		Short: "List apps the authenticated user can access",
 		Long: `List all apps (projects) the authenticated user can access.
 
+Filters:
+  --title TITLE              filter by exact app title
+  --project-type TYPE        e.g. ios, android
+  --sort-by FIELD            ordering accepted by the API
+
 Pagination:
   --limit N
-  --cursor TOKEN     opaque token from a previous page's "next_cursor"`,
+  --cursor TOKEN             opaque token from a previous page's "next_cursor"`,
 		Example: `  bitrise-cli app list
   bitrise-cli app list --output json
-  bitrise-cli app list --limit 100`,
+  bitrise-cli app list --project-type ios --limit 100`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			format := cmdutil.ResolveFormat(cmd)
 
-			svc := internalapp.NewService()
+			client, err := cmdutil.NewAPIClient(cmd)
+			if err != nil {
+				return err
+			}
+			svc := internalapp.NewService(client)
 			res, err := svc.List(cmd.Context(), internalapp.ListOptions{
-				Limit:  limit,
-				Cursor: cursor,
+				Limit:       limit,
+				Cursor:      cursor,
+				SortBy:      sortBy,
+				Title:       title,
+				ProjectType: projectType,
 			})
 			if err != nil {
 				return err
@@ -47,18 +62,22 @@ Pagination:
 
 	c.Flags().IntVar(&limit, "limit", 0, "max items per page (server default if 0)")
 	c.Flags().StringVar(&cursor, "cursor", "", "pagination cursor from a previous response")
+	c.Flags().StringVar(&sortBy, "sort-by", "", "ordering accepted by the API (e.g. created_at, last_build_at)")
+	c.Flags().StringVar(&title, "title", "", "filter by exact app title")
+	c.Flags().StringVar(&projectType, "project-type", "", "filter by project type (ios, android, ...)")
 
 	return c
 }
 
 func renderListText(w io.Writer, res internalapp.AppsResult) error {
 	if len(res.Items) == 0 {
-		fmt.Fprintln(w, "No apps found.")
-		return nil
+		_, err := fmt.Fprintln(w, "No apps found.")
+		return err
 	}
 
 	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
-	fmt.Fprintln(tw, "TITLE\tPROVIDER\tPROJECT\tOWNER\tDISABLED\tSLUG")
+	ew := cmdutil.NewErrWriter(tw)
+	ew.Ln("TITLE\tPROVIDER\tPROJECT\tOWNER\tDISABLED\tSLUG")
 	for _, a := range res.Items {
 		owner := a.OwnerSlug
 		if a.OwnerType != "" {
@@ -68,15 +87,19 @@ func renderListText(w io.Writer, res internalapp.AppsResult) error {
 		if a.IsDisabled {
 			disabled = "yes"
 		}
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\n",
+		ew.F("%s\t%s\t%s\t%s\t%s\t%s\n",
 			a.Title, a.Provider, a.ProjectType, owner, disabled, a.Slug,
 		)
+	}
+	if ew.Err != nil {
+		return ew.Err
 	}
 	if err := tw.Flush(); err != nil {
 		return err
 	}
 	if res.NextCursor != "" {
-		fmt.Fprintf(w, "\nMore results available — pass --cursor %s\n", res.NextCursor)
+		_, err := fmt.Fprintf(w, "\nMore results available — pass --cursor %s\n", res.NextCursor)
+		return err
 	}
 	return nil
 }

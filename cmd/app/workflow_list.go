@@ -1,7 +1,6 @@
 package app
 
 import (
-	"fmt"
 	"io"
 
 	"github.com/spf13/cobra"
@@ -31,7 +30,11 @@ Argument:
 			}
 			format := cmdutil.ResolveFormat(cmd)
 
-			svc := internalapp.NewService()
+			client, err := cmdutil.NewAPIClient(cmd)
+			if err != nil {
+				return err
+			}
+			svc := internalapp.NewService(client)
 			res, err := svc.ListWorkflows(cmd.Context(), appSlug)
 			if err != nil {
 				return err
@@ -43,12 +46,13 @@ Argument:
 }
 
 func renderWorkflowsText(w io.Writer, res internalapp.WorkflowsResult) error {
+	ew := cmdutil.NewErrWriter(w)
 	if len(res.Items) == 0 {
-		fmt.Fprintln(w, "No workflows defined.")
-		return nil
+		ew.Ln("No workflows defined.")
+		return ew.Err
 	}
 	for _, wf := range res.Items {
-		fmt.Fprintln(w, wf.ID)
+		ew.Ln(wf.ID)
 	}
-	return nil
+	return ew.Err
 }

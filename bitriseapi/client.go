@@ -62,6 +62,11 @@ type envelope[T any] struct {
 	Data T `json:"data"`
 }
 
+type pagedEnvelope[T any] struct {
+	Data   []T    `json:"data"`
+	Paging Paging `json:"paging"`
+}
+
 func (c *Client) newRequest(ctx context.Context, path string, params url.Values) (*http.Request, error) {
 	u, err := url.Parse(c.baseURL + path)
 	if err != nil {
@@ -81,7 +86,7 @@ func (c *Client) newRequest(ctx context.Context, path string, params url.Values)
 }
 
 func (c *Client) do(req *http.Request) ([]byte, error) {
-	resp, err := c.httpClient.Do(req)
+	resp, err := c.httpClient.Do(req) //nolint:gosec // URL is built from configured base + internal paths, not user-tainted input
 	if err != nil {
 		return nil, err
 	}
@@ -119,4 +124,24 @@ func get[T any](ctx context.Context, c *Client, path string, params url.Values) 
 		return zero, fmt.Errorf("decode response: %w", err)
 	}
 	return env.Data, nil
+}
+
+// getPage performs a GET request and decodes a paginated list response,
+// returning a Page[T] with the items and the paging metadata.
+func getPage[T any](ctx context.Context, c *Client, path string, params url.Values) (Page[T], error) {
+	req, err := c.newRequest(ctx, path, params)
+	if err != nil {
+		return Page[T]{}, err
+	}
+
+	body, err := c.do(req)
+	if err != nil {
+		return Page[T]{}, err
+	}
+
+	var env pagedEnvelope[T]
+	if err := json.Unmarshal(body, &env); err != nil {
+		return Page[T]{}, fmt.Errorf("decode response: %w", err)
+	}
+	return Page[T]{Items: env.Data, Paging: env.Paging}, nil
 }

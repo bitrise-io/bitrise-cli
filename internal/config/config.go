@@ -179,19 +179,25 @@ func (c *Config) Get(key string) (string, error) {
 	}
 }
 
-// Set assigns value to key and validates the resulting config.
+// Set assigns value to key and validates the resulting config. If validation
+// fails, c is left untouched — callers can rely on Set being all-or-nothing.
 func (c *Config) Set(key, value string) error {
+	next := *c
 	switch key {
 	case KeyOutput:
-		c.Output = value
+		next.Output = value
 	case KeyAppSlug:
-		c.AppSlug = value
+		next.AppSlug = value
 	case KeyAPIBaseURL:
-		c.APIBaseURL = value
+		next.APIBaseURL = value
 	default:
 		return unknownKeyErr(key)
 	}
-	return c.Validate()
+	if err := next.Validate(); err != nil {
+		return err
+	}
+	*c = next
+	return nil
 }
 
 // Unset clears the value of key (equivalent to Set with empty string).

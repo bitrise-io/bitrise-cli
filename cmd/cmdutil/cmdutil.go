@@ -2,12 +2,14 @@
 package cmdutil
 
 import (
+	"errors"
 	"fmt"
 	"io"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 
+	"github.com/bitrise-io/bitrise-cli/bitriseapi"
 	"github.com/bitrise-io/bitrise-cli/internal/config"
 	"github.com/bitrise-io/bitrise-cli/internal/output"
 )
@@ -65,6 +67,20 @@ func AddAppProjectAlias(c *cobra.Command) {
 		}
 		return pflag.NormalizedName(name)
 	})
+}
+
+// ErrNoToken is returned by NewAPIClient when no Bitrise access token has
+// been resolved from any layer (env, auth.yaml, or legacy config).
+var ErrNoToken = errors.New("no Bitrise access token configured (run 'bitrise-cli auth login' or set BITRISE_TOKEN)")
+
+// NewAPIClient builds a *bitriseapi.Client from the Resolved settings on
+// cmd.Context(). Returns ErrNoToken if no token is set anywhere.
+func NewAPIClient(cmd *cobra.Command) (*bitriseapi.Client, error) {
+	r := config.FromContext(cmd.Context())
+	if r.Token == "" {
+		return nil, ErrNoToken
+	}
+	return bitriseapi.New(r.Token, bitriseapi.WithBaseURL(r.APIBaseURL)), nil
 }
 
 // ErrWriter wraps an io.Writer and captures the first write error so callers
