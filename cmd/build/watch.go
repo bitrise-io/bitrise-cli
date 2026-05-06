@@ -53,8 +53,6 @@ Note:
 		},
 	}
 
-	c.Flags().String(cmdutil.FlagApp, "", "app slug, alias: --project (or set BITRISE_APP_SLUG)")
 	c.Flags().DurationVar(&interval, "interval", 3*time.Second, "log polling interval")
-	cmdutil.AddAppProjectAlias(c)
 	return c
 }

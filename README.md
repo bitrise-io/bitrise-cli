@@ -30,7 +30,7 @@ A CLI tool to manage all Bitrise platform resources — CI, RM, RDE, and more �
 | `build log BUILD_SLUG` | Print the build log |
 | `build watch BUILD_SLUG` | Stream logs for a running build until it finishes |
 
-### `config` — Manage CLI configuration
+### `config` — Manage CLI configuration (defaults persisted to a YAML file)
 
 | Command | Description |
 |---|---|
@@ -41,3 +41,7 @@ A CLI tool to manage all Bitrise platform resources — CI, RM, RDE, and more �
 | `config unset KEY` | Remove a config key and save the file |
 
 ### `version` — Print version, commit, and build info
+
+| Command | Description |
+|---|---|
+| `version` | Print version, commit, and build info |

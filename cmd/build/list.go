@@ -118,7 +118,7 @@ Pagination:
 	c.Flags().StringVar(&status, "status", "", "filter by status (success, failed, in-progress, aborted, aborted-with-success)")
 	c.Flags().StringVar(&sortBy, "sort-by", "", "sort order: created_at (default) or running_first")
 	c.Flags().StringVar(&commitMessage, "commit-message", "", "filter by commit message")
-	c.Flags().StringVar(&triggerEventType, "trigger-event-type", "", "filter by trigger event type")
+	c.Flags().StringVar(&triggerEventType, "trigger-event-type", "", "filter by trigger event type (push, pull-request, tag)")
 	c.Flags().IntVar(&pullRequestID, "pull-request-id", 0, "filter by pull request ID")
 	c.Flags().IntVar(&buildNumber, "build-number", 0, "filter by build number")
 	c.Flags().StringVar(&after, "after", "", "show builds triggered after this time (RFC3339, e.g. 2024-01-15T00:00:00Z)")
