@@ -42,13 +42,25 @@ type Build struct {
 	BuildURL                string     `json:"build_url,omitempty"`
 }
 
+// TriggerEnv is an environment variable to inject into a triggered build.
+type TriggerEnv struct {
+	Key   string
+	Value string
+}
+
 // TriggerRequest describes a build to start.
 type TriggerRequest struct {
 	AppSlug       string
 	Workflow      string
+	Pipeline      string
 	Branch        string
+	BranchDest    string
+	Tag           string
 	CommitHash    string
 	CommitMessage string
+	PullRequestID int
+	Priority      int
+	Environments  []TriggerEnv
 }
 
 // ListOptions filters and paginates build lists. Status is a CLI-friendly
@@ -99,16 +111,23 @@ func (s *Service) Trigger(ctx context.Context, req TriggerRequest) (Build, error
 	if req.AppSlug == "" {
 		return Build{}, fmt.Errorf("app slug is required")
 	}
-	if req.Workflow == "" {
-		return Build{}, fmt.Errorf("workflow is required")
+	envs := make([]bitriseapi.BuildTriggerEnv, 0, len(req.Environments))
+	for _, e := range req.Environments {
+		envs = append(envs, bitriseapi.BuildTriggerEnv{MappedTo: e.Key, Value: e.Value, IsExpand: true})
 	}
 	resp, err := s.client.TriggerBuild(ctx, req.AppSlug, bitriseapi.BuildTriggerParams{
 		HookInfo: bitriseapi.BuildTriggerHookInfo{Type: "bitrise"},
 		BuildParams: bitriseapi.BuildTriggerBuildParams{
 			WorkflowID:    req.Workflow,
+			PipelineID:    req.Pipeline,
 			Branch:        req.Branch,
+			BranchDest:    req.BranchDest,
+			Tag:           req.Tag,
 			CommitHash:    req.CommitHash,
 			CommitMessage: req.CommitMessage,
+			PullRequestID: req.PullRequestID,
+			Priority:      req.Priority,
+			Environments:  envs,
 		},
 	})
 	if err != nil {
@@ -266,6 +285,7 @@ func triggerRespToBuild(resp bitriseapi.BuildTriggerResp, req TriggerRequest) Bu
 		Status:        "in-progress",
 		StatusText:    resp.Message,
 		Branch:        req.Branch,
+		Tag:           req.Tag,
 		Workflow:      workflow,
 		CommitHash:    req.CommitHash,
 		CommitMessage: req.CommitMessage,

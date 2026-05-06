@@ -1,6 +1,9 @@
 package build
 
 import (
+	"encoding/json"
+	"fmt"
+
 	"github.com/spf13/cobra"
 
 	"github.com/bitrise-io/bitrise-cli/cmd/cmdutil"
@@ -11,9 +14,15 @@ import (
 func newTriggerCmd() *cobra.Command {
 	var (
 		workflow      string
+		pipeline      string
 		branch        string
+		branchDest    string
+		tag           string
 		commitHash    string
 		commitMessage string
+		envJSON       string
+		priority      int
+		pullRequestID int
 	)
 
 	c := &cobra.Command{
@@ -23,20 +32,46 @@ func newTriggerCmd() *cobra.Command {
 
 Required flags:
   --app SLUG         (or BITRISE_APP_SLUG env var)
-  --workflow ID
 
 Optional flags:
-  --branch BRANCH    defaults to "main"
+  --workflow ID      workflow ID (mutually exclusive with --pipeline); Bitrise
+                     selects the appropriate workflow from the trigger map if omitted
+  --pipeline ID      pipeline ID (mutually exclusive with --workflow)
+  --branch BRANCH        branch to build (default "main" for branch builds)
+  --branch-dest BRANCH   target branch for pull-request builds
+  --tag TAG              tag to build
   --commit-hash HASH
-  --commit-message MSG`,
+  --commit-message MSG
+  --pull-request-id ID   pull request ID for PR builds
+  --priority N           build priority (-1, 0, 1)
+  --env JSON             environment variables as a JSON object, e.g. '{"KEY":"value"}'`,
 		Example: `  bitrise-cli build trigger --app my-app-slug --workflow primary
-  bitrise-cli build trigger --app my-app-slug --workflow deploy --branch release/1.2 --output json`,
+  bitrise-cli build trigger --app my-app-slug --workflow deploy --branch release/1.2 --output json
+  bitrise-cli build trigger --app my-app-slug --pipeline my-pipeline --branch main
+  bitrise-cli build trigger --app my-app-slug --workflow primary --tag v1.2.3
+  bitrise-cli build trigger --app my-app-slug --workflow primary --env '{"MY_VAR":"hello","OTHER":"world"}'`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			appSlug, err := cmdutil.ResolveAppSlug(cmd)
 			if err != nil {
 				return err
 			}
 			format := cmdutil.ResolveFormat(cmd)
+
+			// Default branch to "main" for branch builds when no tag is specified.
+			if branch == "" && tag == "" {
+				branch = "main"
+			}
+
+			var envs []internalbuild.TriggerEnv
+			if envJSON != "" {
+				var raw map[string]string
+				if err := json.Unmarshal([]byte(envJSON), &raw); err != nil {
+					return fmt.Errorf("--env: invalid JSON object: %w", err)
+				}
+				for k, v := range raw {
+					envs = append(envs, internalbuild.TriggerEnv{Key: k, Value: v})
+				}
+			}
 
 			client, err := cmdutil.NewAPIClient(cmd)
 			if err != nil {
@@ -46,9 +81,15 @@ Optional flags:
 			b, err := svc.Trigger(cmd.Context(), internalbuild.TriggerRequest{
 				AppSlug:       appSlug,
 				Workflow:      workflow,
+				Pipeline:      pipeline,
 				Branch:        branch,
+				BranchDest:    branchDest,
+				Tag:           tag,
 				CommitHash:    commitHash,
 				CommitMessage: commitMessage,
+				PullRequestID: pullRequestID,
+				Priority:      priority,
+				Environments:  envs,
 			})
 			if err != nil {
 				return err
@@ -59,11 +100,17 @@ Optional flags:
 	}
 
 	c.Flags().String(cmdutil.FlagApp, "", "app slug, alias: --project (or set BITRISE_APP_SLUG)")
-	c.Flags().StringVar(&workflow, "workflow", "", "workflow ID to run (required)")
-	c.Flags().StringVar(&branch, "branch", "main", "branch to build")
+	c.Flags().StringVar(&workflow, "workflow", "", "workflow ID to trigger (mutually exclusive with --pipeline)")
+	c.Flags().StringVar(&pipeline, "pipeline", "", "pipeline ID to trigger (mutually exclusive with --workflow)")
+	c.Flags().StringVar(&branch, "branch", "", `branch to build (default "main" for branch builds)`)
+	c.Flags().StringVar(&branchDest, "branch-dest", "", "target branch for pull-request builds")
+	c.Flags().StringVar(&tag, "tag", "", "tag to build")
 	c.Flags().StringVar(&commitHash, "commit-hash", "", "commit hash to build")
 	c.Flags().StringVar(&commitMessage, "commit-message", "", "commit message to record")
-	_ = c.MarkFlagRequired("workflow")
+	c.Flags().StringVar(&envJSON, "env", "", `environment variables as a JSON object, e.g. '{"KEY":"value"}'`)
+	c.Flags().IntVar(&priority, "priority", 0, "build priority (-1 = low, 0 = normal, 1 = high)")
+	c.Flags().IntVar(&pullRequestID, "pull-request-id", 0, "pull request ID for PR builds")
+	c.MarkFlagsMutuallyExclusive("workflow", "pipeline")
 	cmdutil.AddAppProjectAlias(c)
 
 	return c

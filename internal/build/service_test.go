@@ -237,13 +237,93 @@ func TestService_Trigger_PrefersResultsArray(t *testing.T) {
 	}
 }
 
-func TestService_Trigger_RequiresAppAndWorkflow(t *testing.T) {
+func TestService_Trigger_RequiresAppSlug(t *testing.T) {
 	svc := NewService(fakeAPI(t, func(http.ResponseWriter, *http.Request) {}))
 	if _, err := svc.Trigger(context.Background(), TriggerRequest{Workflow: "x"}); err == nil {
 		t.Fatal("missing app slug should fail")
 	}
-	if _, err := svc.Trigger(context.Background(), TriggerRequest{AppSlug: "x"}); err == nil {
-		t.Fatal("missing workflow should fail")
+}
+
+func TestService_Trigger_PipelineFields(t *testing.T) {
+	var gotBody []byte
+	client := fakeAPI(t, func(w http.ResponseWriter, r *http.Request) {
+		gotBody, _ = io.ReadAll(r.Body)
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`{"build_slug":"p-1","build_number":5,"build_url":"https://app.bitrise.io/build/p-1"}`))
+	})
+	svc := NewService(client)
+
+	got, err := svc.Trigger(context.Background(), TriggerRequest{
+		AppSlug:    "my-app",
+		Pipeline:   "my-pipeline",
+		Branch:     "main",
+		BranchDest: "release",
+		Tag:        "v1.0.0",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var sent map[string]any
+	_ = json.Unmarshal(gotBody, &sent)
+	bp, _ := sent["build_params"].(map[string]any)
+	if bp["pipeline_id"] != "my-pipeline" {
+		t.Errorf("pipeline_id = %v", bp["pipeline_id"])
+	}
+	if bp["branch_dest"] != "release" {
+		t.Errorf("branch_dest = %v", bp["branch_dest"])
+	}
+	if bp["tag"] != "v1.0.0" {
+		t.Errorf("tag = %v", bp["tag"])
+	}
+	if bp["workflow_id"] != nil {
+		t.Errorf("workflow_id should be absent, got %v", bp["workflow_id"])
+	}
+
+	if got.Tag != "v1.0.0" || got.Branch != "main" {
+		t.Errorf("result fields: tag=%q branch=%q", got.Tag, got.Branch)
+	}
+}
+
+func TestService_Trigger_EnvsAndPriorityAndPR(t *testing.T) {
+	var gotBody []byte
+	client := fakeAPI(t, func(w http.ResponseWriter, r *http.Request) {
+		gotBody, _ = io.ReadAll(r.Body)
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`{"build_slug":"e-1","build_number":10}`))
+	})
+	svc := NewService(client)
+
+	_, err := svc.Trigger(context.Background(), TriggerRequest{
+		AppSlug:       "my-app",
+		Workflow:      "primary",
+		PullRequestID: 42,
+		Priority:      1,
+		Environments: []TriggerEnv{
+			{Key: "MY_VAR", Value: "hello"},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var sent map[string]any
+	_ = json.Unmarshal(gotBody, &sent)
+	bp, _ := sent["build_params"].(map[string]any)
+
+	if bp["pull_request_id"] != float64(42) {
+		t.Errorf("pull_request_id = %v", bp["pull_request_id"])
+	}
+	if bp["priority"] != float64(1) {
+		t.Errorf("priority = %v", bp["priority"])
+	}
+	envs, _ := bp["environments"].([]any)
+	if len(envs) != 1 {
+		t.Fatalf("environments len = %d, want 1", len(envs))
+	}
+	env, _ := envs[0].(map[string]any)
+	if env["mapped_to"] != "MY_VAR" || env["value"] != "hello" || env["is_expand"] != true {
+		t.Errorf("env = %v", env)
 	}
 }
 
@@ -288,7 +368,7 @@ func TestService_NilClientFails(t *testing.T) {
 	if _, err := svc.View(context.Background(), "a", "b"); err == nil {
 		t.Fatal("View with nil client should fail")
 	}
-	if _, err := svc.Trigger(context.Background(), TriggerRequest{AppSlug: "a", Workflow: "w"}); err == nil {
+	if _, err := svc.Trigger(context.Background(), TriggerRequest{AppSlug: "a"}); err == nil {
 		t.Fatal("Trigger with nil client should fail")
 	}
 	if err := svc.Log(context.Background(), "a", "b", io.Discard); err == nil {

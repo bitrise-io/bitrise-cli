@@ -136,17 +136,27 @@ type BuildTriggerHookInfo struct {
 	Type string `json:"type"`
 }
 
+// BuildTriggerEnv is a single environment variable injected into a triggered build.
+type BuildTriggerEnv struct {
+	MappedTo string `json:"mapped_to"`
+	Value    string `json:"value"`
+	IsExpand bool   `json:"is_expand"`
+}
+
 // BuildTriggerBuildParams holds the build-specific parameters. Most
 // fields are optional; the API derives defaults from the app's
 // trigger map and bitrise.yml when omitted.
 type BuildTriggerBuildParams struct {
-	WorkflowID    string `json:"workflow_id,omitempty"`
-	Branch        string `json:"branch,omitempty"`
-	BranchDest    string `json:"branch_dest,omitempty"`
-	CommitHash    string `json:"commit_hash,omitempty"`
-	CommitMessage string `json:"commit_message,omitempty"`
-	Tag           string `json:"tag,omitempty"`
-	PipelineID    string `json:"pipeline_id,omitempty"`
+	WorkflowID    string            `json:"workflow_id,omitempty"`
+	PipelineID    string            `json:"pipeline_id,omitempty"`
+	Branch        string            `json:"branch,omitempty"`
+	BranchDest    string            `json:"branch_dest,omitempty"`
+	Tag           string            `json:"tag,omitempty"`
+	CommitHash    string            `json:"commit_hash,omitempty"`
+	CommitMessage string            `json:"commit_message,omitempty"`
+	PullRequestID int               `json:"pull_request_id,omitempty"`
+	Priority      int               `json:"priority,omitempty"`
+	Environments  []BuildTriggerEnv `json:"environments,omitempty"`
 }
 
 // BuildTriggerResp is the response from POST /apps/{slug}/builds.
