@@ -33,3 +33,6 @@ go.work.sum
 # Environment
 .env
 .env.local
+
+# Claude
+.claude/
