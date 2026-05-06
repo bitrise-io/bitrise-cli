@@ -90,7 +90,7 @@ func renderVersionHuman(w io.Writer, v versionInfo) error {
 	s := style.New(w)
 	ew := cmdutil.NewErrWriter(w)
 	lbl := func(label string) string {
-		return s.Dim.Render(fmt.Sprintf("%-12s", label))
+		return s.Label.Render(fmt.Sprintf("%-12s", label))
 	}
 	ew.F("%s %s\n", s.Bold.Render("bitrise-cli"), v.Version)
 	if v.Commit != "" {
