@@ -13,6 +13,7 @@ workflows:
   # Checks dependency hygiene, formatting, static analysis, linting, and tests.
   test:
     steps:
+      - activate-ssh-key@4: {}
       - git-clone@8: {}
 
       - restore-cache@3:
@@ -90,6 +91,7 @@ workflows:
   # Cross-compiles binaries for all supported platforms and uploads them.
   build:
     steps:
+      - activate-ssh-key@4: {}
       - git-clone@8: {}
 
       - restore-cache@3:
