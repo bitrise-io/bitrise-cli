@@ -17,8 +17,8 @@ func newViewCmd() *cobra.Command {
 		Long: `Show details for a single app identified by its slug.
 
 Argument:
-  APP_SLUG           the unique slug of the app (visible in app URLs).
-                     Falls back to BITRISE_APP_SLUG when omitted.`,
+  APP_SLUG           the unique slug of the app (visible in app URLs);
+                     falls back to BITRISE_APP_SLUG when omitted`,
 		Example: `  bitrise-cli app view stub-app-aaa
   bitrise-cli app view stub-app-aaa --output json
   BITRISE_APP_SLUG=stub-app-aaa bitrise-cli app view`,

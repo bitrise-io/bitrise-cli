@@ -29,10 +29,10 @@ func newListCmd() *cobra.Command {
 Filters:
   --title TITLE              filter apps whose title contains the given string (case-insensitive)
   --project-type TYPE        e.g. ios, android
-  --sort-by FIELD            ordering accepted by the API
+  --sort-by FIELD            ordering accepted by the API (e.g. created_at, last_build_at)
 
 Pagination:
-  --limit N
+  --limit N                  max items per page (server default if 0)
   --cursor TOKEN             opaque token from a previous page's "next_cursor"`,
 		Example: `  bitrise-cli app list
   bitrise-cli app list --output json

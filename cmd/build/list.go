@@ -39,20 +39,20 @@ Required flags:
   --app SLUG              (or BITRISE_APP_SLUG env var)
 
 Optional filters:
-  --branch BRANCH
-  --workflow ID
+  --branch BRANCH           filter by branch name
+  --workflow ID             filter by workflow ID
   --status STATUS           one of: success, failed, in-progress, aborted, aborted-with-success
   --sort-by ORDER           one of: created_at (default), running_first
   --commit-message TEXT     filter by commit message
   --trigger-event-type TYPE one of: push, pull-request, tag
-  --pull-request-id N
-  --build-number N
+  --pull-request-id N       filter by pull request ID
+  --build-number N          filter by build number
   --after RFC3339           builds triggered after this time (e.g. 2024-01-15T00:00:00Z)
   --before RFC3339          builds triggered before this time
   --pipeline-build          show only pipeline builds
 
 Pagination:
-  --limit N
+  --limit N               max items per page (server default if 0)
   --cursor TOKEN          opaque token from a previous page's "next_cursor"`,
 		Example: `  bitrise-cli build list --app my-app-slug
   bitrise-cli build list --app my-app-slug --branch main --status failed

@@ -34,16 +34,16 @@ Required flags:
   --app SLUG         (or BITRISE_APP_SLUG env var)
 
 Optional flags:
-  --workflow ID      workflow ID (mutually exclusive with --pipeline); Bitrise
-                     selects the appropriate workflow from the trigger map if omitted
-  --pipeline ID      pipeline ID (mutually exclusive with --workflow)
+  --workflow ID          workflow ID (mutually exclusive with --pipeline); Bitrise
+                         selects the appropriate workflow from the trigger map if omitted
+  --pipeline ID          pipeline ID (mutually exclusive with --workflow)
   --branch BRANCH        branch to build (default "main" for branch builds)
   --branch-dest BRANCH   target branch for pull-request builds
   --tag TAG              tag to build
-  --commit-hash HASH
-  --commit-message MSG
+  --commit-hash HASH     commit hash to build from
+  --commit-message MSG   commit message to record
   --pull-request-id ID   pull request ID for PR builds
-  --priority N           build priority (-1, 0, 1)
+  --priority N           build priority (-1 = low, 0 = normal, 1 = high)
   --env JSON             environment variables as a JSON object, e.g. '{"KEY":"value"}'`,
 		Example: `  bitrise-cli build trigger --app my-app-slug --workflow primary
   bitrise-cli build trigger --app my-app-slug --workflow deploy --branch release/1.2 --output json
