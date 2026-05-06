@@ -8,6 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/bitrise-io/bitrise-cli/cmd/cmdutil"
 	"github.com/bitrise-io/bitrise-cli/internal/output"
 )
 
@@ -85,15 +86,15 @@ In JSON mode, all fields are emitted; missing values are omitted.`,
 }
 
 func renderVersionHuman(w io.Writer, v versionInfo) error {
-	ew := newErrWriter(w)
-	ew.f("bitrise-cli %s\n", v.Version)
+	ew := cmdutil.NewErrWriter(w)
+	ew.F("bitrise-cli %s\n", v.Version)
 	if v.Commit != "" {
-		ew.f("commit:     %s\n", v.Commit)
+		ew.F("commit:     %s\n", v.Commit)
 	}
 	if v.BuildTime != "" {
-		ew.f("built:      %s\n", v.BuildTime)
+		ew.F("built:      %s\n", v.BuildTime)
 	}
-	ew.f("go:         %s\n", v.GoVersion)
-	ew.f("platform:   %s/%s\n", v.OS, v.Arch)
-	return ew.err
+	ew.F("go:         %s\n", v.GoVersion)
+	ew.F("platform:   %s/%s\n", v.OS, v.Arch)
+	return ew.Err
 }

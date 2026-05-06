@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 
+	"github.com/bitrise-io/bitrise-cli/cmd/cmdutil"
 	"github.com/bitrise-io/bitrise-cli/internal/auth"
 	"github.com/bitrise-io/bitrise-cli/internal/config"
 	"github.com/bitrise-io/bitrise-cli/internal/output"
@@ -158,18 +159,18 @@ func tokenSource(resolvedToken string) string {
 }
 
 func renderAuthStatusHuman(w io.Writer, s authStatus) error {
-	ew := newErrWriter(w)
+	ew := cmdutil.NewErrWriter(w)
 	if !s.HasToken {
-		ew.ln("No access token configured.")
-		ew.ln()
-		ew.ln("Run 'bitrise-cli auth login' to save one,")
-		ew.ln("or set the BITRISE_TOKEN environment variable.")
-		return ew.err
+		ew.Ln("No access token configured.")
+		ew.Ln()
+		ew.Ln("Run 'bitrise-cli auth login' to save one,")
+		ew.Ln("or set the BITRISE_TOKEN environment variable.")
+		return ew.Err
 	}
-	ew.f("Token:    ******** (set)\n")
-	ew.f("Source:   %s\n", s.Source)
-	ew.f("Path:     %s\n", s.Path)
-	return ew.err
+	ew.F("Token:    ******** (set)\n")
+	ew.F("Source:   %s\n", s.Source)
+	ew.F("Path:     %s\n", s.Path)
+	return ew.Err
 }
 
 // readTokenInput reads a token via interactive masked prompt or directly

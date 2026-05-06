@@ -6,30 +6,23 @@
 package cmd
 
 import (
-	"fmt"
 	"os"
 
 	"github.com/spf13/cobra"
-	"github.com/spf13/pflag"
 
+	cmdapp "github.com/bitrise-io/bitrise-cli/cmd/app"
+	cmdbuild "github.com/bitrise-io/bitrise-cli/cmd/build"
+	"github.com/bitrise-io/bitrise-cli/cmd/cmdutil"
+	cmdconfig "github.com/bitrise-io/bitrise-cli/cmd/config"
 	"github.com/bitrise-io/bitrise-cli/internal/auth"
 	"github.com/bitrise-io/bitrise-cli/internal/config"
 	"github.com/bitrise-io/bitrise-cli/internal/output"
 )
 
-const (
-	flagOutput = "output"
-	flagApp    = "app"
-	flagQuiet  = "quiet"
-)
-
-// quiet is set by the persistent --quiet/-q flag. Commands check it before
-// emitting non-error diagnostics ("Saved output", "Cleared token", etc.).
-// Errors and primary data output ignore this flag.
+// quiet is set by the persistent --quiet/-q flag. Commands in this package
+// (auth) check it directly; subpackages use cmdutil.IsQuiet(cmd).
 var quiet bool
 
-// rootCmd is the `bitrise-cli` entrypoint. The recommended shorter alias is
-// `br` — install it as a symlink or shell alias where the name is free.
 var rootCmd = &cobra.Command{
 	Use:     "bitrise-cli",
 	Short:   "Bitrise platform CLI",
@@ -69,13 +62,11 @@ func Execute() {
 }
 
 func init() {
-	// Flag default is empty so we can distinguish "user didn't pass --output"
-	// from "user passed --output human". The help text shows the effective default.
-	rootCmd.PersistentFlags().StringP(flagOutput, "o", "", `output format: human|json (default "human")`)
-	rootCmd.PersistentFlags().BoolVarP(&quiet, flagQuiet, "q", false, "suppress non-error diagnostic messages")
-	rootCmd.AddCommand(newBuildCmd())
-	rootCmd.AddCommand(newAppCmd())
-	rootCmd.AddCommand(newConfigCmd())
+	rootCmd.PersistentFlags().StringP(cmdutil.FlagOutput, "o", "", `output format: human|json (default "human")`)
+	rootCmd.PersistentFlags().BoolVarP(&quiet, cmdutil.FlagQuiet, "q", false, "suppress non-error diagnostic messages")
+	rootCmd.AddCommand(cmdbuild.NewCmd())
+	rootCmd.AddCommand(cmdapp.NewCmd())
+	rootCmd.AddCommand(cmdconfig.NewCmd())
 	rootCmd.AddCommand(newAuthCmd())
 	rootCmd.AddCommand(newVersionCmd())
 }
@@ -96,7 +87,7 @@ func persistentPreRun(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return err
 	}
-	flagOut, _ := cmd.Flags().GetString(flagOutput)
+	flagOut, _ := cmd.Flags().GetString(cmdutil.FlagOutput)
 	r, err := config.Resolve(globalCfg, dirCfg, authData, flagOut)
 	if err != nil {
 		return err
@@ -105,8 +96,8 @@ func persistentPreRun(cmd *cobra.Command, _ []string) error {
 	return nil
 }
 
-// resolvedFromCmd is a tiny convenience wrapper. Returns the Resolved
-// installed by persistentPreRun.
+// resolvedFromCmd returns the Resolved installed by persistentPreRun.
+// Used by auth subcommands which live in this package.
 func resolvedFromCmd(cmd *cobra.Command) config.Resolved {
 	return config.FromContext(cmd.Context())
 }
@@ -115,46 +106,4 @@ func resolvedFromCmd(cmd *cobra.Command) config.Resolved {
 // happened in persistentPreRun, so no error is possible here.
 func resolveFormat(cmd *cobra.Command) output.Format {
 	return resolvedFromCmd(cmd).Output
-}
-
-// resolveAppSlug returns the app slug to operate on, layering --app over
-// the env/file value carried in Resolved.
-func resolveAppSlug(cmd *cobra.Command) (string, error) {
-	if v, _ := cmd.Flags().GetString(flagApp); v != "" {
-		return v, nil
-	}
-	if v := resolvedFromCmd(cmd).AppSlug; v != "" {
-		return v, nil
-	}
-	return "", appSlugRequiredErr("--app")
-}
-
-// resolveAppSlugArg returns the positional APP_SLUG argument (args[0]),
-// layering it over the env/file value. Used by `app view` and
-// `app workflow list` where the app is the subject of the command.
-func resolveAppSlugArg(cmd *cobra.Command, args []string) (string, error) {
-	if len(args) >= 1 && args[0] != "" {
-		return args[0], nil
-	}
-	if v := resolvedFromCmd(cmd).AppSlug; v != "" {
-		return v, nil
-	}
-	return "", appSlugRequiredErr("APP_SLUG positional argument")
-}
-
-func appSlugRequiredErr(via string) error {
-	return fmt.Errorf("%s is required (or set %s, or run 'bitrise-cli config set %s <slug>')",
-		via, config.EnvAppSlug, config.KeyAppSlug)
-}
-
-// addAppProjectAlias registers the --project flag as a parse-time synonym
-// for --app on the given command's local flag set. Users may type either name;
-// only --app appears in --help (alias is documented in the flag description).
-func addAppProjectAlias(c *cobra.Command) {
-	c.Flags().SetNormalizeFunc(func(_ *pflag.FlagSet, name string) pflag.NormalizedName {
-		if name == "project" {
-			return pflag.NormalizedName(flagApp)
-		}
-		return pflag.NormalizedName(name)
-	})
 }
