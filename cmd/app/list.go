@@ -27,7 +27,7 @@ func newListCmd() *cobra.Command {
 		Long: `List all apps (projects) the authenticated user can access.
 
 Filters:
-  --title TITLE              filter by exact app title
+  --title TITLE              filter apps whose title contains the given string (case-insensitive)
   --project-type TYPE        e.g. ios, android
   --sort-by FIELD            ordering accepted by the API
 
@@ -63,7 +63,7 @@ Pagination:
 	c.Flags().IntVar(&limit, "limit", 0, "max items per page (server default if 0)")
 	c.Flags().StringVar(&cursor, "cursor", "", "pagination cursor from a previous response")
 	c.Flags().StringVar(&sortBy, "sort-by", "", "ordering accepted by the API (e.g. created_at, last_build_at)")
-	c.Flags().StringVar(&title, "title", "", "filter by exact app title")
+	c.Flags().StringVar(&title, "title", "", "filter apps whose title contains the given string (case-insensitive)")
 	c.Flags().StringVar(&projectType, "project-type", "", "filter by project type (ios, android, ...)")
 
 	return c
