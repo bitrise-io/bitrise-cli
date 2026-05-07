@@ -18,16 +18,29 @@ import (
 	"github.com/muesli/termenv"
 )
 
-// 256-color palette. Lipgloss falls back to the nearest ANSI-16 color
-// when the terminal can't render 256-color, so these values are safe to
-// use even on legacy terminals.
-const (
-	colorGrey   = "245" // dim text
-	colorGreen  = "42"  // success
-	colorRed    = "196" // failed
-	colorBlue   = "33"  // in-progress (running, neutral, stands out)
-	colorAmber  = "214" // aborted
-	colorYellow = "220" // warnings
+// 256-color palette, paired by terminal background brightness.
+//
+// Each AdaptiveColor pairs a color tuned for dark terminals with one
+// tuned for light terminals; lipgloss/termenv detect the terminal's
+// background via the OSC 11 query and pick the appropriate side. On
+// terminals that don't answer OSC 11 lipgloss falls back to "Dark",
+// which works for the common case (most dev terminals are dark) and
+// can be overridden later by an explicit --theme flag if we add one.
+//
+// Lipgloss falls back to the nearest ANSI-16 color when the terminal
+// can't render 256-color, so these values are safe even on legacy
+// terminals.
+//
+// Picking values: the dark side is bright/saturated to pop on a black
+// background; the light side is darker/muted to stay readable on white
+// without going to pure black (which fights the body text).
+var (
+	dimColor     = lipgloss.AdaptiveColor{Light: "240", Dark: "245"} // grey
+	successColor = lipgloss.AdaptiveColor{Light: "28", Dark: "42"}   // green
+	failedColor  = lipgloss.AdaptiveColor{Light: "124", Dark: "196"} // red
+	runningColor = lipgloss.AdaptiveColor{Light: "27", Dark: "33"}   // blue
+	abortedColor = lipgloss.AdaptiveColor{Light: "166", Dark: "214"} // amber
+	warnColor    = lipgloss.AdaptiveColor{Light: "136", Dark: "220"} // yellow / olive
 )
 
 // forceNoColor is set by Configure when the --no-color flag is passed.
@@ -74,20 +87,20 @@ func New(w io.Writer) Styles {
 	}
 	return Styles{
 		r:                r,
-		Header:           r.NewStyle().Bold(true).Foreground(lipgloss.Color(colorGrey)),
-		Dim:              r.NewStyle().Foreground(lipgloss.Color(colorGrey)),
+		Header:           r.NewStyle().Bold(true).Foreground(dimColor),
+		Dim:              r.NewStyle().Foreground(dimColor),
 		Bold:             r.NewStyle().Bold(true),
 		Label:            r.NewStyle().Bold(true),
-		Slug:             r.NewStyle().Foreground(lipgloss.Color(colorGrey)),
+		Slug:             r.NewStyle().Foreground(dimColor),
 		URL:              r.NewStyle().Underline(true),
-		Success:          r.NewStyle().Foreground(lipgloss.Color(colorGreen)),
-		Failure:          r.NewStyle().Foreground(lipgloss.Color(colorRed)),
-		Warn:             r.NewStyle().Foreground(lipgloss.Color(colorYellow)),
-		statusSuccess:    r.NewStyle().Foreground(lipgloss.Color(colorGreen)),
-		statusFailed:     r.NewStyle().Foreground(lipgloss.Color(colorRed)),
-		statusAborted:    r.NewStyle().Foreground(lipgloss.Color(colorAmber)),
-		statusInProgress: r.NewStyle().Foreground(lipgloss.Color(colorBlue)),
-		statusUnknown:    r.NewStyle().Foreground(lipgloss.Color(colorGrey)),
+		Success:          r.NewStyle().Foreground(successColor),
+		Failure:          r.NewStyle().Foreground(failedColor),
+		Warn:             r.NewStyle().Foreground(warnColor),
+		statusSuccess:    r.NewStyle().Foreground(successColor),
+		statusFailed:     r.NewStyle().Foreground(failedColor),
+		statusAborted:    r.NewStyle().Foreground(abortedColor),
+		statusInProgress: r.NewStyle().Foreground(runningColor),
+		statusUnknown:    r.NewStyle().Foreground(dimColor),
 	}
 }
 
