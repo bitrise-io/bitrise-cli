@@ -33,7 +33,7 @@ Flags:
   --wait             wait for the build to finish before printing the log;
                      useful when the build is still in-progress. Ctrl-C
                      detaches without affecting the running build.
-  --interval DURATION  polling interval when --wait is active (default 5s)
+  --interval DURATION  polling interval when --wait is active (default 3s)
 
 Note:
   --output is ignored — logs are streamed as raw text. Pipe to other tools or
@@ -89,6 +89,6 @@ Note:
 	}
 
 	c.Flags().BoolVar(&wait, "wait", false, "wait for the build to finish before printing the log")
-	c.Flags().DurationVar(&interval, "interval", 5*time.Second, "polling interval when --wait is active")
+	c.Flags().DurationVar(&interval, "interval", 3*time.Second, "polling interval when --wait is active")
 	return c
 }

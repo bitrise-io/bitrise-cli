@@ -262,31 +262,29 @@ func (s *Service) Watch(ctx context.Context, appSlug, buildSlug string, w io.Wri
 
 	lastAfterTimestamp := ""
 	afterTimestamp := manifest.NextAfterTimestamp
-	for afterTimestamp != "" {
+	var current bitriseapi.Build
+	for {
 		select {
 		case <-ctx.Done():
 			return Build{}, ctx.Err()
 		case <-time.After(interval):
 		}
-		manifest, err = s.client.BuildLogManifest(ctx, appSlug, buildSlug, afterTimestamp)
+		current, err = s.client.Build(ctx, appSlug, buildSlug)
 		if err != nil {
 			return Build{}, err
 		}
-		for _, chunk := range manifest.LogChunks {
-			if _, err := io.WriteString(w, chunk.Chunk); err != nil {
-				return Build{}, fmt.Errorf("write log chunk: %w", err)
+		if afterTimestamp != "" {
+			manifest, err = s.client.BuildLogManifest(ctx, appSlug, buildSlug, afterTimestamp)
+			if err != nil {
+				return Build{}, err
 			}
-		}
-		lastAfterTimestamp = afterTimestamp
-		afterTimestamp = manifest.NextAfterTimestamp
-		if manifest.IsArchived {
-			break
-		}
-		// Exit early as soon as the build is no longer in-progress (status 0),
-		// without waiting for the log archive to become available.
-		current, err := s.client.Build(ctx, appSlug, buildSlug)
-		if err != nil {
-			return Build{}, err
+			for _, chunk := range manifest.LogChunks {
+				if _, err := io.WriteString(w, chunk.Chunk); err != nil {
+					return Build{}, fmt.Errorf("write log chunk: %w", err)
+				}
+			}
+			lastAfterTimestamp = afterTimestamp
+			afterTimestamp = manifest.NextAfterTimestamp
 		}
 		if current.Status != 0 {
 			break
@@ -306,7 +304,7 @@ func (s *Service) Watch(ctx context.Context, appSlug, buildSlug string, w io.Wri
 		}
 	}
 
-	return s.View(ctx, appSlug, buildSlug)
+	return fromAPI(current, appSlug), nil
 }
 
 // WaitForCompletion blocks until the build is no longer in-progress, polling

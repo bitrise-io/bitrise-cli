@@ -1,7 +1,9 @@
 package build
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"strings"
@@ -28,8 +30,8 @@ func newTriggerCmd() *cobra.Command {
 		priority      int
 		pullRequestID int
 		wait          bool
+		watch         bool
 		interval      time.Duration
-		verbose       bool
 	)
 
 	c := &cobra.Command{
@@ -52,19 +54,21 @@ Optional flags:
   --pull-request-id ID   pull request ID for PR builds
   --priority N           build priority (-1 = low, 0 = normal, 1 = high)
   --env JSON             environment variables as a JSON object, e.g. '{"KEY":"value"}'
-  --wait                 wait for the build to finish; exits 0 on success, 1 on failure.
-                         Shows a live status bar by default; use --verbose to stream logs.
-                         With --output json the final build record is written to stdout and
-                         logs go to stderr.
-  --verbose              stream full build logs during --wait (default: status bar only)
-  --interval DURATION    log polling interval when --wait is set (default 3s)`,
+  --wait                 wait for the build to finish without streaming logs; exits 0 on
+                         success, 1 on failure. With --output json the final build record
+                         is written to stdout.
+  --watch                stream build logs until the build finishes; exits 0 on success,
+                         1 on failure. With --output json logs go to stderr and the final
+                         build record is written to stdout.
+  --interval DURATION    polling interval when --wait or --watch is active (default 3s)`,
 		Example: `  bitrise-cli build trigger --app my-app-slug --workflow primary
   bitrise-cli build trigger --app my-app-slug --workflow deploy --branch release/1.2 --output json
   bitrise-cli build trigger --app my-app-slug --pipeline my-pipeline --branch main
   bitrise-cli build trigger --app my-app-slug --workflow primary --tag v1.2.3
   bitrise-cli build trigger --app my-app-slug --workflow primary --env '{"MY_VAR":"hello","OTHER":"world"}'
   bitrise-cli build trigger --app my-app-slug --workflow primary --wait
-  bitrise-cli build trigger --app my-app-slug --workflow primary --wait --output json`,
+  bitrise-cli build trigger --app my-app-slug --workflow primary --watch
+  bitrise-cli build trigger --app my-app-slug --workflow primary --watch --output json`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			appSlug, err := cmdutil.ResolveAppSlug(cmd)
 			if err != nil {
@@ -110,17 +114,56 @@ Optional flags:
 				return err
 			}
 
-			if !wait {
+			if !wait && !watch {
 				return output.Render(cmd.OutOrStdout(), format, b, renderTriggerHero)
 			}
 
-			// --wait: stream logs then exit with a code reflecting the build outcome.
-			// In JSON mode logs go to stderr so stdout carries only the final build JSON.
-			logWriter := io.Writer(cmd.OutOrStdout())
-			if format == output.JSON {
-				logWriter = cmd.ErrOrStderr()
+			if watch {
+				// --watch: stream logs until the build finishes.
+				// In JSON mode logs go to stderr so stdout carries only the final build JSON.
+				logWriter := io.Writer(cmd.OutOrStdout())
+				if format == output.JSON {
+					logWriter = cmd.ErrOrStderr()
+				}
+				return runWatch(cmd, svc, b, interval, logWriter, format)
 			}
-			return runWatch(cmd, svc, b, interval, logWriter, format, verbose)
+
+			// --wait: silent block until the build finishes; no log output.
+			if !cmdutil.IsQuiet(cmd) {
+				headerEW := cmdutil.NewErrWriter(cmd.ErrOrStderr())
+				headerEW.F("Waiting for build #%d to finish\n", b.BuildNumber)
+				if b.BuildURL != "" {
+					headerEW.F("→ %s\n", b.BuildURL)
+				}
+				if headerEW.Err != nil {
+					return headerEW.Err
+				}
+			}
+			finalBuild, err := svc.WaitForCompletion(cmd.Context(), b.AppSlug, b.Slug, interval)
+			if errors.Is(err, context.Canceled) {
+				detachEW := cmdutil.NewErrWriter(cmd.ErrOrStderr())
+				detachEW.F("\nDetached — build is still running.\n")
+				detachEW.F("Use 'bitrise-cli build watch %s' to resume.\n", b.Slug)
+				return detachEW.Err
+			}
+			if err != nil {
+				return err
+			}
+			if format == output.JSON {
+				return output.Render(cmd.OutOrStdout(), format, finalBuild, renderBuildText)
+			}
+			if !cmdutil.IsQuiet(cmd) {
+				footerEW := cmdutil.NewErrWriter(cmd.ErrOrStderr())
+				footerEW.F("Build #%d finished: %s%s\n", finalBuild.BuildNumber, finalBuild.Status, buildElapsed(finalBuild))
+				if footerEW.Err != nil {
+					return footerEW.Err
+				}
+			}
+			if finalBuild.Status != "success" && finalBuild.Status != "aborted-with-success" {
+				cmdutil.SilenceRootErrors(cmd)
+				return fmt.Errorf("build %s", finalBuild.Status)
+			}
+			return nil
 		},
 	}
 
@@ -134,10 +177,11 @@ Optional flags:
 	c.Flags().StringVar(&envJSON, "env", "", `environment variables as a JSON object, e.g. '{"KEY":"value"}'`)
 	c.Flags().IntVar(&priority, "priority", 0, "build priority (-1 = low, 0 = normal, 1 = high)")
 	c.Flags().IntVar(&pullRequestID, "pull-request-id", 0, "pull request ID for PR builds")
-	c.Flags().BoolVar(&wait, "wait", false, "wait for the build to finish (exit code reflects build outcome)")
-	c.Flags().BoolVar(&verbose, "verbose", false, "stream full build logs during --wait (default: status bar only)")
-	c.Flags().DurationVar(&interval, "interval", 3*time.Second, "log polling interval when --wait is set")
+	c.Flags().BoolVar(&wait, "wait", false, "block until the build finishes without streaming logs (exit code reflects build outcome)")
+	c.Flags().BoolVar(&watch, "watch", false, "stream build logs until the build finishes (exit code reflects build outcome)")
+	c.Flags().DurationVar(&interval, "interval", 3*time.Second, "polling interval when --wait or --watch is active")
 	c.MarkFlagsMutuallyExclusive("workflow", "pipeline")
+	c.MarkFlagsMutuallyExclusive("wait", "watch")
 
 	_ = c.RegisterFlagCompletionFunc("priority", func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
 		return []string{"-1\tlow priority", "0\tnormal priority", "1\thigh priority"}, cobra.ShellCompDirectiveNoFileComp

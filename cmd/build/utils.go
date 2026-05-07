@@ -84,16 +84,16 @@ func renderBuildText(w io.Writer, b internalbuild.Build) error {
 	return ew.Err
 }
 
-// runWatch is the shared implementation for `build watch` and `build trigger --wait`.
+// runWatch is the shared implementation for `build watch` and `build trigger --watch`.
 // It prints a header/footer to stderr and streams log content to logWriter.
 // For output.JSON format it renders the final build record as JSON to
 // cmd.OutOrStdout() instead of the text footer.
 //
 // In human format on an interactive terminal it switches to a TUI that
 // pins a spinner + status bar to the bottom and streams logs above it.
-func runWatch(cmd *cobra.Command, svc *internalbuild.Service, b internalbuild.Build, interval time.Duration, logWriter io.Writer, format output.Format, verbose bool) error {
+func runWatch(cmd *cobra.Command, svc *internalbuild.Service, b internalbuild.Build, interval time.Duration, logWriter io.Writer, format output.Format) error {
 	if format == output.Human && stdoutIsTTY(cmd) {
-		return runWatchTUI(cmd, svc, b, interval, verbose)
+		return runWatchTUI(cmd, svc, b, interval)
 	}
 
 	stderr := cmd.ErrOrStderr()
@@ -105,15 +105,11 @@ func runWatch(cmd *cobra.Command, svc *internalbuild.Service, b internalbuild.Bu
 		return headerEW.Err
 	}
 
-	sink := logWriter
-	if !verbose {
-		sink = io.Discard
-	}
-	finalBuild, err := svc.Watch(cmd.Context(), b.AppSlug, b.Slug, sink, interval)
+	finalBuild, err := svc.Watch(cmd.Context(), b.AppSlug, b.Slug, logWriter, interval)
 	if errors.Is(err, context.Canceled) {
 		detachEW := cmdutil.NewErrWriter(stderr)
 		detachEW.F("\nDetached — build is still running.\n")
-		detachEW.F("Use 'bitrise-cli build view %s' to check status.\n", b.Slug)
+		detachEW.F("Use 'bitrise-cli build watch %s' to resume streaming.\n", b.Slug)
 		return detachEW.Err
 	}
 	if err != nil {

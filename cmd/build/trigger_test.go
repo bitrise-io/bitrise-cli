@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/bitrise-io/bitrise-cli/internal/config"
@@ -94,6 +95,98 @@ func TestTriggerCmd_InvalidEnvJSON(t *testing.T) {
 	err := c.Execute()
 	if err == nil || !strings.Contains(err.Error(), "--env") {
 		t.Errorf("expected --env JSON parse error, got %v", err)
+	}
+}
+
+func TestTriggerCmd_WaitAndWatchMutuallyExclusive(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	defer srv.Close()
+
+	c := newTriggerCmd()
+	c.SetOut(io.Discard)
+	c.SetErr(io.Discard)
+	c.SetContext(config.WithResolved(context.Background(), config.Resolved{
+		APIBaseURL: srv.URL,
+		Token:      "tok",
+		Output:     output.Human,
+		AppSlug:    "my-app",
+	}))
+	c.SetArgs([]string{"--wait", "--watch"})
+
+	err := c.Execute()
+	if err == nil {
+		t.Error("expected error when --wait and --watch are both set")
+	}
+}
+
+func TestTriggerCmd_Wait_BlocksAndExits(t *testing.T) {
+	// Trigger returns a build; two View calls: first in-progress, then success.
+	var viewCalls atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/apps/my-app/builds" && r.Method == http.MethodPost:
+			w.WriteHeader(http.StatusCreated)
+			_, _ = io.WriteString(w, `{"build_slug":"b-1","build_number":5,"build_url":"https://app.bitrise.io/build/b-1","triggered_workflow":"primary"}`)
+		case r.URL.Path == "/apps/my-app/builds/b-1":
+			n := int(viewCalls.Add(1))
+			if n == 1 {
+				_, _ = io.WriteString(w, `{"data":{"slug":"b-1","build_number":5,"status":0,"triggered_at":"2026-05-06T10:00:00Z"}}`)
+			} else {
+				_, _ = io.WriteString(w, `{"data":{"slug":"b-1","build_number":5,"status":1,"triggered_at":"2026-05-06T10:00:00Z"}}`)
+			}
+		}
+	}))
+	defer srv.Close()
+
+	c := newTriggerCmd()
+	stderr := &bytes.Buffer{}
+	c.SetOut(io.Discard)
+	c.SetErr(stderr)
+	c.SetArgs([]string{"--workflow", "primary", "--wait", "--interval", "1ms"})
+	c.SetContext(config.WithResolved(context.Background(), config.Resolved{
+		APIBaseURL: srv.URL,
+		Token:      "tok",
+		Output:     output.Human,
+		AppSlug:    "my-app",
+	}))
+
+	if err := c.Execute(); err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if !strings.Contains(stderr.String(), "Waiting for build") {
+		t.Errorf("stderr missing wait header: %q", stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "finished") {
+		t.Errorf("stderr missing finish line: %q", stderr.String())
+	}
+}
+
+func TestTriggerCmd_Wait_FailedBuildReturnsError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/apps/my-app/builds" && r.Method == http.MethodPost:
+			w.WriteHeader(http.StatusCreated)
+			_, _ = io.WriteString(w, `{"build_slug":"b-1","build_number":5}`)
+		case r.URL.Path == "/apps/my-app/builds/b-1":
+			_, _ = io.WriteString(w, `{"data":{"slug":"b-1","build_number":5,"status":2,"triggered_at":"2026-05-06T10:00:00Z"}}`)
+		}
+	}))
+	defer srv.Close()
+
+	c := newTriggerCmd()
+	c.SetOut(io.Discard)
+	c.SetErr(io.Discard)
+	c.SetArgs([]string{"--workflow", "primary", "--wait", "--interval", "1ms"})
+	c.SetContext(config.WithResolved(context.Background(), config.Resolved{
+		APIBaseURL: srv.URL,
+		Token:      "tok",
+		Output:     output.Human,
+		AppSlug:    "my-app",
+	}))
+
+	err := c.Execute()
+	if err == nil || !strings.Contains(err.Error(), "failed") {
+		t.Errorf("expected 'failed' error, got %v", err)
 	}
 }
 

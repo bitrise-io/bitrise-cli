@@ -49,7 +49,7 @@ Note:
 			if err != nil {
 				return err
 			}
-			return runWatch(cmd, svc, b, interval, cmd.OutOrStdout(), output.Human, true)
+			return runWatch(cmd, svc, b, interval, cmd.OutOrStdout(), output.Human)
 		},
 	}
 

@@ -33,11 +33,11 @@ func stdoutIsTTY(cmd *cobra.Command) bool {
 // status bar (spinner + build info + clickable URL) at the bottom of the
 // terminal while build logs scroll above it. When the build finishes the TUI
 // exits cleanly and the caller renders the final summary.
-func runWatchTUI(cmd *cobra.Command, svc *internalbuild.Service, b internalbuild.Build, interval time.Duration, verbose bool) error {
+func runWatchTUI(cmd *cobra.Command, svc *internalbuild.Service, b internalbuild.Build, interval time.Duration) error {
 	ctx, cancel := context.WithCancel(cmd.Context())
 	defer cancel()
 
-	m := newWaitModel(b, verbose)
+	m := newWaitModel(b)
 	p := tea.NewProgram(m, tea.WithContext(ctx), tea.WithOutput(cmd.OutOrStdout()))
 
 	doneCh := make(chan struct{})
@@ -66,7 +66,7 @@ func runWatchTUI(cmd *cobra.Command, svc *internalbuild.Service, b internalbuild
 	if !fm.finished || errors.Is(fm.finalErr, context.Canceled) {
 		ew := cmdutil.NewErrWriter(stderr)
 		ew.F("Detached — build is still running.\n")
-		ew.F("Use 'bitrise-cli build view %s' to check status.\n", b.Slug)
+		ew.F("Use 'bitrise-cli build watch %s' to resume streaming.\n", b.Slug)
 		return ew.Err
 	}
 	if fm.finalErr != nil {
@@ -115,7 +115,6 @@ type waitModel struct {
 	finalBuild internalbuild.Build
 	finalErr   error
 	finished   bool
-	verbose    bool
 	width      int
 	labelStyle lipgloss.Style
 	dimStyle   lipgloss.Style
@@ -127,7 +126,7 @@ type waitModel struct {
 // automatically when the terminal can't render truecolor.
 const bitrisePurple = lipgloss.Color("#7B61FF")
 
-func newWaitModel(b internalbuild.Build, verbose bool) waitModel {
+func newWaitModel(b internalbuild.Build) waitModel {
 	sp := spinner.New()
 	sp.Spinner = spinner.Dot
 	sp.Style = lipgloss.NewStyle().Foreground(bitrisePurple)
@@ -139,7 +138,6 @@ func newWaitModel(b internalbuild.Build, verbose bool) waitModel {
 		build:      b,
 		spinner:    sp,
 		startedAt:  started,
-		verbose:    verbose,
 		width:      80,
 		labelStyle: lipgloss.NewStyle().Bold(true),
 		dimStyle:   lipgloss.NewStyle().Foreground(lipgloss.Color("245")),
@@ -163,28 +161,25 @@ func (m waitModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	case logChunkMsg:
-		if m.verbose {
-			m.leftover += string(msg)
-			var cmds []tea.Cmd
-			for {
-				i := strings.IndexByte(m.leftover, '\n')
-				if i < 0 {
-					break
-				}
-				line := strings.TrimRight(m.leftover[:i], "\r")
-				m.leftover = m.leftover[i+1:]
-				cmds = append(cmds, tea.Println(line))
+		m.leftover += string(msg)
+		var cmds []tea.Cmd
+		for {
+			i := strings.IndexByte(m.leftover, '\n')
+			if i < 0 {
+				break
 			}
-			return m, tea.Batch(cmds...)
+			line := strings.TrimRight(m.leftover[:i], "\r")
+			m.leftover = m.leftover[i+1:]
+			cmds = append(cmds, tea.Println(line))
 		}
-		return m, nil
+		return m, tea.Batch(cmds...)
 
 	case watchDoneMsg:
 		m.finalBuild = msg.build
 		m.finalErr = msg.err
 		m.finished = true
 		var cmds []tea.Cmd
-		if m.verbose && m.leftover != "" {
+		if m.leftover != "" {
 			cmds = append(cmds, tea.Println(m.leftover))
 			m.leftover = ""
 		}
