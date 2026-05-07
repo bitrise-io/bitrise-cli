@@ -127,6 +127,25 @@ Pagination:
 	c.Flags().IntVar(&limit, "limit", 0, "max items per page (server default if 0)")
 	c.Flags().StringVar(&cursor, "cursor", "", "pagination cursor from a previous response")
 
+	_ = c.RegisterFlagCompletionFunc("status", func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
+		return []string{
+			"success\tbuild completed successfully",
+			"failed\tbuild failed",
+			"in-progress\tbuild is currently running",
+			"aborted\tbuild was aborted",
+			"aborted-with-success\tbuild was aborted but considered successful",
+		}, cobra.ShellCompDirectiveNoFileComp
+	})
+	_ = c.RegisterFlagCompletionFunc("sort-by", func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
+		return []string{
+			"created_at\tnewest builds first (default)",
+			"running_first\trunning builds appear before finished ones",
+		}, cobra.ShellCompDirectiveNoFileComp
+	})
+	_ = c.RegisterFlagCompletionFunc("trigger-event-type", func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
+		return []string{"push", "pull-request", "tag"}, cobra.ShellCompDirectiveNoFileComp
+	})
+
 	return c
 }
 

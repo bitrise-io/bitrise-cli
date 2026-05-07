@@ -24,7 +24,7 @@ Note:
   redirect to a file as needed.`,
 		Example: `  bitrise-cli build log --app my-app-slug stub-build-aaa
   bitrise-cli build log --app my-app-slug stub-build-aaa > build.log`,
-		Args: cobra.ExactArgs(1),
+		Args: cmdutil.RequireArgs("BUILD_SLUG"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			appSlug, err := cmdutil.ResolveAppSlug(cmd)
 			if err != nil {

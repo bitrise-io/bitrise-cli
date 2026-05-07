@@ -31,7 +31,7 @@ Note:
   --output is ignored — logs are always streamed as raw text.`,
 		Example: `  bitrise-cli build watch --app my-app-slug <build-slug>
   bitrise-cli build watch --app my-app-slug <build-slug> --interval 5s`,
-		Args: cobra.ExactArgs(1),
+		Args: cmdutil.RequireArgs("BUILD_SLUG"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			appSlug, err := cmdutil.ResolveAppSlug(cmd)
 			if err != nil {

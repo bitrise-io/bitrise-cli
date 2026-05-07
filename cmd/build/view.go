@@ -29,7 +29,7 @@ Flags:
 		Example: `  bitrise-cli build view --app my-app-slug stub-build-aaa
   bitrise-cli build view --app my-app-slug stub-build-aaa --output json
   bitrise-cli build view --app my-app-slug stub-build-aaa --web`,
-		Args: cobra.ExactArgs(1),
+		Args: cmdutil.RequireArgs("BUILD_SLUG"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			appSlug, err := cmdutil.ResolveAppSlug(cmd)
 			if err != nil {
