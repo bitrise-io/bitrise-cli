@@ -309,6 +309,38 @@ func (s *Service) Watch(ctx context.Context, appSlug, buildSlug string, w io.Wri
 	return s.View(ctx, appSlug, buildSlug)
 }
 
+// WaitForCompletion blocks until the build is no longer in-progress, polling
+// at the given interval. Returns the final Build. Ctrl-C (context
+// cancellation) returns context.Canceled; the build keeps running on Bitrise.
+func (s *Service) WaitForCompletion(ctx context.Context, appSlug, buildSlug string, interval time.Duration) (Build, error) {
+	if s.client == nil {
+		return Build{}, fmt.Errorf("API client not configured")
+	}
+	if appSlug == "" {
+		return Build{}, fmt.Errorf("app slug is required")
+	}
+	if buildSlug == "" {
+		return Build{}, fmt.Errorf("build slug is required")
+	}
+	if interval <= 0 {
+		interval = 5 * time.Second
+	}
+	for {
+		b, err := s.View(ctx, appSlug, buildSlug)
+		if err != nil {
+			return Build{}, err
+		}
+		if b.Status != "in-progress" {
+			return b, nil
+		}
+		select {
+		case <-ctx.Done():
+			return Build{}, ctx.Err()
+		case <-time.After(interval):
+		}
+	}
+}
+
 // Log streams the build log for the given build to w. For finished
 // builds the full archived log is streamed; for in-progress builds the
 // chunks available so far are written.
