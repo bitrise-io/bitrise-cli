@@ -95,6 +95,7 @@ func init() {
 	rootCmd.AddCommand(newAuthCmd())
 	rootCmd.AddCommand(newVersionCmd())
 	rootCmd.AddCommand(newStackCmd())
+	rootCmd.AddCommand(newPurrCmd())
 	rootCmd.AddCommand(cmdstep.NewCmd())
 	rootCmd.AddCommand(cmdyml.NewCmd())
 	rootCmd.InitDefaultCompletionCmd()
