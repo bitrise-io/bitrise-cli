@@ -114,10 +114,17 @@ func runPurr(ctx context.Context, in io.Reader, out io.Writer, once bool, durati
 	// than a signal) ends the animation. The blocking Read will outlive
 	// runPurr when the timer or ctx fires first; that's fine for a short-
 	// lived CLI invocation since the OS reaps the goroutine on exit.
+	//
+	// term.MakeRaw also disables ONLCR on the shared tty device, so plain
+	// "\n" stops carriage-returning — without compensation each redrawn
+	// line stair-steps to the right. We wrap the output in a tiny "\n →
+	// \r\n" translator for the duration of the animation; cursor escape
+	// codes don't contain newlines so they pass through untouched.
 	keyPress := make(chan struct{})
 	if fd, ok := readerTTYFd(in); ok {
 		if oldState, err := term.MakeRaw(fd); err == nil {
 			defer func() { _ = term.Restore(fd, oldState) }()
+			out = &crlfWriter{w: out}
 			go func() {
 				buf := make([]byte, 1)
 				_, _ = in.Read(buf)
@@ -184,6 +191,29 @@ func writerIsTTY(w io.Writer) bool {
 		return false
 	}
 	return term.IsTerminal(int(f.Fd())) //nolint:gosec // file descriptors are small ints, no overflow risk
+}
+
+// crlfWriter translates each "\n" byte in its input to "\r\n", forwarding
+// everything else unchanged. Used during the animation because raw-mode
+// stdin disables ONLCR on the shared tty, so the kernel no longer adds
+// the carriage-return for us. Bytes-from-p accounting matches the
+// io.Writer contract: a "\n" counts as 1 byte consumed even though 2
+// bytes were emitted to the underlying writer.
+type crlfWriter struct{ w io.Writer }
+
+func (c *crlfWriter) Write(p []byte) (int, error) {
+	for i, b := range p {
+		var chunk []byte
+		if b == '\n' {
+			chunk = []byte{'\r', '\n'}
+		} else {
+			chunk = p[i : i+1]
+		}
+		if _, err := c.w.Write(chunk); err != nil {
+			return i, err
+		}
+	}
+	return len(p), nil
 }
 
 // readerTTYFd returns the file descriptor of r if it is an *os.File pointing

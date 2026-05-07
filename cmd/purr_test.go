@@ -54,6 +54,35 @@ func TestPurr_StaticMessageHasNoANSIOnBuffer(t *testing.T) {
 	}
 }
 
+func TestCRLFWriter_TranslatesNewlines(t *testing.T) {
+	cases := []struct {
+		in, want string
+	}{
+		{"hello", "hello"},
+		{"line1\nline2", "line1\r\nline2"},
+		{"a\nb\nc", "a\r\nb\r\nc"},
+		{"\n\n", "\r\n\r\n"},
+		// Already-CRLF should NOT be doubled — \r passes through, then \n becomes \r\n.
+		{"a\r\nb", "a\r\r\nb"},
+		// Cursor escape codes don't contain \n, must pass through untouched.
+		{"\x1b[5Fhello", "\x1b[5Fhello"},
+	}
+	for _, c := range cases {
+		var buf bytes.Buffer
+		w := &crlfWriter{w: &buf}
+		n, err := w.Write([]byte(c.in))
+		if err != nil {
+			t.Fatalf("Write(%q): %v", c.in, err)
+		}
+		if n != len(c.in) {
+			t.Errorf("Write(%q) returned n=%d, want %d (per io.Writer contract)", c.in, n, len(c.in))
+		}
+		if got := buf.String(); got != c.want {
+			t.Errorf("Write(%q) → %q, want %q", c.in, got, c.want)
+		}
+	}
+}
+
 func TestReaderTTYFd_NonTerminalInputs(t *testing.T) {
 	// nil reader and non-File readers must report not-a-TTY so the
 	// keypress goroutine never tries to put a non-terminal into raw mode.
