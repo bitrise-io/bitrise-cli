@@ -13,9 +13,11 @@ package style
 import (
 	"fmt"
 	"io"
+	"math"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/lucasb-eyer/go-colorful"
 	"github.com/muesli/termenv"
 )
 
@@ -177,6 +179,60 @@ func (s Styles) BuildStatus(status string) lipgloss.Style {
 // tests and for skipping iconography on legacy terminals.
 func (s Styles) HasColor() bool {
 	return s.r.ColorProfile() != termenv.Ascii
+}
+
+// Rainbow returns msg with each visible rune colored along the HSV
+// spectrum. Whitespace stays unstyled. hueOffsetDeg shifts the start of
+// the spectrum (0-360); incrementing it across animation frames produces
+// a smooth shimmer. When color is disabled (--no-color, --theme=none, or
+// the writer isn't a TTY) the plain string is returned unchanged.
+func (s Styles) Rainbow(msg string, hueOffsetDeg float64) string {
+	if !s.HasColor() {
+		return msg
+	}
+	runes := []rune(msg)
+	visibleCount := 0
+	for _, r := range runes {
+		if !isWhitespace(r) {
+			visibleCount++
+		}
+	}
+	if visibleCount == 0 {
+		return msg
+	}
+
+	// Each non-whitespace rune gets a slice of the spectrum. Saturation
+	// 0.85 / value 0.95 keeps the colors bright on dark terminals while
+	// staying just-barely-readable on light ones; the rainbow theme
+	// trades perfect contrast for visible variety.
+	const sat, val = 0.85, 0.95
+
+	var b strings.Builder
+	b.Grow(len(msg) * 12) // ANSI per-rune envelope is ~10–15 bytes
+
+	visible := 0
+	for _, r := range runes {
+		if isWhitespace(r) {
+			b.WriteRune(r)
+			continue
+		}
+		h := math.Mod(hueOffsetDeg+360.0*float64(visible)/float64(visibleCount), 360.0)
+		if h < 0 {
+			h += 360
+		}
+		hex := colorful.Hsv(h, sat, val).Hex()
+		b.WriteString(s.r.NewStyle().Foreground(lipgloss.Color(hex)).Render(string(r)))
+		visible++
+	}
+	return b.String()
+}
+
+func isWhitespace(r rune) bool {
+	switch r {
+	case ' ', '\t', '\n', '\r':
+		return true
+	}
+	return false
 }
 
 // CellStyler renders a single cell content string. Only called for data rows

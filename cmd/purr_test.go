@@ -40,6 +40,19 @@ func TestPurr_OnceDoesntAnimate(t *testing.T) {
 	}
 }
 
+func TestPurr_StaticMessageHasNoANSIOnBuffer(t *testing.T) {
+	// Even with the rainbow effect, output to *bytes.Buffer must remain
+	// ANSI-free — that's the contract that keeps log files / pipes /
+	// JSON output clean.
+	var buf bytes.Buffer
+	if err := runPurr(t.Context(), &buf, true, time.Second, time.Millisecond); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(buf.String(), "\x1b[") {
+		t.Errorf("rainbow leaked ANSI into non-TTY output: %q", buf.String())
+	}
+}
+
 func TestPurrFrames_AllSameShape(t *testing.T) {
 	// Animation looks ugly if frames have different heights or the same
 	// content, so guard both invariants.

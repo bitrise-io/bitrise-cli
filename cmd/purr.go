@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"os/signal"
 	"strings"
@@ -11,6 +12,8 @@ import (
 
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
+
+	"github.com/bitrise-io/bitrise-cli/internal/output/style"
 )
 
 // purrFrames are the cat-mascot ASCII frames cycled by `bitrise-cli purr`.
@@ -78,13 +81,21 @@ always prints once and exits regardless of --once.`,
 	return c
 }
 
+// hueShiftPerFrame controls how fast the rainbow shimmer scrolls. 15° per
+// 250ms tick = one full spectrum every 6s, slow enough to read but fast
+// enough to be obviously alive.
+const hueShiftPerFrame = 15.0
+
 func runPurr(ctx context.Context, out io.Writer, once bool, duration, interval time.Duration) error {
-	// Static path: piped output, --once, or stdout isn't a TTY.
+	s := style.New(out)
+
+	// Static path: piped output, --once, or stdout isn't a TTY. Rainbow
+	// auto-degrades to plain text on non-color writers.
 	if once || !writerIsTTY(out) {
 		if _, err := fmt.Fprint(out, purrFrames[0]); err != nil {
 			return err
 		}
-		_, err := fmt.Fprintln(out, purrMessage)
+		_, err := fmt.Fprintln(out, s.Rainbow(purrMessage, 0))
 		return err
 	}
 
@@ -98,11 +109,13 @@ func runPurr(ctx context.Context, out io.Writer, once bool, duration, interval t
 	ctx, cancel := signal.NotifyContext(ctx, os.Interrupt)
 	defer cancel()
 
+	hue := 0.0
+
 	// Initial paint.
 	if _, err := fmt.Fprint(out, purrFrames[0]); err != nil {
 		return err
 	}
-	if _, err := fmt.Fprintln(out, purrMessage); err != nil {
+	if _, err := fmt.Fprintln(out, s.Rainbow(purrMessage, hue)); err != nil {
 		return err
 	}
 
@@ -124,8 +137,9 @@ func runPurr(ctx context.Context, out io.Writer, once bool, duration, interval t
 			return nil
 		case <-ticker.C:
 			frame = (frame + 1) % len(purrFrames)
+			hue = math.Mod(hue+hueShiftPerFrame, 360)
 			// Move cursor back to the top of the frame, clear everything below,
-			// and redraw the frame + message.
+			// and redraw the frame + the (newly hue-shifted) rainbow message.
 			if _, err := fmt.Fprintf(out, ansiCursorPrev, height); err != nil {
 				return err
 			}
@@ -135,7 +149,7 @@ func runPurr(ctx context.Context, out io.Writer, once bool, duration, interval t
 			if _, err := fmt.Fprint(out, purrFrames[frame]); err != nil {
 				return err
 			}
-			if _, err := fmt.Fprintln(out, purrMessage); err != nil {
+			if _, err := fmt.Fprintln(out, s.Rainbow(purrMessage, hue)); err != nil {
 				return err
 			}
 		}
