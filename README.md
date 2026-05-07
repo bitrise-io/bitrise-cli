@@ -17,6 +17,7 @@ A CLI tool to manage all Bitrise platform resources — CI, RM, RDE, and more �
 | Command | Description |
 |---|---|
 | `user create --email <a> --username <u>` | Sign up for a new account; click the email link, then run `auth login --email <a>` |
+| `user me` | Show the profile of the currently authenticated user |
 
 ### `app` — List, inspect, and manage apps (also: `project`)
 
@@ -37,6 +38,7 @@ A CLI tool to manage all Bitrise platform resources — CI, RM, RDE, and more �
 | `build log BUILD_SLUG` | Print the build log |
 | `build watch BUILD_SLUG` | Stream logs for a running build until it finishes |
 | `build abort BUILD_SLUG` | Abort a running or queued build |
+| `build yml BUILD_SLUG` | Print the bitrise.yml a specific build ran with (shortcut for `yml get --build`) |
 
 ### `config` — Manage CLI configuration (defaults persisted to a YAML file)
 

@@ -16,6 +16,6 @@ Today this surface is limited to account creation. After running
 'user create' you must click the link emailed to you, then run
 'bitrise-cli auth login --email <addr>' to mint and store an access token.`,
 	}
-	c.AddCommand(newCreateCmd())
+	c.AddCommand(newCreateCmd(), newMeCmd())
 	return c
 }
