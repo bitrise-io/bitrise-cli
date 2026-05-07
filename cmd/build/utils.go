@@ -88,7 +88,14 @@ func renderBuildText(w io.Writer, b internalbuild.Build) error {
 // It prints a header/footer to stderr and streams log content to logWriter.
 // For output.JSON format it renders the final build record as JSON to
 // cmd.OutOrStdout() instead of the text footer.
+//
+// In human format on an interactive terminal it switches to a TUI that
+// pins a spinner + status bar to the bottom and streams logs above it.
 func runWatch(cmd *cobra.Command, svc *internalbuild.Service, b internalbuild.Build, interval time.Duration, logWriter io.Writer, format output.Format) error {
+	if format == output.Human && stdoutIsTTY(cmd) {
+		return runWatchTUI(cmd, svc, b, interval)
+	}
+
 	stderr := cmd.ErrOrStderr()
 
 	headerEW := cmdutil.NewErrWriter(stderr)
