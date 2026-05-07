@@ -14,6 +14,7 @@ import (
 	cmdbuild "github.com/bitrise-io/bitrise-cli/cmd/build"
 	"github.com/bitrise-io/bitrise-cli/cmd/cmdutil"
 	cmdconfig "github.com/bitrise-io/bitrise-cli/cmd/config"
+	cmduser "github.com/bitrise-io/bitrise-cli/cmd/user"
 	"github.com/bitrise-io/bitrise-cli/internal/auth"
 	"github.com/bitrise-io/bitrise-cli/internal/config"
 	"github.com/bitrise-io/bitrise-cli/internal/output"
@@ -49,7 +50,8 @@ Configuration (precedence: flag > env > per-dir > global > built-in default):
   Global file:   $XDG_CONFIG_HOME/bitrise/config.yaml (or ~/.config/bitrise/config.yaml)
   Per-dir file:  .bitrise-cli.yml in the current directory or any ancestor
   Manage with:   bitrise-cli config set <key> <value>   (run "bitrise-cli config" for details)
-  Env overrides: BITRISE_TOKEN, BITRISE_APP_SLUG, BITRISE_OUTPUT, BITRISE_API_BASE_URL
+  Env overrides: BITRISE_TOKEN, BITRISE_APP_SLUG, BITRISE_OUTPUT,
+                 BITRISE_API_BASE_URL, BITRISE_WEB_BASE_URL
 
 Tip for automation / agents:
   Pass --output json on every command — or run "bitrise-cli config set output json"
@@ -76,6 +78,7 @@ func init() {
 	rootCmd.AddCommand(cmdbuild.NewCmd())
 	rootCmd.AddCommand(cmdapp.NewCmd())
 	rootCmd.AddCommand(cmdconfig.NewCmd())
+	rootCmd.AddCommand(cmduser.NewCmd())
 	rootCmd.AddCommand(newAuthCmd())
 	rootCmd.AddCommand(newVersionCmd())
 }

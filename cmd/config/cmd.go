@@ -33,14 +33,15 @@ Recognized keys:
   %s
 
 Environment overrides for the same values:
-  %s, %s, %s, %s
+  %s, %s, %s, %s, %s
 
 Note: 'set'/'unset' modify only the global file. Per-directory files must be
 edited by hand.
 
 To manage your access token, use 'bitrise-cli auth login/logout/status'.`,
 			strings.Join(internalconfig.Keys, ", "),
-			internalconfig.EnvOutput, internalconfig.EnvAppSlug, internalconfig.EnvToken, internalconfig.EnvAPIBaseURL,
+			internalconfig.EnvOutput, internalconfig.EnvAppSlug, internalconfig.EnvToken,
+			internalconfig.EnvAPIBaseURL, internalconfig.EnvWebBaseURL,
 		),
 	}
 	c.AddCommand(
@@ -73,6 +74,7 @@ type configList struct {
 	Output     string `json:"output,omitempty"`
 	AppSlug    string `json:"app_slug,omitempty"`
 	APIBaseURL string `json:"api_base_url,omitempty"`
+	WebBaseURL string `json:"web_base_url,omitempty"`
 	Path       string `json:"path"`
 }
 
@@ -98,6 +100,7 @@ to other bitrise-cli commands.`,
 				Output:     cfg.Output,
 				AppSlug:    cfg.AppSlug,
 				APIBaseURL: cfg.APIBaseURL,
+				WebBaseURL: cfg.WebBaseURL,
 				Path:       p,
 			}
 			return output.Render(cmd.OutOrStdout(), cmdutil.ResolveFormat(cmd), v, renderListHuman)
@@ -121,6 +124,7 @@ func renderListHuman(w io.Writer, v configList) error {
 	ew.F("%s%s\n", lbl(internalconfig.KeyOutput+":"), value(v.Output))
 	ew.F("%s%s\n", lbl(internalconfig.KeyAppSlug+":"), value(v.AppSlug))
 	ew.F("%s%s\n", lbl(internalconfig.KeyAPIBaseURL+":"), value(v.APIBaseURL))
+	ew.F("%s%s\n", lbl(internalconfig.KeyWebBaseURL+":"), value(v.WebBaseURL))
 	return ew.Err
 }
 
@@ -158,7 +162,8 @@ func newSetCmd() *cobra.Command {
 Valid keys: %s
 
 The value is validated before being saved (e.g. "output" must be human or json,
-"api_base_url" must be a valid URL). The file is written with 0600 permissions.
+"api_base_url" and "web_base_url" must be valid URLs). The file is written with
+0600 permissions.
 
 If VALUE is "-", the value is read from stdin (trailing newline trimmed).`,
 			strings.Join(internalconfig.Keys, ", "),

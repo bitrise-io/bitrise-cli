@@ -8,9 +8,15 @@ A CLI tool to manage all Bitrise platform resources — CI, RM, RDE, and more �
 
 | Command | Description |
 |---|---|
-| `auth login` | Save a Bitrise access token |
+| `auth login` | Save a Bitrise access token (paste a PAT, or `--email <addr>` to sign in and mint one) |
 | `auth logout` | Remove the saved access token |
 | `auth status` | Show whether an access token is configured and where it came from |
+
+### `user` — Create and manage your Bitrise account
+
+| Command | Description |
+|---|---|
+| `user create --email <a> --username <u>` | Sign up for a new account; click the email link, then run `auth login --email <a>` |
 
 ### `app` — List, inspect, and manage apps (also: `project`)
 

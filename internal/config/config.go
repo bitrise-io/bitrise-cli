@@ -28,10 +28,11 @@ const (
 	KeyOutput     = "output"
 	KeyAppSlug    = "app_slug"
 	KeyAPIBaseURL = "api_base_url"
+	KeyWebBaseURL = "web_base_url"
 )
 
 // Keys is the registered list of config keys, used for validation and help.
-var Keys = []string{KeyOutput, KeyAppSlug, KeyAPIBaseURL}
+var Keys = []string{KeyOutput, KeyAppSlug, KeyAPIBaseURL, KeyWebBaseURL}
 
 // Config is the on-disk shape. Fields use omitempty so unset values
 // don't appear in the saved YAML.
@@ -39,6 +40,7 @@ type Config struct {
 	Output     string `yaml:"output,omitempty"`
 	AppSlug    string `yaml:"app_slug,omitempty"`
 	APIBaseURL string `yaml:"api_base_url,omitempty"`
+	WebBaseURL string `yaml:"web_base_url,omitempty"`
 }
 
 // DirFileName is the file looked up in the working directory and its
@@ -162,6 +164,12 @@ func (c *Config) Validate() error {
 			return fmt.Errorf("field %q: not a valid URL: %s", KeyAPIBaseURL, c.APIBaseURL)
 		}
 	}
+	if c.WebBaseURL != "" {
+		u, err := url.Parse(c.WebBaseURL)
+		if err != nil || u.Scheme == "" || u.Host == "" {
+			return fmt.Errorf("field %q: not a valid URL: %s", KeyWebBaseURL, c.WebBaseURL)
+		}
+	}
 	return nil
 }
 
@@ -174,6 +182,8 @@ func (c *Config) Get(key string) (string, error) {
 		return c.AppSlug, nil
 	case KeyAPIBaseURL:
 		return c.APIBaseURL, nil
+	case KeyWebBaseURL:
+		return c.WebBaseURL, nil
 	default:
 		return "", unknownKeyErr(key)
 	}
@@ -190,6 +200,8 @@ func (c *Config) Set(key, value string) error {
 		next.AppSlug = value
 	case KeyAPIBaseURL:
 		next.APIBaseURL = value
+	case KeyWebBaseURL:
+		next.WebBaseURL = value
 	default:
 		return unknownKeyErr(key)
 	}

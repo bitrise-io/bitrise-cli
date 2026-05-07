@@ -1,20 +1,19 @@
 package cmd
 
 import (
-	"bufio"
 	"fmt"
 	"io"
 	"os"
-	"strings"
 
 	"github.com/spf13/cobra"
-	"golang.org/x/term"
 
 	"github.com/bitrise-io/bitrise-cli/cmd/cmdutil"
 	"github.com/bitrise-io/bitrise-cli/internal/auth"
 	"github.com/bitrise-io/bitrise-cli/internal/config"
 	"github.com/bitrise-io/bitrise-cli/internal/output"
 	"github.com/bitrise-io/bitrise-cli/internal/output/style"
+	internaluser "github.com/bitrise-io/bitrise-cli/internal/user"
+	"github.com/bitrise-io/bitrise-cli/internal/webclient"
 )
 
 // newAuthCmd returns the `bitrise-cli auth` parent command and its subcommands.
@@ -48,44 +47,109 @@ Env override:
 }
 
 func newAuthLoginCmd() *cobra.Command {
-	var withToken bool
+	var (
+		withToken     bool
+		emailLogin    string
+		passwordStdin bool
+	)
 	c := &cobra.Command{
 		Use:   "login",
 		Short: "Save a Bitrise access token",
 		Long: `Save a Bitrise access token for future commands to use.
 
-By default the command prompts for the token (input is masked when stdin
-is a terminal). Use --with-token to read the token from stdin without a
-prompt — the right choice for piping or scripts:
+There are two modes:
 
+  1. Token paste (default).
+     Prompts for a Personal Access Token (or pipes one in with --with-token).
+     The token is masked when stdin is a terminal:
+
+         bitrise-cli auth login
+         echo "$BITRISE_TOKEN" | bitrise-cli auth login --with-token
+
+  2. Email and password (--email).
+     Signs in to app.bitrise.io with your account credentials, then asks the
+     server to mint a fresh Personal Access Token and stores it. The cookie
+     session used to mint the token is dropped immediately. Your account
+     must have its email verified — run 'bitrise-cli user create' first if
+     you don't yet have an account:
+
+         bitrise-cli auth login --email alice@example.com
+         printf '%s' "$PW" | bitrise-cli auth login --email alice@example.com --password-stdin
+
+Either way the resulting token is written to
+$XDG_CONFIG_HOME/bitrise/auth.yaml with 0600 permissions. The token is NOT
+echoed in any output (use 'auth status' to verify, 'auth logout' to clear).`,
+		Example: `  bitrise-cli auth login                                       # interactive token prompt
   echo "$BITRISE_TOKEN" | bitrise-cli auth login --with-token
-
-The token is written to $XDG_CONFIG_HOME/bitrise/auth.yaml with 0600
-permissions. The token is NOT echoed in any output (use 'auth status' to
-verify, 'auth logout' to clear).`,
-		Example: `  bitrise-cli auth login                                # interactive prompt
-  echo "$BITRISE_TOKEN" | bitrise-cli auth login --with-token`,
+  bitrise-cli auth login --email alice@example.com             # interactive password prompt
+  printf '%s' "$PW" | bitrise-cli auth login --email alice@example.com --password-stdin`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			tok, err := readTokenInput(cmd.InOrStdin(), cmd.ErrOrStderr(), withToken)
-			if err != nil {
-				return err
+			if emailLogin != "" {
+				return runEmailLogin(cmd, emailLogin, passwordStdin)
 			}
-			if tok == "" {
-				return fmt.Errorf("token is empty")
-			}
-			if err := auth.Save(auth.Auth{Token: tok}); err != nil {
-				return err
-			}
-			if !quiet {
-				if _, err := fmt.Fprintln(cmd.ErrOrStderr(), "Saved access token"); err != nil {
-					return err
-				}
-			}
-			return nil
+			return runTokenLogin(cmd, withToken)
 		},
 	}
 	c.Flags().BoolVar(&withToken, "with-token", false, "read token from stdin without an interactive prompt")
+	c.Flags().StringVar(&emailLogin, "email", "", "sign in by email/password and mint a Personal Access Token")
+	c.Flags().BoolVar(&passwordStdin, "password-stdin", false, "with --email, read the password from stdin without prompting")
+	c.MarkFlagsMutuallyExclusive("with-token", "email")
+	c.MarkFlagsMutuallyExclusive("with-token", "password-stdin")
 	return c
+}
+
+func runTokenLogin(cmd *cobra.Command, withToken bool) error {
+	tok, err := cmdutil.ReadSecretInput(cmd.InOrStdin(), cmd.ErrOrStderr(), "Paste your Bitrise token: ", withToken)
+	if err != nil {
+		return err
+	}
+	if tok == "" {
+		return fmt.Errorf("token is empty")
+	}
+	if err := auth.Save(auth.Auth{Token: tok}); err != nil {
+		return err
+	}
+	if !quiet {
+		if _, err := fmt.Fprintln(cmd.ErrOrStderr(), "Saved access token"); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func runEmailLogin(cmd *cobra.Command, email string, passwordStdin bool) error {
+	pw, err := cmdutil.ReadSecretInput(cmd.InOrStdin(), cmd.ErrOrStderr(), "Password: ", passwordStdin)
+	if err != nil {
+		return err
+	}
+	if pw == "" {
+		return fmt.Errorf("password is empty")
+	}
+	wc, err := webclient.New(cmdutil.ResolveWebBaseURL(cmd))
+	if err != nil {
+		return err
+	}
+	host, _ := os.Hostname()
+	if host == "" {
+		host = "unknown-host"
+	}
+	svc := internaluser.NewService(wc)
+	tok, err := svc.Login(cmd.Context(), internaluser.LoginInput{Login: email, Password: pw}, fmt.Sprintf("bitrise-cli (%s)", host))
+	if err != nil {
+		if internaluser.IsUnconfirmedEmailErr(err) {
+			return fmt.Errorf("this account hasn't verified its email yet — click the link in the confirmation email, then re-run")
+		}
+		return err
+	}
+	if err := auth.Save(auth.Auth{Token: tok}); err != nil {
+		return err
+	}
+	if !quiet {
+		if _, err := fmt.Fprintln(cmd.ErrOrStderr(), "Saved access token"); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func newAuthLogoutCmd() *cobra.Command {
@@ -181,34 +245,4 @@ func renderAuthStatusHuman(w io.Writer, st authStatus) error {
 	ew.F("%s%s\n", lbl("Source:"), st.Source)
 	ew.F("%s%s\n", lbl("Path:"), s.Dim.Render(st.Path))
 	return ew.Err
-}
-
-// readTokenInput reads a token via interactive masked prompt or directly
-// from stdin. When stdin is not a TTY (piped/redirected) it always reads
-// without prompting, regardless of withToken.
-func readTokenInput(in io.Reader, stderr io.Writer, withToken bool) (string, error) {
-	if !withToken {
-		if f, ok := in.(*os.File); ok {
-			fd := int(f.Fd()) //nolint:gosec // file descriptors are small ints, no overflow risk
-			if term.IsTerminal(fd) {
-				if _, err := fmt.Fprint(stderr, "Paste your Bitrise token: "); err != nil {
-					return "", err
-				}
-				b, err := term.ReadPassword(fd)
-				if _, perr := fmt.Fprintln(stderr); perr != nil { // newline after no-echo input
-					return "", perr
-				}
-				if err != nil {
-					return "", err
-				}
-				return strings.TrimSpace(string(b)), nil
-			}
-		}
-	}
-	// Either --with-token was passed, or stdin isn't a TTY: just read a line.
-	s, err := bufio.NewReader(in).ReadString('\n')
-	if err != nil && err != io.EOF {
-		return "", err
-	}
-	return strings.TrimSpace(s), nil
 }
