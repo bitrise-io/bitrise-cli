@@ -14,10 +14,16 @@ const (
 	EnvAppSlug    = "BITRISE_APP_SLUG"
 	EnvOutput     = "BITRISE_OUTPUT"
 	EnvAPIBaseURL = "BITRISE_API_BASE_URL"
+	EnvWebBaseURL = "BITRISE_WEB_BASE_URL"
 )
 
 // DefaultAPIBaseURL is the production Bitrise API base URL.
 const DefaultAPIBaseURL = "https://api.bitrise.io/v0.1"
+
+// DefaultWebBaseURL is the production Bitrise web app base URL.
+// Used by `user create` and `auth login --email` to drive the website's
+// signup and sign-in JSON endpoints.
+const DefaultWebBaseURL = "https://app.bitrise.io"
 
 // Resolved is the merged settings the cmd layer reads on every invocation.
 //
@@ -36,6 +42,7 @@ type Resolved struct {
 	AppSlug    string
 	Token      string
 	APIBaseURL string
+	WebBaseURL string
 }
 
 // Resolve merges global config, per-directory config, the auth file, and
@@ -57,6 +64,7 @@ func Resolve(globalCfg, dirCfg Config, authData auth.Auth, flagOutput string) (R
 
 	r.AppSlug = firstNonEmpty(os.Getenv(EnvAppSlug), dirCfg.AppSlug, globalCfg.AppSlug)
 	r.APIBaseURL = firstNonEmpty(os.Getenv(EnvAPIBaseURL), dirCfg.APIBaseURL, globalCfg.APIBaseURL, DefaultAPIBaseURL)
+	r.WebBaseURL = firstNonEmpty(os.Getenv(EnvWebBaseURL), dirCfg.WebBaseURL, globalCfg.WebBaseURL, DefaultWebBaseURL)
 	r.Token = firstNonEmpty(os.Getenv(EnvToken), authData.Token)
 
 	return r, nil

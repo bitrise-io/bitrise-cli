@@ -2,13 +2,16 @@
 package cmdutil
 
 import (
+	"bufio"
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"strings"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
+	"golang.org/x/term"
 
 	"github.com/bitrise-io/bitrise-cli/bitriseapi"
 	"github.com/bitrise-io/bitrise-cli/internal/config"
@@ -31,6 +34,17 @@ func IsQuiet(cmd *cobra.Command) bool {
 // ResolveFormat returns the resolved output format from context.
 func ResolveFormat(cmd *cobra.Command) output.Format {
 	return config.FromContext(cmd.Context()).Output
+}
+
+// ResolveWebBaseURL returns the resolved web base URL (https://app.bitrise.io
+// in normal use, overridable via BITRISE_WEB_BASE_URL or the web_base_url
+// config key). Used by user-creation and email/password login commands that
+// talk to the website's JSON endpoints.
+func ResolveWebBaseURL(cmd *cobra.Command) string {
+	if u := config.FromContext(cmd.Context()).WebBaseURL; u != "" {
+		return u
+	}
+	return config.DefaultWebBaseURL
 }
 
 // ResolveAppSlug returns the app slug, preferring --app then Resolved.
@@ -120,6 +134,37 @@ func SilenceRootErrors(cmd *cobra.Command) {
 	if root := cmd.Root(); root != nil {
 		root.SilenceErrors = true
 	}
+}
+
+// ReadSecretInput reads a secret (token, password) from in. When fromStdin
+// is true, or when in is not a terminal, it reads a single line directly.
+// Otherwise it prints prompt to stderr, reads a masked line, and writes a
+// trailing newline. The trimmed value is returned with surrounding
+// whitespace removed.
+func ReadSecretInput(in io.Reader, stderr io.Writer, prompt string, fromStdin bool) (string, error) {
+	if !fromStdin {
+		if f, ok := in.(*os.File); ok {
+			fd := int(f.Fd()) //nolint:gosec // file descriptors are small ints, no overflow risk
+			if term.IsTerminal(fd) {
+				if _, err := fmt.Fprint(stderr, prompt); err != nil {
+					return "", err
+				}
+				b, err := term.ReadPassword(fd)
+				if _, perr := fmt.Fprintln(stderr); perr != nil { // newline after no-echo input
+					return "", perr
+				}
+				if err != nil {
+					return "", err
+				}
+				return strings.TrimSpace(string(b)), nil
+			}
+		}
+	}
+	s, err := bufio.NewReader(in).ReadString('\n')
+	if err != nil && err != io.EOF {
+		return "", err
+	}
+	return strings.TrimSpace(s), nil
 }
 
 // RequireArgs returns an Args validator that names exactly which positional
