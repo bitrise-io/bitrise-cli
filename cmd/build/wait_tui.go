@@ -245,5 +245,5 @@ func elapsedTick() tea.Cmd {
 	return tea.Tick(time.Second, func(t time.Time) tea.Msg { return tickMsg(t) })
 }
 
-// ensure io.Writer interface
+// ensure io.Writer interface.
 var _ io.Writer = (*teaLogWriter)(nil)
