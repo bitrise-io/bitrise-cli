@@ -321,6 +321,52 @@ func (s *Service) Log(ctx context.Context, appSlug, buildSlug string, w io.Write
 	return err
 }
 
+// AbortRequest describes a build-abort operation.
+type AbortRequest struct {
+	AppSlug             string
+	BuildSlug           string
+	Reason              string
+	AbortWithSuccess    bool
+	SkipGitStatusReport bool
+	SkipNotifications   bool
+}
+
+// AbortResult is the CLI-facing result of aborting a build.
+// JSON tags define the stable --output json contract.
+type AbortResult struct {
+	AppSlug   string `json:"app_slug"`
+	BuildSlug string `json:"build_slug"`
+	Status    string `json:"status"`
+}
+
+// Abort stops a running or queued build.
+// Endpoint: POST /apps/{app-slug}/builds/{build-slug}/abort.
+func (s *Service) Abort(ctx context.Context, req AbortRequest) (AbortResult, error) {
+	if s.client == nil {
+		return AbortResult{}, fmt.Errorf("API client not configured")
+	}
+	if req.AppSlug == "" {
+		return AbortResult{}, fmt.Errorf("app slug is required")
+	}
+	if req.BuildSlug == "" {
+		return AbortResult{}, fmt.Errorf("build slug is required")
+	}
+	resp, err := s.client.AbortBuild(ctx, req.AppSlug, req.BuildSlug, bitriseapi.BuildAbortParams{
+		AbortReason:         req.Reason,
+		AbortWithSuccess:    req.AbortWithSuccess,
+		SkipGitStatusReport: req.SkipGitStatusReport,
+		SkipNotifications:   req.SkipNotifications,
+	})
+	if err != nil {
+		return AbortResult{}, err
+	}
+	return AbortResult{
+		AppSlug:   req.AppSlug,
+		BuildSlug: req.BuildSlug,
+		Status:    resp.Status,
+	}, nil
+}
+
 // fromAPI maps a bitriseapi.Build (wire shape) into the CLI's Build type.
 // appSlug is taken from the request context because the API response
 // doesn't echo it back.

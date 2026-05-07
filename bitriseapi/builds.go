@@ -192,6 +192,26 @@ func (c *Client) TriggerBuild(ctx context.Context, appSlug string, params BuildT
 	return postDecode[BuildTriggerParams, BuildTriggerResp](ctx, c, "/apps/"+appSlug+"/builds", params)
 }
 
+// BuildAbortParams is the JSON body for POST /apps/{slug}/builds/{slug}/abort.
+type BuildAbortParams struct {
+	AbortReason         string `json:"abort_reason,omitempty"`
+	AbortWithSuccess    bool   `json:"abort_with_success,omitempty"`
+	SkipGitStatusReport bool   `json:"skip_git_status_report,omitempty"`
+	SkipNotifications   bool   `json:"skip_notifications,omitempty"`
+}
+
+// BuildAbortResp is the response from POST /apps/{slug}/builds/{slug}/abort.
+// The API returns {"status": "ok"} on success.
+type BuildAbortResp struct {
+	Status string `json:"status"`
+}
+
+// AbortBuild stops a running or queued build.
+// Endpoint: POST /apps/{app-slug}/builds/{build-slug}/abort.
+func (c *Client) AbortBuild(ctx context.Context, appSlug, buildSlug string, params BuildAbortParams) (BuildAbortResp, error) {
+	return postDecode[BuildAbortParams, BuildAbortResp](ctx, c, "/apps/"+appSlug+"/builds/"+buildSlug+"/abort", params)
+}
+
 // BuildLogResponse is the JSON returned by GET /apps/{slug}/builds/{slug}/log.
 //
 // Behavior depends on whether the build is finished:

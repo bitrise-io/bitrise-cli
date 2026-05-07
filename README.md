@@ -35,6 +35,7 @@ A CLI tool to manage all Bitrise platform resources — CI, RM, RDE, and more �
 | `build trigger --wait` | Start a new build and stream logs until it finishes |
 | `build log BUILD_SLUG` | Print the build log |
 | `build watch BUILD_SLUG` | Stream logs for a running build until it finishes |
+| `build abort BUILD_SLUG` | Abort a running or queued build |
 
 ### `config` — Manage CLI configuration (defaults persisted to a YAML file)
 

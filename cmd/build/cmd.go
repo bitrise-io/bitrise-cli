@@ -27,6 +27,7 @@ func NewCmd() *cobra.Command {
 		newViewCmd(),
 		newLogCmd(),
 		newWatchCmd(),
+		newAbortCmd(),
 	)
 	return c
 }
