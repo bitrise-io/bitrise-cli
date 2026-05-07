@@ -54,6 +54,34 @@ func TestConfigure_ThemeNoneForcesAscii(t *testing.T) {
 	}
 }
 
+func TestRainbow_NoColorReturnsPlain(t *testing.T) {
+	// On a non-TTY writer there's no color profile, so Rainbow must be
+	// a no-op: same string, no ANSI bytes.
+	var buf bytes.Buffer
+	s := New(&buf)
+	const msg = "Hello, world!"
+	got := s.Rainbow(msg, 0)
+	if got != msg {
+		t.Errorf("Rainbow on non-TTY = %q, want plain %q", got, msg)
+	}
+	if hasANSI(got) {
+		t.Errorf("Rainbow on non-TTY emitted ANSI: %q", got)
+	}
+}
+
+func TestRainbow_EmptyAndWhitespaceOnly(t *testing.T) {
+	t.Cleanup(func() { Configure(false, ThemeAuto) })
+	Configure(false, ThemeDark) // force a color profile
+	var buf bytes.Buffer
+	s := New(&buf)
+	if got := s.Rainbow("", 0); got != "" {
+		t.Errorf("empty: got %q, want empty", got)
+	}
+	if got := s.Rainbow("   ", 0); got != "   " {
+		t.Errorf("whitespace-only: got %q, want %q", got, "   ")
+	}
+}
+
 func TestParseTheme(t *testing.T) {
 	cases := []struct {
 		in      string
