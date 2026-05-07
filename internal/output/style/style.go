@@ -6,17 +6,53 @@
 // scoped to that writer's color profile, so non-TTY writers (pipes,
 // tests using *bytes.Buffer) automatically produce ANSI-free output.
 // NO_COLOR and FORCE_COLOR are honored automatically by the underlying
-// termenv detection. The Configure function adds an explicit override
-// for the --no-color flag.
+// termenv detection. The Configure function adds explicit overrides for
+// the --no-color and --theme flags.
 package style
 
 import (
+	"fmt"
 	"io"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/muesli/termenv"
 )
+
+// Theme controls which side of the AdaptiveColor pairs is selected when
+// the renderer is asked for a color. Auto leaves the choice to lipgloss
+// (which queries the terminal background via OSC 11). Dark/Light force
+// the corresponding side. None disables ANSI altogether — handy for
+// terminals where neither preset looks right.
+type Theme string
+
+const (
+	ThemeAuto  Theme = "auto"
+	ThemeDark  Theme = "dark"
+	ThemeLight Theme = "light"
+	ThemeNone  Theme = "none"
+)
+
+// Themes is the registered list of theme values, used for validation,
+// help text, and shell completion.
+var Themes = []string{string(ThemeAuto), string(ThemeDark), string(ThemeLight), string(ThemeNone)}
+
+// ParseTheme validates a user-supplied --theme value. Empty resolves to
+// Auto so callers can pass cmd flag values directly.
+func ParseTheme(s string) (Theme, error) {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case "", string(ThemeAuto):
+		return ThemeAuto, nil
+	case string(ThemeDark):
+		return ThemeDark, nil
+	case string(ThemeLight):
+		return ThemeLight, nil
+	case string(ThemeNone):
+		return ThemeNone, nil
+	default:
+		return "", fmt.Errorf("unknown theme %q (expected: %s)", s, strings.Join(Themes, ", "))
+	}
+}
 
 // 256-color palette, paired by terminal background brightness.
 //
@@ -43,15 +79,21 @@ var (
 	warnColor    = lipgloss.AdaptiveColor{Light: "136", Dark: "220"} // yellow / olive
 )
 
-// forceNoColor is set by Configure when the --no-color flag is passed.
-// It overrides termenv's auto-detection on every renderer constructed
-// after Configure runs.
-var forceNoColor bool
+// forceNoColor and forcedTheme are set by Configure. They override the
+// renderer's auto-detection on every Styles bundle constructed after
+// Configure runs. Concurrent New() calls during a single command run see
+// a stable value because Configure is invoked once in persistentPreRun
+// before any subcommand's RunE is called.
+var (
+	forceNoColor bool
+	forcedTheme  = ThemeAuto
+)
 
 // Configure applies process-wide style settings. Call once from the cmd
-// layer's persistentPreRun, after parsing the --no-color flag.
-func Configure(noColor bool) {
+// layer's persistentPreRun, after parsing the --no-color and --theme flags.
+func Configure(noColor bool, theme Theme) {
 	forceNoColor = noColor
+	forcedTheme = theme
 }
 
 // Styles bundles the semantic styles used across human renderers. It is
@@ -78,12 +120,21 @@ type Styles struct {
 }
 
 // New returns a Styles bundle for the given writer. ANSI escape codes
-// are emitted only if the writer is detected as a color-capable TTY and
-// --no-color is not in effect.
+// are emitted only if the writer is detected as a color-capable TTY,
+// --no-color is not in effect, and --theme is not "none". The theme
+// (when not Auto) overrides the renderer's auto-detected light/dark
+// background, forcing AdaptiveColor pairs to pick the requested side.
 func New(w io.Writer) Styles {
 	r := lipgloss.NewRenderer(w)
-	if forceNoColor {
+	if forceNoColor || forcedTheme == ThemeNone {
 		r.SetColorProfile(termenv.Ascii)
+	} else {
+		switch forcedTheme {
+		case ThemeDark:
+			r.SetHasDarkBackground(true)
+		case ThemeLight:
+			r.SetHasDarkBackground(false)
+		}
 	}
 	return Styles{
 		r:                r,

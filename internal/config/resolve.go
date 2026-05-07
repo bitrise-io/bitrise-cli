@@ -6,6 +6,7 @@ import (
 
 	"github.com/bitrise-io/bitrise-cli/internal/auth"
 	"github.com/bitrise-io/bitrise-cli/internal/output"
+	"github.com/bitrise-io/bitrise-cli/internal/output/style"
 )
 
 // Environment variables that override config-file values.
@@ -15,6 +16,7 @@ const (
 	EnvOutput     = "BITRISE_OUTPUT"
 	EnvAPIBaseURL = "BITRISE_API_BASE_URL"
 	EnvWebBaseURL = "BITRISE_WEB_BASE_URL"
+	EnvTheme      = "BITRISE_THEME"
 )
 
 // DefaultAPIBaseURL is the production Bitrise API base URL.
@@ -43,13 +45,14 @@ type Resolved struct {
 	Token      string
 	APIBaseURL string
 	WebBaseURL string
+	Theme      style.Theme
 }
 
 // Resolve merges global config, per-directory config, the auth file, and
-// environment variables with the persistent --output flag value. flagOutput
-// may be empty when unset. dirCfg / authData are zero values when their
-// respective files were not found.
-func Resolve(globalCfg, dirCfg Config, authData auth.Auth, flagOutput string) (Resolved, error) {
+// environment variables with the persistent --output / --theme flag values.
+// flagOutput / flagTheme may be empty when unset. dirCfg / authData are zero
+// values when their respective files were not found.
+func Resolve(globalCfg, dirCfg Config, authData auth.Auth, flagOutput, flagTheme string) (Resolved, error) {
 	var r Resolved
 
 	rawOutput := flagOutput
@@ -61,6 +64,16 @@ func Resolve(globalCfg, dirCfg Config, authData auth.Auth, flagOutput string) (R
 		return Resolved{}, err
 	}
 	r.Output = f
+
+	rawTheme := flagTheme
+	if rawTheme == "" {
+		rawTheme = firstNonEmpty(os.Getenv(EnvTheme), dirCfg.Theme, globalCfg.Theme)
+	}
+	t, err := style.ParseTheme(rawTheme)
+	if err != nil {
+		return Resolved{}, err
+	}
+	r.Theme = t
 
 	r.AppSlug = firstNonEmpty(os.Getenv(EnvAppSlug), dirCfg.AppSlug, globalCfg.AppSlug)
 	r.APIBaseURL = firstNonEmpty(os.Getenv(EnvAPIBaseURL), dirCfg.APIBaseURL, globalCfg.APIBaseURL, DefaultAPIBaseURL)

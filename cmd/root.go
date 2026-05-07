@@ -30,6 +30,10 @@ var quiet bool
 // this flag is the explicit override surfaced in --help.
 var noColor bool
 
+// theme is the raw --theme flag value (empty when unset). Resolved into
+// a typed style.Theme by config.Resolve, then applied via style.Configure.
+var theme string
+
 var rootCmd = &cobra.Command{
 	Use:     "bitrise-cli",
 	Short:   "Bitrise platform CLI",
@@ -51,7 +55,13 @@ Configuration (precedence: flag > env > per-dir > global > built-in default):
   Per-dir file:  .bitrise-cli.yml in the current directory or any ancestor
   Manage with:   bitrise-cli config set <key> <value>   (run "bitrise-cli config" for details)
   Env overrides: BITRISE_TOKEN, BITRISE_APP_SLUG, BITRISE_OUTPUT,
-                 BITRISE_API_BASE_URL, BITRISE_WEB_BASE_URL
+                 BITRISE_API_BASE_URL, BITRISE_WEB_BASE_URL, BITRISE_THEME
+
+Color theme:
+  --theme auto    detect terminal background via OSC 11 (default)
+  --theme dark    force the dark-mode palette
+  --theme light   force the light-mode palette (use on white-bg terminals)
+  --theme none    disable ANSI colors entirely (same as --no-color)
 
 Tip for automation / agents:
   Pass --output json on every command — or run "bitrise-cli config set output json"
@@ -73,6 +83,7 @@ func init() {
 	rootCmd.PersistentFlags().StringP(cmdutil.FlagOutput, "o", "", `output format: human|json (default "human")`)
 	rootCmd.PersistentFlags().BoolVarP(&quiet, cmdutil.FlagQuiet, "q", false, "suppress non-error diagnostic messages")
 	rootCmd.PersistentFlags().BoolVar(&noColor, "no-color", false, "disable ANSI colors (NO_COLOR env is also honored)")
+	rootCmd.PersistentFlags().StringVar(&theme, cmdutil.FlagTheme, "", `color theme: auto|dark|light|none (default "auto"; overrides terminal background detection)`)
 	rootCmd.SetFlagErrorFunc(flagErrorFunc)
 	rootCmd.SetHelpCommand(&cobra.Command{Hidden: true})
 	rootCmd.AddCommand(cmdbuild.NewCmd())
@@ -85,18 +96,28 @@ func init() {
 	if err := rootCmd.RegisterFlagCompletionFunc(cmdutil.FlagOutput, completeOutputFlag); err != nil {
 		panic(err)
 	}
+	if err := rootCmd.RegisterFlagCompletionFunc(cmdutil.FlagTheme, completeThemeFlag); err != nil {
+		panic(err)
+	}
 }
 
 func completeOutputFlag(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
 	return []string{"human\thuman-readable tables and key/value lines", "json\tmachine-readable JSON"}, cobra.ShellCompDirectiveNoFileComp
 }
 
+func completeThemeFlag(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
+	return []string{
+		"auto\tdetect terminal background (default)",
+		"dark\tcolors tuned for dark backgrounds",
+		"light\tcolors tuned for light backgrounds",
+		"none\tdisable ANSI colors entirely",
+	}, cobra.ShellCompDirectiveNoFileComp
+}
+
 // persistentPreRun loads global config, per-directory config, and auth.yaml,
 // merges them with env + flags, and stores the Resolved settings on
 // cmd.Context() so subcommand handlers can read them.
 func persistentPreRun(cmd *cobra.Command, _ []string) error {
-	style.Configure(noColor)
-
 	globalCfg, err := config.Load()
 	if err != nil {
 		return err
@@ -110,10 +131,15 @@ func persistentPreRun(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 	flagOut, _ := cmd.Flags().GetString(cmdutil.FlagOutput)
-	r, err := config.Resolve(globalCfg, dirCfg, authData, flagOut)
+	flagTheme, _ := cmd.Flags().GetString(cmdutil.FlagTheme)
+	r, err := config.Resolve(globalCfg, dirCfg, authData, flagOut, flagTheme)
 	if err != nil {
 		return err
 	}
+	// Configure must run after Resolve so the resolved theme (which folds
+	// in the --theme flag, BITRISE_THEME, and the config files) is what
+	// actually drives Style construction in subcommand RunE bodies.
+	style.Configure(noColor, r.Theme)
 	cmd.SetContext(config.WithResolved(cmd.Context(), r))
 	return nil
 }

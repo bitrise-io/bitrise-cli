@@ -33,7 +33,7 @@ Recognized keys:
   %s
 
 Environment overrides for the same values:
-  %s, %s, %s, %s, %s
+  %s, %s, %s, %s, %s, %s
 
 Note: 'set'/'unset' modify only the global file. Per-directory files must be
 edited by hand.
@@ -41,7 +41,7 @@ edited by hand.
 To manage your access token, use 'bitrise-cli auth login/logout/status'.`,
 			strings.Join(internalconfig.Keys, ", "),
 			internalconfig.EnvOutput, internalconfig.EnvAppSlug, internalconfig.EnvToken,
-			internalconfig.EnvAPIBaseURL, internalconfig.EnvWebBaseURL,
+			internalconfig.EnvAPIBaseURL, internalconfig.EnvWebBaseURL, internalconfig.EnvTheme,
 		),
 	}
 	c.AddCommand(
@@ -75,6 +75,7 @@ type configList struct {
 	AppSlug    string `json:"app_slug,omitempty"`
 	APIBaseURL string `json:"api_base_url,omitempty"`
 	WebBaseURL string `json:"web_base_url,omitempty"`
+	Theme      string `json:"theme,omitempty"`
 	Path       string `json:"path"`
 }
 
@@ -101,6 +102,7 @@ to other bitrise-cli commands.`,
 				AppSlug:    cfg.AppSlug,
 				APIBaseURL: cfg.APIBaseURL,
 				WebBaseURL: cfg.WebBaseURL,
+				Theme:      cfg.Theme,
 				Path:       p,
 			}
 			return output.Render(cmd.OutOrStdout(), cmdutil.ResolveFormat(cmd), v, renderListHuman)
@@ -125,6 +127,7 @@ func renderListHuman(w io.Writer, v configList) error {
 	ew.F("%s%s\n", lbl(internalconfig.KeyAppSlug+":"), value(v.AppSlug))
 	ew.F("%s%s\n", lbl(internalconfig.KeyAPIBaseURL+":"), value(v.APIBaseURL))
 	ew.F("%s%s\n", lbl(internalconfig.KeyWebBaseURL+":"), value(v.WebBaseURL))
+	ew.F("%s%s\n", lbl(internalconfig.KeyTheme+":"), value(v.Theme))
 	return ew.Err
 }
 
