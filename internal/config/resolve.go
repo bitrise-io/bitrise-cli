@@ -16,7 +16,7 @@ const (
 	EnvOutput     = "BITRISE_OUTPUT"
 	EnvAPIBaseURL = "BITRISE_API_BASE_URL"
 	EnvWebBaseURL = "BITRISE_WEB_BASE_URL"
-	EnvTheme      = "BITRISE_THEME"
+	EnvTheme      = "BITRISE_CLI_THEME"
 )
 
 // DefaultAPIBaseURL is the production Bitrise API base URL.

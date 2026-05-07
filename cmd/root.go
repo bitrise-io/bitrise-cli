@@ -55,7 +55,7 @@ Configuration (precedence: flag > env > per-dir > global > built-in default):
   Per-dir file:  .bitrise-cli.yml in the current directory or any ancestor
   Manage with:   bitrise-cli config set <key> <value>   (run "bitrise-cli config" for details)
   Env overrides: BITRISE_TOKEN, BITRISE_APP_SLUG, BITRISE_OUTPUT,
-                 BITRISE_API_BASE_URL, BITRISE_WEB_BASE_URL, BITRISE_THEME
+                 BITRISE_API_BASE_URL, BITRISE_WEB_BASE_URL, BITRISE_CLI_THEME
 
 Color theme:
   --theme auto    detect terminal background via OSC 11 (default)
@@ -137,7 +137,7 @@ func persistentPreRun(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 	// Configure must run after Resolve so the resolved theme (which folds
-	// in the --theme flag, BITRISE_THEME, and the config files) is what
+	// in the --theme flag, BITRISE_CLI_THEME, and the config files) is what
 	// actually drives Style construction in subcommand RunE bodies.
 	style.Configure(noColor, r.Theme)
 	cmd.SetContext(config.WithResolved(cmd.Context(), r))
