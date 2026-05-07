@@ -1,4 +1,4 @@
-package cmd
+package cmdutil
 
 import (
 	"errors"
@@ -33,7 +33,7 @@ func TestRewriteFlagError(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := rewriteFlagError(tc.cmd, tc.err, tc.args)
+			got := RewriteFlagError(tc.cmd, tc.err, tc.args)
 			if tc.err == nil {
 				if got != nil {
 					t.Fatalf("nil err: got %v", got)

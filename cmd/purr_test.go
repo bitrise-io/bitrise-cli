@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"bytes"
-	"os"
 	"strings"
 	"testing"
 	"time"
@@ -80,27 +79,6 @@ func TestCRLFWriter_TranslatesNewlines(t *testing.T) {
 		if got := buf.String(); got != c.want {
 			t.Errorf("Write(%q) → %q, want %q", c.in, got, c.want)
 		}
-	}
-}
-
-func TestReaderTTYFd_NonTerminalInputs(t *testing.T) {
-	// nil reader and non-File readers must report not-a-TTY so the
-	// keypress goroutine never tries to put a non-terminal into raw mode.
-	if _, ok := readerTTYFd(nil); ok {
-		t.Error("readerTTYFd(nil) should return false")
-	}
-	if _, ok := readerTTYFd(&bytes.Buffer{}); ok {
-		t.Error("readerTTYFd(*bytes.Buffer) should return false")
-	}
-	// A regular file (not a TTY) is an *os.File, but term.IsTerminal is
-	// false → readerTTYFd should still return false.
-	tmp, err := os.CreateTemp(t.TempDir(), "purr-test")
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = tmp.Close() })
-	if _, ok := readerTTYFd(tmp); ok {
-		t.Error("readerTTYFd(regular *os.File) should return false")
 	}
 }
 

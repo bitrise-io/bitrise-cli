@@ -25,8 +25,8 @@ type Service struct {
 	client *webclient.Client
 }
 
-// NewService returns a Service backed by the given webclient. The webclient
-// must be non-nil; the Service uses it for every call.
+// NewService returns an Service backed by the given webclient.
+// The webclient must be non-nil; the service uses it for every call.
 func NewService(client *webclient.Client) *Service {
 	return &Service{client: client}
 }

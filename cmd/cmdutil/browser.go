@@ -6,8 +6,6 @@ import (
 	"runtime"
 )
 
-const WebBaseURL = "https://app.bitrise.io"
-
 // OpenBrowser opens url in the system default browser.
 func OpenBrowser(url string) error {
 	var cmd *exec.Cmd

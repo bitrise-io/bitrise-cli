@@ -38,7 +38,7 @@ Flags:
 			}
 
 			if web {
-				url := fmt.Sprintf("%s/app/%s", cmdutil.WebBaseURL, appSlug)
+				url := fmt.Sprintf("%s/app/%s", cmdutil.ResolveWebBaseURL(cmd), appSlug)
 				if err := cmdutil.OpenBrowser(url); err != nil {
 					return err
 				}

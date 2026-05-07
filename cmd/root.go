@@ -86,7 +86,7 @@ func init() {
 	rootCmd.PersistentFlags().BoolVarP(&quiet, cmdutil.FlagQuiet, "q", false, "suppress non-error diagnostic messages")
 	rootCmd.PersistentFlags().BoolVar(&noColor, "no-color", false, "disable ANSI colors (NO_COLOR env is also honored)")
 	rootCmd.PersistentFlags().StringVar(&theme, cmdutil.FlagTheme, "", `color theme: auto|dark|light|none (default "auto"; overrides terminal background detection)`)
-	rootCmd.SetFlagErrorFunc(flagErrorFunc)
+	rootCmd.SetFlagErrorFunc(cmdutil.FlagErrorFunc)
 	rootCmd.SetHelpCommand(&cobra.Command{Hidden: true})
 	rootCmd.AddCommand(cmdbuild.NewCmd())
 	rootCmd.AddCommand(cmdapp.NewCmd())

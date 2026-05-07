@@ -1,4 +1,4 @@
-package cmd
+package cmdutil
 
 import (
 	"fmt"
@@ -10,13 +10,13 @@ import (
 
 var unknownShorthandRe = regexp.MustCompile(`^unknown shorthand flag: '.' in -[A-Za-z0-9]+$`)
 
-// rewriteFlagError appends a "did you mean --foo?" hint when the user typed a
+// RewriteFlagError appends a "did you mean --foo?" hint when the user typed a
 // single-dash long flag like `-help` and the resulting cluster failed to
 // parse. pflag's error reports only the unparsed remainder of the cluster
 // (`-help` errors as `'e' in -elp` once `h` is consumed), so we recover the
 // original token by scanning args for a `-<word>` whose `<word>` matches a
 // long flag registered on cmd or any of its parents.
-func rewriteFlagError(cmd *cobra.Command, err error, args []string) error {
+func RewriteFlagError(cmd *cobra.Command, err error, args []string) error {
 	if err == nil {
 		return nil
 	}
@@ -39,6 +39,8 @@ func rewriteFlagError(cmd *cobra.Command, err error, args []string) error {
 	return err
 }
 
-func flagErrorFunc(cmd *cobra.Command, err error) error {
-	return rewriteFlagError(cmd, err, os.Args[1:])
+// FlagErrorFunc is the cobra FlagErrorFunc that delegates to RewriteFlagError
+// with the actual os.Args slice.
+func FlagErrorFunc(cmd *cobra.Command, err error) error {
+	return RewriteFlagError(cmd, err, os.Args[1:])
 }

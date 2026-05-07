@@ -64,7 +64,7 @@ Note:
 				if b.Status == "in-progress" {
 					buildURL := b.BuildURL
 					if buildURL == "" {
-						buildURL = fmt.Sprintf("%s/app/%s/build/%s", cmdutil.WebBaseURL, appSlug, buildSlug)
+						buildURL = fmt.Sprintf("%s/app/%s/build/%s", cmdutil.ResolveWebBaseURL(cmd), appSlug, buildSlug)
 					}
 					headerEW := cmdutil.NewErrWriter(cmd.ErrOrStderr())
 					headerEW.F("Waiting for build #%d to finish\n→ %s\n", b.BuildNumber, buildURL)

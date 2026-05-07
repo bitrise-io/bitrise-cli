@@ -13,6 +13,7 @@ import (
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 
+	"github.com/bitrise-io/bitrise-cli/cmd/cmdutil"
 	"github.com/bitrise-io/bitrise-cli/internal/output/style"
 )
 
@@ -91,7 +92,7 @@ func runPurr(ctx context.Context, in io.Reader, out io.Writer, once bool, durati
 
 	// Static path: piped output, --once, or stdout isn't a TTY. Rainbow
 	// auto-degrades to plain text on non-color writers.
-	if once || !writerIsTTY(out) {
+	if once || !cmdutil.WriterIsTTY(out) {
 		if _, err := fmt.Fprint(out, purrFrames[0]); err != nil {
 			return err
 		}
@@ -121,7 +122,7 @@ func runPurr(ctx context.Context, in io.Reader, out io.Writer, once bool, durati
 	// \r\n" translator for the duration of the animation; cursor escape
 	// codes don't contain newlines so they pass through untouched.
 	keyPress := make(chan struct{})
-	if fd, ok := readerTTYFd(in); ok {
+	if fd, ok := cmdutil.ReaderTTYFd(in); ok {
 		if oldState, err := term.MakeRaw(fd); err == nil {
 			defer func() { _ = term.Restore(fd, oldState) }()
 			out = &crlfWriter{w: out}
@@ -182,17 +183,6 @@ func runPurr(ctx context.Context, in io.Reader, out io.Writer, once bool, durati
 	}
 }
 
-// writerIsTTY reports whether w is an *os.File pointing at a terminal. Any
-// other writer (pipe, *bytes.Buffer, file handle) returns false so the
-// caller takes the static, ANSI-free path.
-func writerIsTTY(w io.Writer) bool {
-	f, ok := w.(*os.File)
-	if !ok {
-		return false
-	}
-	return term.IsTerminal(int(f.Fd())) //nolint:gosec // file descriptors are small ints, no overflow risk
-}
-
 // crlfWriter translates each "\n" byte in its input to "\r\n", forwarding
 // everything else unchanged. Used during the animation because raw-mode
 // stdin disables ONLCR on the shared tty, so the kernel no longer adds
@@ -214,23 +204,4 @@ func (c *crlfWriter) Write(p []byte) (int, error) {
 		}
 	}
 	return len(p), nil
-}
-
-// readerTTYFd returns the file descriptor of r if it is an *os.File pointing
-// at a terminal. The boolean is false otherwise (nil, *bytes.Buffer, pipe,
-// closed file). Used to decide whether stdin can be put into raw mode for
-// keypress detection.
-func readerTTYFd(r io.Reader) (int, bool) {
-	if r == nil {
-		return 0, false
-	}
-	f, ok := r.(*os.File)
-	if !ok {
-		return 0, false
-	}
-	fd := int(f.Fd()) //nolint:gosec // file descriptors are small ints, no overflow risk
-	if !term.IsTerminal(fd) {
-		return 0, false
-	}
-	return fd, true
 }
