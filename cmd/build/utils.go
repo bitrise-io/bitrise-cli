@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -91,11 +90,11 @@ func renderBuildText(w io.Writer, b internalbuild.Build) error {
 // cmd.OutOrStdout() instead of the text footer.
 //
 // Log chunks come back from the API in arbitrary order across polls
-// (parallel server-side producers); we mirror the website's approach by
-// keying chunks on Position and rendering the cumulative sorted log:
-//   - on a TTY: clear the screen and reprint the full log on each update
-//   - off a TTY (pipes/files): append only chunks that extend the
-//     contiguous run from position 0 — preserves order without rewinding
+// (parallel server-side producers). We buffer chunks by Position and only
+// emit them once the contiguous run from position 0 has filled in — that
+// way the visible output is always strictly forward, never re-rendered or
+// shuffled, which keeps the header above and any subsequent footer/status
+// lines below cleanly bracketed around the streaming log.
 func runWatch(cmd *cobra.Command, svc *internalbuild.Service, b internalbuild.Build, interval time.Duration, logWriter io.Writer, format output.Format) error {
 	stderr := cmd.ErrOrStderr()
 
@@ -106,7 +105,7 @@ func runWatch(cmd *cobra.Command, svc *internalbuild.Service, b internalbuild.Bu
 		return headerEW.Err
 	}
 
-	sink := newLogSinkFor(logWriter)
+	sink := &contiguousSink{w: logWriter}
 	finalBuild, err := svc.Watch(cmd.Context(), b.AppSlug, b.Slug, logWriter, sink, interval)
 	if errors.Is(err, context.Canceled) {
 		detachEW := cmdutil.NewErrWriter(stderr)
@@ -160,65 +159,14 @@ func buildElapsed(b internalbuild.Build) string {
 	return fmt.Sprintf(" (%s)", d)
 }
 
-// newLogSinkFor returns a LogSink appropriate for the given writer:
-//   - clearTTYSink when the writer is a TTY (clear + reprint on each update)
-//   - contiguousSink otherwise (append once a position is contiguous from 0)
-func newLogSinkFor(w io.Writer) internalbuild.LogSink {
-	if cmdutil.WriterIsTTY(w) {
-		return &clearTTYSink{w: w}
-	}
-	return &contiguousSink{w: w}
-}
-
-// clearTTYSink wipes the terminal and reprints the full log sorted by
-// position on every update. This matches the website's polling behavior:
-// each poll's batch may carry chunks at higher positions than missing
-// earlier ones, and re-rendering from scratch keeps the visible output
-// in canonical order even as gaps fill in.
-type clearTTYSink struct {
-	w io.Writer
-}
-
-// ANSI clear sequence:
-//
-//	ESC[H   home the cursor (top-left)
-//	ESC[2J  clear the visible viewport
-//	ESC[3J  clear the scrollback buffer (xterm extension)
-//
-// Without ESC[3J most modern terminals (macOS Terminal, iTerm2, GNOME Terminal)
-// push cleared content into the scrollback buffer instead of discarding it,
-// so the user sees every redraw stacked on top of the previous ones when they
-// scroll up. The order matters: ESC[3J after ESC[2J on the empty viewport
-// drops the current screen out of scrollback as well.
-const ansiClearAndHome = "\033[H\033[2J\033[3J"
-
-func (s *clearTTYSink) OnUpdate(chunks map[int]string) error {
-	if len(chunks) == 0 {
-		return nil
-	}
-	maxPos := -1
-	for k := range chunks {
-		if k > maxPos {
-			maxPos = k
-		}
-	}
-	var b strings.Builder
-	b.Grow(len(ansiClearAndHome) + (maxPos+1)*32)
-	b.WriteString(ansiClearAndHome)
-	for i := 0; i <= maxPos; i++ {
-		// Missing positions render as empty strings — placeholders the
-		// next update will fill in once the chunk arrives.
-		b.WriteString(chunks[i])
-	}
-	_, err := io.WriteString(s.w, b.String())
-	return err
-}
-
-// contiguousSink appends chunks to w only once they extend the contiguous
-// run from position 0. A non-TTY consumer (file, pipe, log aggregator)
-// can't undo writes, so we hold back chunks at higher positions until
-// every preceding position has arrived. This trades latency for correct
-// in-order output.
+// contiguousSink buffers chunks delivered out of order and emits them only
+// once the contiguous run from position 0 catches up to each one. The
+// Bitrise log API returns chunks in arbitrary order across polls because
+// the server collects them from parallel producers; without holding back
+// out-of-order chunks the streaming output would jiggle (or, on a TTY, the
+// previous "clear and reprint" approach would wipe the surrounding header
+// and scrollback). Here we simply append in order and never rewind, so
+// the header above and the footer below stay anchored.
 type contiguousSink struct {
 	w        io.Writer
 	nextEmit int
