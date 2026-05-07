@@ -173,13 +173,13 @@ func renderAuthStatusHuman(w io.Writer, st authStatus) error {
 		return ew.Err
 	}
 	lbl := func(label string) string {
-		return s.Label.Render(fmt.Sprintf("%-9s", label))
+		return s.Label.Render(fmt.Sprintf("%-16s", label))
 	}
 	ew.F("%s %s\n", s.Success.Render("✓"), s.Bold.Render("Access token configured"))
 	ew.F("%s%s\n", lbl("Token:"), s.Dim.Render("******** (set)"))
 	ew.F("%s%s\n", lbl("Type:"), st.TokenType)
 	ew.F("%s%s\n", lbl("Source:"), st.Source)
-	ew.F("%s%s\n", lbl("Path:"), st.Path)
+	ew.F("%s%s\n", lbl("Path:"), s.Dim.Render(st.Path))
 	return ew.Err
 }
 

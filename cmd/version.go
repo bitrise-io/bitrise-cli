@@ -90,16 +90,16 @@ func renderVersionHuman(w io.Writer, v versionInfo) error {
 	s := style.New(w)
 	ew := cmdutil.NewErrWriter(w)
 	lbl := func(label string) string {
-		return s.Label.Render(fmt.Sprintf("%-12s", label))
+		return s.Label.Render(fmt.Sprintf("%-16s", label))
 	}
 	ew.F("%s %s\n", s.Bold.Render("bitrise-cli"), v.Version)
 	if v.Commit != "" {
-		ew.F("%s%s\n", lbl("commit:"), s.Slug.Render(v.Commit))
+		ew.F("%s%s\n", lbl("Commit:"), s.Slug.Render(v.Commit))
 	}
 	if v.BuildTime != "" {
-		ew.F("%s%s\n", lbl("built:"), v.BuildTime)
+		ew.F("%s%s\n", lbl("Built:"), v.BuildTime)
 	}
-	ew.F("%s%s\n", lbl("go:"), v.GoVersion)
-	ew.F("%s%s/%s\n", lbl("platform:"), v.OS, v.Arch)
+	ew.F("%s%s\n", lbl("Go:"), v.GoVersion)
+	ew.F("%s%s/%s\n", lbl("Platform:"), v.OS, v.Arch)
 	return ew.Err
 }

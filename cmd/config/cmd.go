@@ -109,7 +109,7 @@ func renderListHuman(w io.Writer, v configList) error {
 	s := style.New(w)
 	ew := cmdutil.NewErrWriter(w)
 	lbl := func(label string) string {
-		return s.Label.Render(fmt.Sprintf("%-15s", label))
+		return s.Label.Render(fmt.Sprintf("%-16s", label))
 	}
 	value := func(v string) string {
 		if v == "" {
@@ -117,7 +117,7 @@ func renderListHuman(w io.Writer, v configList) error {
 		}
 		return v
 	}
-	ew.F("%s%s\n\n", lbl("Path:"), s.Slug.Render(v.Path))
+	ew.F("%s%s\n\n", lbl("Path:"), s.Dim.Render(v.Path))
 	ew.F("%s%s\n", lbl(internalconfig.KeyOutput+":"), value(v.Output))
 	ew.F("%s%s\n", lbl(internalconfig.KeyAppSlug+":"), value(v.AppSlug))
 	ew.F("%s%s\n", lbl(internalconfig.KeyAPIBaseURL+":"), value(v.APIBaseURL))

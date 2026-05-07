@@ -86,10 +86,10 @@ legacy terminals.
 | Style name | Appearance | Used for |
 |-----------|------------|----------|
 | `Header` | bold grey | Table column headers |
-| `Dim` | grey | Secondary text, pagination hints, disabled rows |
+| `Dim` | grey | Secondary text, file paths, pagination hints, disabled rows |
 | `Bold` | bold | App/binary name, primary emphasis |
 | `Label` | bold | Key side of key/value pairs |
-| `Slug` | grey | Technical identifiers (app slug, commit hash) |
+| `Slug` | grey | Technical identifiers (app slug, commit hash, build slug) |
 | `URL` | underlined | Hyperlinks (PR URL, build URL) |
 | `Success` | green | `✓` symbol and confirmation lines |
 | `Failure` | red | `✗` symbol and failure indicators |
@@ -220,7 +220,8 @@ Triggered:      2024-01-15 14:30:00 UTC
 |------------|---------------|
 | Label | `s.Label` (bold) |
 | Status value | `s.BuildStatus(status)` |
-| Slug / hash | `s.Slug` (grey) |
+| Slug / hash / build slug | `s.Slug` (grey) |
+| File path | `s.Dim` (grey) |
 | URL | `s.URL` (underlined) |
 | PR arrow | `→` plain text |
 | Numbers / plain text | unstyled |
@@ -241,7 +242,7 @@ Confirmations and warnings are written directly to `cmd.ErrOrStderr()`.
 
 | Type | Symbol | Color | Suppressed by `--quiet`? |
 |------|--------|-------|--------------------------|
-| Success confirmation | `✓` | green | yes — guarded by `if !quiet` |
+| Success confirmation | *(none)* | plain | yes — guarded by `if !quiet` |
 | Warning | *(none currently)* | plain | no |
 | Error | *(none)* | — | no — returned as Go error, printed by Cobra |
 
@@ -311,10 +312,13 @@ but never renamed or removed without a major version bump.
 ```json
 {
   "has_token": true,
+  "token_type": "personal",
   "source": "env (BITRISE_TOKEN)",
   "path": "/Users/alice/.config/bitrise/auth.yaml"
 }
 ```
+
+`token_type` is omitted when no token is configured.
 
 No ANSI codes. No diagnostic messages. Pure data.
 
