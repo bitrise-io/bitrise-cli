@@ -167,6 +167,24 @@ func ReadSecretInput(in io.Reader, stderr io.Writer, prompt string, fromStdin bo
 	return strings.TrimSpace(s), nil
 }
 
+// RequireArgs returns an Args validator that names exactly which positional
+// argument(s) are missing, instead of cobra's generic "accepts N arg(s), received M".
+func RequireArgs(names ...string) cobra.PositionalArgs {
+	return func(cmd *cobra.Command, args []string) error {
+		if len(args) >= len(names) {
+			return nil
+		}
+		missing := names[len(args):]
+		var msg string
+		if len(missing) == 1 {
+			msg = fmt.Sprintf("missing argument: %s", missing[0])
+		} else {
+			msg = fmt.Sprintf("missing arguments: %s", strings.Join(missing, " "))
+		}
+		return fmt.Errorf("%s\nRun '%s --help' for usage", msg, cmd.CommandPath())
+	}
+}
+
 // DelegateToList forwards a bare parent invocation to its "list" subcommand,
 // propagating the parent's context so resolved config is available.
 func DelegateToList(cmd *cobra.Command, args []string) error {
