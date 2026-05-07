@@ -14,7 +14,9 @@ import (
 	cmdbuild "github.com/bitrise-io/bitrise-cli/cmd/build"
 	"github.com/bitrise-io/bitrise-cli/cmd/cmdutil"
 	cmdconfig "github.com/bitrise-io/bitrise-cli/cmd/config"
+	cmdstep "github.com/bitrise-io/bitrise-cli/cmd/step"
 	cmduser "github.com/bitrise-io/bitrise-cli/cmd/user"
+	cmdyml "github.com/bitrise-io/bitrise-cli/cmd/yml"
 	"github.com/bitrise-io/bitrise-cli/internal/auth"
 	"github.com/bitrise-io/bitrise-cli/internal/config"
 	"github.com/bitrise-io/bitrise-cli/internal/output"
@@ -81,6 +83,9 @@ func init() {
 	rootCmd.AddCommand(cmduser.NewCmd())
 	rootCmd.AddCommand(newAuthCmd())
 	rootCmd.AddCommand(newVersionCmd())
+	rootCmd.AddCommand(newStackCmd())
+	rootCmd.AddCommand(cmdstep.NewCmd())
+	rootCmd.AddCommand(cmdyml.NewCmd())
 	rootCmd.InitDefaultCompletionCmd()
 	if err := rootCmd.RegisterFlagCompletionFunc(cmdutil.FlagOutput, completeOutputFlag); err != nil {
 		panic(err)

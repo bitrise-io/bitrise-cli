@@ -46,6 +46,30 @@ A CLI tool to manage all Bitrise platform resources — CI, RM, RDE, and more �
 | `config set KEY VALUE` | Set a config key and save the file |
 | `config unset KEY` | Remove a config key and save the file |
 
+### `yml` — Get, update, or validate the bitrise.yml stored on Bitrise
+
+| Command | Description |
+|---|---|
+| `yml get` | Print the stored bitrise.yml for an app (bare `yml` also works) |
+| `yml get --build BUILD_SLUG` | Print the bitrise.yml a specific build ran with |
+| `yml update` | Upload a new bitrise.yml (from `--file` or stdin) |
+| `yml validate` | Validate a bitrise.yml; exits 1 if invalid |
+
+### `stack` — List available stacks
+
+| Command | Description |
+|---|---|
+| `stack list` | List available stacks with OS and status |
+| `stack list --workspace SLUG` | List stacks available for a specific workspace |
+
+### `step` — Search steps and inspect their inputs
+
+| Command | Description |
+|---|---|
+| `step search QUERY` | Find steps by name, description, or tags |
+| `step search QUERY --category CAT --maintainer M` | Filter results by category and maintainer |
+| `step inputs STEP_REF` | List inputs for a step version (e.g. `git-clone@8.3.1`) |
+
 ### `version` — Print version, commit, and build info
 
 | Command | Description |
