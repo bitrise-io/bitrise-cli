@@ -115,18 +115,17 @@ func init() {
 
 const completionLong = `Generate a shell completion script for your shell.
 
-bash / zsh — load now, or add to ~/.bashrc / ~/.zshrc to make it permanent:
+bash — load now:                    source <(bitrise-cli completion bash)
+bash — make permanent:              echo 'source <(bitrise-cli completion bash)' >> ~/.bashrc
 
-	source <(bitrise-cli completion bash)
-	source <(bitrise-cli completion zsh)
+zsh — load now:                     source <(bitrise-cli completion zsh)
+zsh — make permanent:               echo 'source <(bitrise-cli completion zsh)' >> ~/.zshrc
 
-fish — install once:
+fish — load now:                    bitrise-cli completion fish | source
+fish — make permanent:              bitrise-cli completion fish > ~/.config/fish/completions/bitrise-cli.fish
 
-	bitrise-cli completion fish > ~/.config/fish/completions/bitrise-cli.fish
-
-PowerShell — load now, or add to your $PROFILE to make it permanent:
-
-	bitrise-cli completion powershell | Out-String | Invoke-Expression`
+PowerShell — load now:              bitrise-cli completion powershell | Out-String | Invoke-Expression
+PowerShell — make permanent:        add the above line to your $PROFILE`
 
 func completeOutputFlag(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
 	return []string{"human\thuman-readable tables and key/value lines", "json\tmachine-readable JSON"}, cobra.ShellCompDirectiveNoFileComp

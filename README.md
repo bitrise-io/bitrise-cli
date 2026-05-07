@@ -95,18 +95,9 @@ Recognized keys: `output`, `app_slug`, `default_organization_slug`, `api_base_ur
 
 Tab-completion is available for all commands, subcommands, flags, and known flag values.
 
-**bash / zsh** — add to `~/.bashrc` or `~/.zshrc` to make it permanent:
-```bash
-source <(bitrise-cli completion bash)
-source <(bitrise-cli completion zsh)
-```
-
-**fish** — install once:
-```fish
-bitrise-cli completion fish > ~/.config/fish/completions/bitrise-cli.fish
-```
-
-**PowerShell** — add to your `$PROFILE` to make it permanent:
-```powershell
-bitrise-cli completion powershell | Out-String | Invoke-Expression
-```
+| Shell | Load now | Make permanent |
+|---|---|---|
+| bash | `source <(bitrise-cli completion bash)` | add to `~/.bashrc` |
+| zsh | `source <(bitrise-cli completion zsh)` | add to `~/.zshrc` |
+| fish | `bitrise-cli completion fish \| source` | `bitrise-cli completion fish > ~/.config/fish/completions/bitrise-cli.fish` |
+| PowerShell | `bitrise-cli completion powershell \| Out-String \| Invoke-Expression` | add to `$PROFILE` |
