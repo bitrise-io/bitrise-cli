@@ -66,6 +66,13 @@ Pagination:
 	c.Flags().StringVar(&title, "title", "", "filter apps whose title contains the given string (case-insensitive)")
 	c.Flags().StringVar(&projectType, "project-type", "", "filter by project type (ios, android, ...)")
 
+	_ = c.RegisterFlagCompletionFunc("sort-by", func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
+		return []string{"created_at\tsort by creation date", "last_build_at\tsort by last build date"}, cobra.ShellCompDirectiveNoFileComp
+	})
+	_ = c.RegisterFlagCompletionFunc("project-type", func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
+		return []string{"ios", "android", "flutter", "react-native", "xamarin", "cordova", "ionic", "other"}, cobra.ShellCompDirectiveNoFileComp
+	})
+
 	return c
 }
 

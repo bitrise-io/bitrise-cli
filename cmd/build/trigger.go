@@ -135,6 +135,10 @@ Optional flags:
 	c.Flags().DurationVar(&interval, "interval", 3*time.Second, "log polling interval when --wait is set")
 	c.MarkFlagsMutuallyExclusive("workflow", "pipeline")
 
+	_ = c.RegisterFlagCompletionFunc("priority", func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
+		return []string{"-1\tlow priority", "0\tnormal priority", "1\thigh priority"}, cobra.ShellCompDirectiveNoFileComp
+	})
+
 	return c
 }
 

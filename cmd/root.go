@@ -78,6 +78,14 @@ func init() {
 	rootCmd.AddCommand(cmdconfig.NewCmd())
 	rootCmd.AddCommand(newAuthCmd())
 	rootCmd.AddCommand(newVersionCmd())
+	rootCmd.InitDefaultCompletionCmd()
+	if err := rootCmd.RegisterFlagCompletionFunc(cmdutil.FlagOutput, completeOutputFlag); err != nil {
+		panic(err)
+	}
+}
+
+func completeOutputFlag(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
+	return []string{"human\thuman-readable tables and key/value lines", "json\tmachine-readable JSON"}, cobra.ShellCompDirectiveNoFileComp
 }
 
 // persistentPreRun loads global config, per-directory config, and auth.yaml,

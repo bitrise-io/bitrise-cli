@@ -126,8 +126,9 @@ func renderListHuman(w io.Writer, v configList) error {
 
 func newGetCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "get KEY",
-		Short: "Print the value of a single config key (raw, unmasked)",
+		Use:       "get KEY",
+		Short:     "Print the value of a single config key (raw, unmasked)",
+		ValidArgs: internalconfig.Keys,
 		Long: fmt.Sprintf(`Print the raw value of one config key.
 
 Valid keys: %s`,
@@ -151,8 +152,9 @@ Valid keys: %s`,
 
 func newSetCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "set KEY VALUE",
-		Short: "Set a config key and save the file",
+		Use:       "set KEY VALUE",
+		Short:     "Set a config key and save the file",
+		ValidArgs: internalconfig.Keys,
 		Long: fmt.Sprintf(`Set a config key and save the file.
 
 Valid keys: %s
@@ -209,8 +211,9 @@ func readStdinValue(r io.Reader) (string, error) {
 
 func newUnsetCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "unset KEY",
-		Short: "Remove a config key and save the file",
+		Use:       "unset KEY",
+		Short:     "Remove a config key and save the file",
+		ValidArgs: internalconfig.Keys,
 		Long: fmt.Sprintf(`Remove a config key and save the file.
 
 Valid keys: %s`, strings.Join(internalconfig.Keys, ", ")),
