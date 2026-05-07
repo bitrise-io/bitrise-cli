@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bytes"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -12,7 +13,7 @@ func TestPurr_StaticToBuffer(t *testing.T) {
 	// --once. Confirms that a non-TTY destination never animates and
 	// always emits ANSI-free output.
 	var buf bytes.Buffer
-	if err := runPurr(t.Context(), &buf, false, time.Second, time.Millisecond); err != nil {
+	if err := runPurr(t.Context(), nil, &buf, false, time.Second, time.Millisecond); err != nil {
 		t.Fatal(err)
 	}
 	out := buf.String()
@@ -30,7 +31,7 @@ func TestPurr_StaticToBuffer(t *testing.T) {
 
 func TestPurr_OnceDoesntAnimate(t *testing.T) {
 	var buf bytes.Buffer
-	if err := runPurr(t.Context(), &buf, true, time.Hour, time.Microsecond); err != nil {
+	if err := runPurr(t.Context(), nil, &buf, true, time.Hour, time.Microsecond); err != nil {
 		t.Fatal(err)
 	}
 	// With once=true the function returns immediately after one paint;
@@ -45,11 +46,32 @@ func TestPurr_StaticMessageHasNoANSIOnBuffer(t *testing.T) {
 	// ANSI-free — that's the contract that keeps log files / pipes /
 	// JSON output clean.
 	var buf bytes.Buffer
-	if err := runPurr(t.Context(), &buf, true, time.Second, time.Millisecond); err != nil {
+	if err := runPurr(t.Context(), nil, &buf, true, time.Second, time.Millisecond); err != nil {
 		t.Fatal(err)
 	}
 	if strings.Contains(buf.String(), "\x1b[") {
 		t.Errorf("rainbow leaked ANSI into non-TTY output: %q", buf.String())
+	}
+}
+
+func TestReaderTTYFd_NonTerminalInputs(t *testing.T) {
+	// nil reader and non-File readers must report not-a-TTY so the
+	// keypress goroutine never tries to put a non-terminal into raw mode.
+	if _, ok := readerTTYFd(nil); ok {
+		t.Error("readerTTYFd(nil) should return false")
+	}
+	if _, ok := readerTTYFd(&bytes.Buffer{}); ok {
+		t.Error("readerTTYFd(*bytes.Buffer) should return false")
+	}
+	// A regular file (not a TTY) is an *os.File, but term.IsTerminal is
+	// false → readerTTYFd should still return false.
+	tmp, err := os.CreateTemp(t.TempDir(), "purr-test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = tmp.Close() })
+	if _, ok := readerTTYFd(tmp); ok {
+		t.Error("readerTTYFd(regular *os.File) should return false")
 	}
 }
 

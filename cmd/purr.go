@@ -72,7 +72,7 @@ always prints once and exits regardless of --once.`,
   bitrise-cli purr --duration 30s
   bitrise-cli purr --once`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return runPurr(cmd.Context(), cmd.OutOrStdout(), once, duration, interval)
+			return runPurr(cmd.Context(), cmd.InOrStdin(), cmd.OutOrStdout(), once, duration, interval)
 		},
 	}
 	c.Flags().BoolVar(&once, "once", false, "print a single frame instead of animating")
@@ -86,7 +86,7 @@ always prints once and exits regardless of --once.`,
 // enough to be obviously alive.
 const hueShiftPerFrame = 15.0
 
-func runPurr(ctx context.Context, out io.Writer, once bool, duration, interval time.Duration) error {
+func runPurr(ctx context.Context, in io.Reader, out io.Writer, once bool, duration, interval time.Duration) error {
 	s := style.New(out)
 
 	// Static path: piped output, --once, or stdout isn't a TTY. Rainbow
@@ -108,6 +108,23 @@ func runPurr(ctx context.Context, out io.Writer, once bool, duration, interval t
 	// Stop cleanly on Ctrl-C.
 	ctx, cancel := signal.NotifyContext(ctx, os.Interrupt)
 	defer cancel()
+
+	// If stdin is a TTY, put it into raw mode and watch for a keypress so
+	// any key (including Ctrl-C, which raw mode delivers as a byte rather
+	// than a signal) ends the animation. The blocking Read will outlive
+	// runPurr when the timer or ctx fires first; that's fine for a short-
+	// lived CLI invocation since the OS reaps the goroutine on exit.
+	keyPress := make(chan struct{})
+	if fd, ok := readerTTYFd(in); ok {
+		if oldState, err := term.MakeRaw(fd); err == nil {
+			defer func() { _ = term.Restore(fd, oldState) }()
+			go func() {
+				buf := make([]byte, 1)
+				_, _ = in.Read(buf)
+				close(keyPress)
+			}()
+		}
+	}
 
 	hue := 0.0
 
@@ -134,6 +151,8 @@ func runPurr(ctx context.Context, out io.Writer, once bool, duration, interval t
 		case <-ctx.Done():
 			return nil
 		case <-deadline.C:
+			return nil
+		case <-keyPress:
 			return nil
 		case <-ticker.C:
 			frame = (frame + 1) % len(purrFrames)
@@ -165,4 +184,23 @@ func writerIsTTY(w io.Writer) bool {
 		return false
 	}
 	return term.IsTerminal(int(f.Fd())) //nolint:gosec // file descriptors are small ints, no overflow risk
+}
+
+// readerTTYFd returns the file descriptor of r if it is an *os.File pointing
+// at a terminal. The boolean is false otherwise (nil, *bytes.Buffer, pipe,
+// closed file). Used to decide whether stdin can be put into raw mode for
+// keypress detection.
+func readerTTYFd(r io.Reader) (int, bool) {
+	if r == nil {
+		return 0, false
+	}
+	f, ok := r.(*os.File)
+	if !ok {
+		return 0, false
+	}
+	fd := int(f.Fd()) //nolint:gosec // file descriptors are small ints, no overflow risk
+	if !term.IsTerminal(fd) {
+		return 0, false
+	}
+	return fd, true
 }
