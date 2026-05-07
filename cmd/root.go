@@ -99,6 +99,12 @@ func init() {
 	rootCmd.AddCommand(cmdstep.NewCmd())
 	rootCmd.AddCommand(cmdyml.NewCmd())
 	rootCmd.InitDefaultCompletionCmd()
+	for _, sub := range rootCmd.Commands() {
+		if sub.Name() == "completion" {
+			sub.Long = completionLong
+			break
+		}
+	}
 	if err := rootCmd.RegisterFlagCompletionFunc(cmdutil.FlagOutput, completeOutputFlag); err != nil {
 		panic(err)
 	}
@@ -106,6 +112,41 @@ func init() {
 		panic(err)
 	}
 }
+
+const completionLong = `Generate a shell completion script and load it in your current session or
+install it permanently. Run the sub-command for your shell to see full options.
+
+bash — load in the current session:
+
+	source <(bitrise-cli completion bash)
+
+bash — install permanently (execute once):
+
+	# Linux
+	bitrise-cli completion bash > /etc/bash_completion.d/bitrise-cli
+	# macOS (Homebrew)
+	bitrise-cli completion bash > $(brew --prefix)/etc/bash_completion.d/bitrise-cli
+
+zsh — load in the current session:
+
+	source <(bitrise-cli completion zsh)
+
+zsh — install permanently (execute once):
+
+	# Linux
+	bitrise-cli completion zsh > "${fpath[1]}/_bitrise-cli"
+	# macOS (Homebrew)
+	bitrise-cli completion zsh > $(brew --prefix)/share/zsh/site-functions/_bitrise-cli
+
+fish — install permanently (execute once):
+
+	bitrise-cli completion fish > ~/.config/fish/completions/bitrise-cli.fish
+
+PowerShell — load in the current session:
+
+	bitrise-cli completion powershell | Out-String | Invoke-Expression
+
+PowerShell — install permanently: add the above line to your PowerShell profile.`
 
 func completeOutputFlag(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
 	return []string{"human\thuman-readable tables and key/value lines", "json\tmachine-readable JSON"}, cobra.ShellCompDirectiveNoFileComp
