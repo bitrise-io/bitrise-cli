@@ -73,6 +73,7 @@ func newPathCmd() *cobra.Command {
 type configList struct {
 	Output     string `json:"output,omitempty"`
 	AppSlug    string `json:"app_slug,omitempty"`
+	OrgSlug    string `json:"default_organization_slug,omitempty"`
 	APIBaseURL string `json:"api_base_url,omitempty"`
 	WebBaseURL string `json:"web_base_url,omitempty"`
 	Theme      string `json:"theme,omitempty"`
@@ -100,6 +101,7 @@ to other bitrise-cli commands.`,
 			v := configList{
 				Output:     cfg.Output,
 				AppSlug:    cfg.AppSlug,
+				OrgSlug:    cfg.OrgSlug,
 				APIBaseURL: cfg.APIBaseURL,
 				WebBaseURL: cfg.WebBaseURL,
 				Theme:      cfg.Theme,
@@ -114,7 +116,7 @@ func renderListHuman(w io.Writer, v configList) error {
 	s := style.New(w)
 	ew := cmdutil.NewErrWriter(w)
 	lbl := func(label string) string {
-		return s.Label.Render(fmt.Sprintf("%-16s", label))
+		return s.Label.Render(fmt.Sprintf("%-28s", label))
 	}
 	value := func(v string) string {
 		if v == "" {
@@ -125,6 +127,7 @@ func renderListHuman(w io.Writer, v configList) error {
 	ew.F("%s%s\n\n", lbl("Path:"), s.Dim.Render(v.Path))
 	ew.F("%s%s\n", lbl(internalconfig.KeyOutput+":"), value(v.Output))
 	ew.F("%s%s\n", lbl(internalconfig.KeyAppSlug+":"), value(v.AppSlug))
+	ew.F("%s%s\n", lbl(internalconfig.KeyOrgSlug+":"), value(v.OrgSlug))
 	ew.F("%s%s\n", lbl(internalconfig.KeyAPIBaseURL+":"), value(v.APIBaseURL))
 	ew.F("%s%s\n", lbl(internalconfig.KeyWebBaseURL+":"), value(v.WebBaseURL))
 	ew.F("%s%s\n", lbl(internalconfig.KeyTheme+":"), value(v.Theme))

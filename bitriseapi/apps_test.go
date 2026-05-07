@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -178,6 +179,40 @@ func TestApps_NonJSONErrorBody(t *testing.T) {
 	apiErr, ok := err.(*APIError)
 	if !ok || apiErr.StatusCode != http.StatusInternalServerError {
 		t.Fatalf("unexpected error: %v", err)
+	}
+	// Raw body is preserved so the user sees something useful.
+	if apiErr.Body != "upstream exploded" {
+		t.Errorf("Body = %q, want %q", apiErr.Body, "upstream exploded")
+	}
+	if !strings.Contains(err.Error(), "upstream exploded") {
+		t.Errorf("Error() = %q, expected to contain raw body", err.Error())
+	}
+}
+
+func TestAPIError_PicksAlternativeJSONFields(t *testing.T) {
+	cases := map[string]struct {
+		body string
+		want string
+	}{
+		"error_msg": {`{"error_msg":"app slug taken"}`, "app slug taken"},
+		"error":     {`{"error":"forbidden"}`, "forbidden"},
+		"errors":    {`{"errors":["title is invalid","provider is required"]}`, "title is invalid; provider is required"},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			fs := newFakeServer(t, func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(http.StatusUnprocessableEntity)
+				_, _ = w.Write([]byte(tc.body))
+			})
+			_, err := fs.client("t").Apps(context.Background(), AppsListOptions{})
+			apiErr, ok := err.(*APIError)
+			if !ok {
+				t.Fatalf("expected *APIError, got %T", err)
+			}
+			if apiErr.Message != tc.want {
+				t.Errorf("Message = %q, want %q", apiErr.Message, tc.want)
+			}
+		})
 	}
 }
 

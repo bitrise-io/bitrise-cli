@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strings"
 )
 
 // Client is an authenticated HTTP client for the Bitrise API.
@@ -38,18 +39,58 @@ func New(baseURL, token string, opts ...Option) *Client {
 	return c
 }
 
-// APIError represents a non-2xx response from the Bitrise API.
+// APIError represents a non-2xx response from the Bitrise API. Message is
+// the human-readable text extracted from a known JSON error field; Body is
+// the raw response body, surfaced only when no structured field was found
+// so unexpected error shapes still tell the user something.
 type APIError struct {
 	StatusCode int
 	Message    string
+	Body       string
 }
 
 func (e *APIError) Error() string {
-	return fmt.Sprintf("bitrise API %d: %s", e.StatusCode, e.Message)
+	if e.Message != "" {
+		return fmt.Sprintf("bitrise API %d: %s", e.StatusCode, e.Message)
+	}
+	if e.Body != "" {
+		return fmt.Sprintf("bitrise API %d: %s", e.StatusCode, truncate(e.Body, 500))
+	}
+	return fmt.Sprintf("bitrise API %d", e.StatusCode)
 }
 
+// errorBody covers the common JSON error shapes the Bitrise services
+// return: {"message":...}, {"error_msg":...}, {"error":...}, and
+// {"errors":[...]}.
 type errorBody struct {
-	Message string `json:"message"`
+	Message  string   `json:"message"`
+	ErrorMsg string   `json:"error_msg"`
+	Error    string   `json:"error"`
+	Errors   []string `json:"errors"`
+}
+
+// pick returns the first non-empty field of e, joining Errors with "; ".
+func (e errorBody) pick() string {
+	if e.Message != "" {
+		return e.Message
+	}
+	if e.ErrorMsg != "" {
+		return e.ErrorMsg
+	}
+	if e.Error != "" {
+		return e.Error
+	}
+	if len(e.Errors) > 0 {
+		return strings.Join(e.Errors, "; ")
+	}
+	return ""
+}
+
+func truncate(s string, max int) string {
+	if len(s) <= max {
+		return s
+	}
+	return s[:max] + "…"
 }
 
 type envelope[T any] struct {
@@ -94,7 +135,15 @@ func (c *Client) do(req *http.Request) ([]byte, error) {
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		var e errorBody
 		_ = json.Unmarshal(body, &e)
-		return nil, &APIError{StatusCode: resp.StatusCode, Message: e.Message}
+		msg := e.pick()
+		apiErr := &APIError{StatusCode: resp.StatusCode, Message: msg}
+		if msg == "" {
+			// No structured field — keep the raw body so the user has
+			// something concrete to see (e.g. an unmarshalable Rails 500
+			// HTML page or an undocumented error shape).
+			apiErr.Body = strings.TrimSpace(string(body))
+		}
+		return nil, apiErr
 	}
 	return body, nil
 }

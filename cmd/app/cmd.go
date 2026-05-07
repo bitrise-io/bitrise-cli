@@ -17,6 +17,7 @@ func NewCmd() *cobra.Command {
 	c.AddCommand(
 		newListCmd(),
 		newViewCmd(),
+		newCreateCmd(),
 	)
 	return c
 }

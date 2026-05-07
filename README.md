@@ -24,6 +24,7 @@ A CLI tool to manage all Bitrise platform resources — CI, RM, RDE, and more �
 |---|---|
 | `app list` | List apps the authenticated user can access |
 | `app view APP_SLUG` | Show details of a single app |
+| `app create` | Register a new app (auto-detects repo URL/branch from cwd; saves the new slug as the default `app_slug`) |
 
 ### `build` — Trigger, list, and inspect builds
 
@@ -46,6 +47,8 @@ A CLI tool to manage all Bitrise platform resources — CI, RM, RDE, and more �
 | `config get KEY` | Print the value of a single config key |
 | `config set KEY VALUE` | Set a config key and save the file |
 | `config unset KEY` | Remove a config key and save the file |
+
+Recognized keys: `output`, `app_slug`, `default_organization_slug`, `api_base_url`, `web_base_url`, `theme`.
 
 ### `yml` — Get, update, or validate the bitrise.yml stored on Bitrise
 

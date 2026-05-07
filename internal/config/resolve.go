@@ -42,6 +42,7 @@ const DefaultWebBaseURL = "https://app.bitrise.io"
 type Resolved struct {
 	Output     output.Format
 	AppSlug    string
+	OrgSlug    string
 	Token      string
 	APIBaseURL string
 	WebBaseURL string
@@ -76,6 +77,7 @@ func Resolve(globalCfg, dirCfg Config, authData auth.Auth, flagOutput, flagTheme
 	r.Theme = t
 
 	r.AppSlug = firstNonEmpty(os.Getenv(EnvAppSlug), dirCfg.AppSlug, globalCfg.AppSlug)
+	r.OrgSlug = firstNonEmpty(dirCfg.OrgSlug, globalCfg.OrgSlug)
 	r.APIBaseURL = firstNonEmpty(os.Getenv(EnvAPIBaseURL), dirCfg.APIBaseURL, globalCfg.APIBaseURL, DefaultAPIBaseURL)
 	r.WebBaseURL = firstNonEmpty(os.Getenv(EnvWebBaseURL), dirCfg.WebBaseURL, globalCfg.WebBaseURL, DefaultWebBaseURL)
 	r.Token = firstNonEmpty(os.Getenv(EnvToken), authData.Token)

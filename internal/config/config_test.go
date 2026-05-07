@@ -78,6 +78,7 @@ func TestGetSetUnset(t *testing.T) {
 	values := map[string]string{
 		KeyOutput:     "json",
 		KeyAppSlug:    "stub-slug",
+		KeyOrgSlug:    "acme",
 		KeyAPIBaseURL: "https://api.example.com",
 		KeyTheme:      "light",
 	}

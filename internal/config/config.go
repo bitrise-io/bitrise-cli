@@ -28,19 +28,21 @@ import (
 const (
 	KeyOutput     = "output"
 	KeyAppSlug    = "app_slug"
+	KeyOrgSlug    = "default_organization_slug"
 	KeyAPIBaseURL = "api_base_url"
 	KeyWebBaseURL = "web_base_url"
 	KeyTheme      = "theme"
 )
 
 // Keys is the registered list of config keys, used for validation and help.
-var Keys = []string{KeyOutput, KeyAppSlug, KeyAPIBaseURL, KeyWebBaseURL, KeyTheme}
+var Keys = []string{KeyOutput, KeyAppSlug, KeyOrgSlug, KeyAPIBaseURL, KeyWebBaseURL, KeyTheme}
 
 // Config is the on-disk shape. Fields use omitempty so unset values
 // don't appear in the saved YAML.
 type Config struct {
 	Output     string `yaml:"output,omitempty"`
 	AppSlug    string `yaml:"app_slug,omitempty"`
+	OrgSlug    string `yaml:"default_organization_slug,omitempty"`
 	APIBaseURL string `yaml:"api_base_url,omitempty"`
 	WebBaseURL string `yaml:"web_base_url,omitempty"`
 	Theme      string `yaml:"theme,omitempty"`
@@ -188,6 +190,8 @@ func (c *Config) Get(key string) (string, error) {
 		return c.Output, nil
 	case KeyAppSlug:
 		return c.AppSlug, nil
+	case KeyOrgSlug:
+		return c.OrgSlug, nil
 	case KeyAPIBaseURL:
 		return c.APIBaseURL, nil
 	case KeyWebBaseURL:
@@ -208,6 +212,8 @@ func (c *Config) Set(key, value string) error {
 		next.Output = value
 	case KeyAppSlug:
 		next.AppSlug = value
+	case KeyOrgSlug:
+		next.OrgSlug = value
 	case KeyAPIBaseURL:
 		next.APIBaseURL = value
 	case KeyWebBaseURL:
