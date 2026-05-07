@@ -29,6 +29,7 @@ func newTriggerCmd() *cobra.Command {
 		pullRequestID int
 		wait          bool
 		interval      time.Duration
+		verbose       bool
 	)
 
 	c := &cobra.Command{
@@ -51,9 +52,11 @@ Optional flags:
   --pull-request-id ID   pull request ID for PR builds
   --priority N           build priority (-1 = low, 0 = normal, 1 = high)
   --env JSON             environment variables as a JSON object, e.g. '{"KEY":"value"}'
-  --wait                 stream logs and wait for the build to finish; exits 0 on success,
-                         1 on failure. With --output json the final build record is written
-                         to stdout and logs go to stderr.
+  --wait                 wait for the build to finish; exits 0 on success, 1 on failure.
+                         Shows a live status bar by default; use --verbose to stream logs.
+                         With --output json the final build record is written to stdout and
+                         logs go to stderr.
+  --verbose              stream full build logs during --wait (default: status bar only)
   --interval DURATION    log polling interval when --wait is set (default 3s)`,
 		Example: `  bitrise-cli build trigger --app my-app-slug --workflow primary
   bitrise-cli build trigger --app my-app-slug --workflow deploy --branch release/1.2 --output json
@@ -117,7 +120,7 @@ Optional flags:
 			if format == output.JSON {
 				logWriter = cmd.ErrOrStderr()
 			}
-			return runWatch(cmd, svc, b, interval, logWriter, format)
+			return runWatch(cmd, svc, b, interval, logWriter, format, verbose)
 		},
 	}
 
@@ -131,7 +134,8 @@ Optional flags:
 	c.Flags().StringVar(&envJSON, "env", "", `environment variables as a JSON object, e.g. '{"KEY":"value"}'`)
 	c.Flags().IntVar(&priority, "priority", 0, "build priority (-1 = low, 0 = normal, 1 = high)")
 	c.Flags().IntVar(&pullRequestID, "pull-request-id", 0, "pull request ID for PR builds")
-	c.Flags().BoolVar(&wait, "wait", false, "stream logs and wait for the build to finish (exit code reflects build outcome)")
+	c.Flags().BoolVar(&wait, "wait", false, "wait for the build to finish (exit code reflects build outcome)")
+	c.Flags().BoolVar(&verbose, "verbose", false, "stream full build logs during --wait (default: status bar only)")
 	c.Flags().DurationVar(&interval, "interval", 3*time.Second, "log polling interval when --wait is set")
 	c.MarkFlagsMutuallyExclusive("workflow", "pipeline")
 

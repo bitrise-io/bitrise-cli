@@ -91,9 +91,9 @@ func renderBuildText(w io.Writer, b internalbuild.Build) error {
 //
 // In human format on an interactive terminal it switches to a TUI that
 // pins a spinner + status bar to the bottom and streams logs above it.
-func runWatch(cmd *cobra.Command, svc *internalbuild.Service, b internalbuild.Build, interval time.Duration, logWriter io.Writer, format output.Format) error {
+func runWatch(cmd *cobra.Command, svc *internalbuild.Service, b internalbuild.Build, interval time.Duration, logWriter io.Writer, format output.Format, verbose bool) error {
 	if format == output.Human && stdoutIsTTY(cmd) {
-		return runWatchTUI(cmd, svc, b, interval)
+		return runWatchTUI(cmd, svc, b, interval, verbose)
 	}
 
 	stderr := cmd.ErrOrStderr()
@@ -105,7 +105,11 @@ func runWatch(cmd *cobra.Command, svc *internalbuild.Service, b internalbuild.Bu
 		return headerEW.Err
 	}
 
-	finalBuild, err := svc.Watch(cmd.Context(), b.AppSlug, b.Slug, logWriter, interval)
+	sink := logWriter
+	if !verbose {
+		sink = io.Discard
+	}
+	finalBuild, err := svc.Watch(cmd.Context(), b.AppSlug, b.Slug, sink, interval)
 	if errors.Is(err, context.Canceled) {
 		detachEW := cmdutil.NewErrWriter(stderr)
 		detachEW.F("\nDetached — build is still running.\n")
