@@ -33,11 +33,11 @@ func stdoutIsTTY(cmd *cobra.Command) bool {
 // status bar (spinner + build info + clickable URL) at the bottom of the
 // terminal while build logs scroll above it. When the build finishes the TUI
 // exits cleanly and the caller renders the final summary.
-func runWatchTUI(cmd *cobra.Command, svc *internalbuild.Service, b internalbuild.Build, interval time.Duration) error {
+func runWatchTUI(cmd *cobra.Command, svc *internalbuild.Service, b internalbuild.Build, interval time.Duration, verbose bool) error {
 	ctx, cancel := context.WithCancel(cmd.Context())
 	defer cancel()
 
-	m := newWaitModel(b)
+	m := newWaitModel(b, verbose)
 	p := tea.NewProgram(m, tea.WithContext(ctx), tea.WithOutput(cmd.OutOrStdout()))
 
 	doneCh := make(chan struct{})
@@ -115,6 +115,7 @@ type waitModel struct {
 	finalBuild internalbuild.Build
 	finalErr   error
 	finished   bool
+	verbose    bool
 	width      int
 	labelStyle lipgloss.Style
 	dimStyle   lipgloss.Style
@@ -126,7 +127,7 @@ type waitModel struct {
 // automatically when the terminal can't render truecolor.
 const bitrisePurple = lipgloss.Color("#7B61FF")
 
-func newWaitModel(b internalbuild.Build) waitModel {
+func newWaitModel(b internalbuild.Build, verbose bool) waitModel {
 	sp := spinner.New()
 	sp.Spinner = spinner.Dot
 	sp.Style = lipgloss.NewStyle().Foreground(bitrisePurple)
@@ -138,6 +139,7 @@ func newWaitModel(b internalbuild.Build) waitModel {
 		build:      b,
 		spinner:    sp,
 		startedAt:  started,
+		verbose:    verbose,
 		width:      80,
 		labelStyle: lipgloss.NewStyle().Bold(true),
 		dimStyle:   lipgloss.NewStyle().Foreground(lipgloss.Color("245")),
@@ -161,25 +163,28 @@ func (m waitModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	case logChunkMsg:
-		m.leftover += string(msg)
-		var cmds []tea.Cmd
-		for {
-			i := strings.IndexByte(m.leftover, '\n')
-			if i < 0 {
-				break
+		if m.verbose {
+			m.leftover += string(msg)
+			var cmds []tea.Cmd
+			for {
+				i := strings.IndexByte(m.leftover, '\n')
+				if i < 0 {
+					break
+				}
+				line := strings.TrimRight(m.leftover[:i], "\r")
+				m.leftover = m.leftover[i+1:]
+				cmds = append(cmds, tea.Println(line))
 			}
-			line := strings.TrimRight(m.leftover[:i], "\r")
-			m.leftover = m.leftover[i+1:]
-			cmds = append(cmds, tea.Println(line))
+			return m, tea.Batch(cmds...)
 		}
-		return m, tea.Batch(cmds...)
+		return m, nil
 
 	case watchDoneMsg:
 		m.finalBuild = msg.build
 		m.finalErr = msg.err
 		m.finished = true
 		var cmds []tea.Cmd
-		if m.leftover != "" {
+		if m.verbose && m.leftover != "" {
 			cmds = append(cmds, tea.Println(m.leftover))
 			m.leftover = ""
 		}
