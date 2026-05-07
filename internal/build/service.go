@@ -221,21 +221,27 @@ func (s *Service) Watch(ctx context.Context, appSlug, buildSlug string, w io.Wri
 		interval = 3 * time.Second
 	}
 
-	manifest, err := s.client.BuildLogManifest(ctx, appSlug, buildSlug, "")
-	if err != nil {
-		// 404 means the build hasn't started yet; wait one interval and retry once.
+	// The log manifest returns 404 for up to ~15s after trigger while the
+	// runner provisions. Retry on 404 for up to 10 intervals (~30s at the
+	// default 3s interval) before giving up.
+	const maxInitialRetries = 10
+	var (
+		manifest bitriseapi.BuildLogResponse
+		err      error
+	)
+	for attempt := 0; ; attempt++ {
+		manifest, err = s.client.BuildLogManifest(ctx, appSlug, buildSlug, "")
+		if err == nil {
+			break
+		}
 		var apiErr *bitriseapi.APIError
-		if !errors.As(err, &apiErr) || apiErr.StatusCode != http.StatusNotFound {
+		if !errors.As(err, &apiErr) || apiErr.StatusCode != http.StatusNotFound || attempt >= maxInitialRetries {
 			return Build{}, err
 		}
 		select {
 		case <-ctx.Done():
 			return Build{}, ctx.Err()
 		case <-time.After(interval):
-		}
-		manifest, err = s.client.BuildLogManifest(ctx, appSlug, buildSlug, "")
-		if err != nil {
-			return Build{}, err
 		}
 	}
 
