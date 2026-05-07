@@ -3,6 +3,8 @@ package app
 import (
 	"fmt"
 	"io"
+	"strconv"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -19,6 +21,7 @@ func newListCmd() *cobra.Command {
 		sortBy      string
 		title       string
 		projectType string
+		fetchAll    bool
 	)
 
 	c := &cobra.Command{
@@ -33,11 +36,20 @@ Filters:
 
 Pagination:
   --limit N                  max items per page (server default if 0)
-  --cursor TOKEN             opaque token from a previous page's "next_cursor"`,
+  --cursor TOKEN             opaque token from a previous page's next_cursor
+  --all                      fetch all pages automatically
+
+In JSON mode (--output json), the next_cursor field holds the cursor value for scripting:
+  bitrise-cli app list --output json | jq -r '.next_cursor'`,
 		Example: `  bitrise-cli app list
-  bitrise-cli app list --output json
+  bitrise-cli app list --all
+  bitrise-cli app list --output json | jq -r '.next_cursor'
   bitrise-cli app list --project-type ios --limit 100`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			if fetchAll && cursor != "" {
+				return fmt.Errorf("--all and --cursor cannot be used together")
+			}
+
 			format := cmdutil.ResolveFormat(cmd)
 
 			client, err := cmdutil.NewAPIClient(cmd)
@@ -45,23 +57,68 @@ Pagination:
 				return err
 			}
 			svc := internalapp.NewService(client)
-			res, err := svc.List(cmd.Context(), internalapp.ListOptions{
-				Limit:       limit,
-				Cursor:      cursor,
-				SortBy:      sortBy,
-				Title:       title,
-				ProjectType: projectType,
-			})
-			if err != nil {
-				return err
+
+			makeOpts := func(cur string) internalapp.ListOptions {
+				return internalapp.ListOptions{
+					Limit:       limit,
+					Cursor:      cur,
+					SortBy:      sortBy,
+					Title:       title,
+					ProjectType: projectType,
+				}
 			}
 
-			return output.Render(cmd.OutOrStdout(), format, res, renderListText)
+			var res internalapp.AppsResult
+			if fetchAll {
+				var allItems []internalapp.App
+				cur := ""
+				for {
+					page, pageErr := svc.List(cmd.Context(), makeOpts(cur))
+					if pageErr != nil {
+						return pageErr
+					}
+					allItems = append(allItems, page.Items...)
+					if page.NextCursor == "" {
+						break
+					}
+					cur = page.NextCursor
+				}
+				res = internalapp.AppsResult{Items: allItems}
+			} else {
+				res, err = svc.List(cmd.Context(), makeOpts(cursor))
+				if err != nil {
+					return err
+				}
+			}
+
+			nextPageCmd := func(nextCursor string) string {
+				parts := []string{"bitrise-cli app list"}
+				if cmd.Flags().Changed("title") {
+					parts = append(parts, "--title", title)
+				}
+				if cmd.Flags().Changed("project-type") {
+					parts = append(parts, "--project-type", projectType)
+				}
+				if cmd.Flags().Changed("sort-by") {
+					parts = append(parts, "--sort-by", sortBy)
+				}
+				if cmd.Flags().Changed("limit") {
+					parts = append(parts, "--limit", strconv.Itoa(limit))
+				}
+				parts = append(parts, "--cursor", nextCursor)
+				return strings.Join(parts, " ")
+			}
+
+			render := func(w io.Writer, r internalapp.AppsResult) error {
+				return renderListText(w, r, nextPageCmd)
+			}
+			return output.Render(cmd.OutOrStdout(), format, res, render)
 		},
 	}
 
 	c.Flags().IntVar(&limit, "limit", 0, "max items per page (server default if 0)")
 	c.Flags().StringVar(&cursor, "cursor", "", "pagination cursor from a previous response")
+	c.Flags().BoolVar(&fetchAll, "all", false, "fetch all pages automatically")
 	c.Flags().StringVar(&sortBy, "sort-by", "", "ordering accepted by the API (e.g. created_at, last_build_at)")
 	c.Flags().StringVar(&title, "title", "", "filter apps whose title contains the given string (case-insensitive)")
 	c.Flags().StringVar(&projectType, "project-type", "", "filter by project type (ios, android, ...)")
@@ -76,7 +133,7 @@ Pagination:
 	return c
 }
 
-func renderListText(w io.Writer, res internalapp.AppsResult) error {
+func renderListText(w io.Writer, res internalapp.AppsResult, nextPageCmd func(string) string) error {
 	if len(res.Items) == 0 {
 		_, err := fmt.Fprintln(w, "No apps found.")
 		return err
@@ -113,7 +170,8 @@ func renderListText(w io.Writer, res internalapp.AppsResult) error {
 		return err
 	}
 	if res.NextCursor != "" {
-		_, err := fmt.Fprintf(w, "\n%s\n", s.Dim.Render("More results available — pass --cursor "+res.NextCursor))
+		hint := fmt.Sprintf("More results available. To fetch the next page:\n  %s", nextPageCmd(res.NextCursor))
+		_, err := fmt.Fprintf(w, "\n%s\n", s.Dim.Render(hint))
 		return err
 	}
 	return nil
