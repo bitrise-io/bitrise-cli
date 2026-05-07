@@ -201,14 +201,31 @@ func (s *Service) View(ctx context.Context, appSlug, buildSlug string) (Build, e
 	return fromAPI(b, appSlug), nil
 }
 
+// LogSink receives the cumulative state of build log chunks during Watch's
+// live polling. The map is keyed by chunk Position; each call replaces the
+// sink's view of the log so far. Implementations decide how to render: the
+// terminal-clearing sink wipes the screen and reprints the full sorted log
+// every update; the contiguous-stream sink emits only new chunks once they
+// can be appended in order from the lowest unwritten position.
+//
+// The Bitrise log API can return chunks across polls in arbitrary order
+// because the server collects them from parallel producers. Without
+// cumulative reordering, naive append produces jumbled output.
+type LogSink interface {
+	OnUpdate(chunks map[int]string) error
+}
+
 // Watch streams the build log to w using the API's delta-log protocol,
 // blocking until the build finishes. Returns the final Build so the caller
 // can determine the exit code. Ctrl-C (context cancellation) causes Watch to
 // return context.Canceled; the build continues running on Bitrise.
 //
-// For builds that are already finished when Watch is called, the archived log
-// is fetched and streamed immediately.
-func (s *Service) Watch(ctx context.Context, appSlug, buildSlug string, w io.Writer, interval time.Duration) (Build, error) {
+// Live (in-progress) chunks flow through sink so the cmd layer can reorder
+// them. w is used directly only for the already-archived case (the API
+// delivers archived logs as a single ordered stream). When sink is nil the
+// chunks are appended to w in arrival order — legacy behavior preserved
+// for tests that don't care about ordering.
+func (s *Service) Watch(ctx context.Context, appSlug, buildSlug string, w io.Writer, sink LogSink, interval time.Duration) (Build, error) {
 	if s.client == nil {
 		return Build{}, fmt.Errorf("API client not configured")
 	}
@@ -254,8 +271,22 @@ func (s *Service) Watch(ctx context.Context, appSlug, buildSlug string, w io.Wri
 		return s.View(ctx, appSlug, buildSlug)
 	}
 
-	// In-progress: write the first batch of chunks, then poll for more.
-	if err := writeLogChunks(w, manifest.LogChunks); err != nil {
+	// In-progress: accumulate chunks by position and notify sink after each
+	// poll. The sink decides how to render (clear + reprint, contiguous-
+	// emit, etc.). When sink is nil, fall back to writing chunks in arrival
+	// order to w (legacy behavior used by some tests).
+	chunks := map[int]string{}
+	notify := func(batch []bitriseapi.BuildLogChunk) error {
+		if sink == nil {
+			return writeLogChunks(w, batch)
+		}
+		for _, c := range batch {
+			chunks[c.Position] = c.Chunk
+		}
+		return sink.OnUpdate(chunks)
+	}
+
+	if err := notify(manifest.LogChunks); err != nil {
 		return Build{}, err
 	}
 
@@ -277,7 +308,7 @@ func (s *Service) Watch(ctx context.Context, appSlug, buildSlug string, w io.Wri
 			if err != nil {
 				return Build{}, err
 			}
-			if err := writeLogChunks(w, manifest.LogChunks); err != nil {
+			if err := notify(manifest.LogChunks); err != nil {
 				return Build{}, err
 			}
 			lastAfterTimestamp = afterTimestamp
@@ -294,7 +325,7 @@ func (s *Service) Watch(ctx context.Context, appSlug, buildSlug string, w io.Wri
 		if err != nil {
 			return Build{}, err
 		}
-		if err := writeLogChunks(w, final.LogChunks); err != nil {
+		if err := notify(final.LogChunks); err != nil {
 			return Build{}, err
 		}
 	}
@@ -302,10 +333,10 @@ func (s *Service) Watch(ctx context.Context, appSlug, buildSlug string, w io.Wri
 	return fromAPI(current, appSlug), nil
 }
 
-// writeLogChunks writes chunks to w in Position order. The Bitrise log API
-// can return chunks in arbitrary order within a single manifest response
-// because the server collects them from parallel producers; sorting by
-// Position before writing gives us the line ordering the user expects.
+// writeLogChunks writes chunks to w in Position order. Used as the fallback
+// when Watch is called without a LogSink — emits chunks in arrival order
+// (sorted within the batch). For correct ordering across polls, callers
+// should pass a LogSink that maintains cumulative state.
 func writeLogChunks(w io.Writer, chunks []bitriseapi.BuildLogChunk) error {
 	slices.SortFunc(chunks, func(a, b bitriseapi.BuildLogChunk) int {
 		return a.Position - b.Position
