@@ -29,8 +29,8 @@ func TestNew_NonTTYWriterIsAnsiFree(t *testing.T) {
 }
 
 func TestConfigure_NoColorForcesAscii(t *testing.T) {
-	t.Cleanup(func() { Configure(false) })
-	Configure(true)
+	t.Cleanup(func() { Configure(false, ThemeAuto) })
+	Configure(true, ThemeAuto)
 
 	var buf bytes.Buffer
 	s := New(&buf)
@@ -40,6 +40,51 @@ func TestConfigure_NoColorForcesAscii(t *testing.T) {
 	out := s.Success.Render("✓")
 	if hasANSI(out) {
 		t.Errorf("expected ANSI-free output, got %q", out)
+	}
+}
+
+func TestConfigure_ThemeNoneForcesAscii(t *testing.T) {
+	t.Cleanup(func() { Configure(false, ThemeAuto) })
+	Configure(false, ThemeNone)
+
+	var buf bytes.Buffer
+	s := New(&buf)
+	if s.HasColor() {
+		t.Fatal("Configure(_, ThemeNone) should force no color")
+	}
+}
+
+func TestParseTheme(t *testing.T) {
+	cases := []struct {
+		in      string
+		want    Theme
+		wantErr bool
+	}{
+		{"", ThemeAuto, false},
+		{"auto", ThemeAuto, false},
+		{"AUTO", ThemeAuto, false},
+		{"  dark  ", ThemeDark, false},
+		{"light", ThemeLight, false},
+		{"none", ThemeNone, false},
+		{"neon", "", true},
+		{"system", "", true},
+	}
+	for _, c := range cases {
+		t.Run(c.in, func(t *testing.T) {
+			got, err := ParseTheme(c.in)
+			if c.wantErr {
+				if err == nil {
+					t.Fatalf("ParseTheme(%q): expected error, got %q", c.in, got)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("ParseTheme(%q): unexpected error: %v", c.in, err)
+			}
+			if got != c.want {
+				t.Errorf("ParseTheme(%q) = %q, want %q", c.in, got, c.want)
+			}
+		})
 	}
 }
 

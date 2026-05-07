@@ -40,10 +40,15 @@ func TestValidate(t *testing.T) {
 		{"empty", Config{}, false},
 		{"valid output", Config{Output: "json"}, false},
 		{"valid url", Config{APIBaseURL: "https://api.example.com"}, false},
-		{"all set", Config{Output: "human", APIBaseURL: "https://x", AppSlug: "s"}, false},
+		{"all set", Config{Output: "human", APIBaseURL: "https://x", AppSlug: "s", Theme: "dark"}, false},
 		{"bad output", Config{Output: "yaml"}, true},
 		{"bad url no scheme", Config{APIBaseURL: "api.example.com"}, true},
 		{"bad url empty host", Config{APIBaseURL: "https://"}, true},
+		{"valid theme auto", Config{Theme: "auto"}, false},
+		{"valid theme dark", Config{Theme: "dark"}, false},
+		{"valid theme light", Config{Theme: "light"}, false},
+		{"valid theme none", Config{Theme: "none"}, false},
+		{"bad theme", Config{Theme: "neon"}, true},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -74,6 +79,7 @@ func TestGetSetUnset(t *testing.T) {
 		KeyOutput:     "json",
 		KeyAppSlug:    "stub-slug",
 		KeyAPIBaseURL: "https://api.example.com",
+		KeyTheme:      "light",
 	}
 	for k, v := range values {
 		if err := c.Set(k, v); err != nil {

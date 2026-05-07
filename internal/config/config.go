@@ -20,6 +20,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/bitrise-io/bitrise-cli/internal/output"
+	"github.com/bitrise-io/bitrise-cli/internal/output/style"
 )
 
 // Known config keys. These names are part of the user-facing CLI
@@ -29,10 +30,11 @@ const (
 	KeyAppSlug    = "app_slug"
 	KeyAPIBaseURL = "api_base_url"
 	KeyWebBaseURL = "web_base_url"
+	KeyTheme      = "theme"
 )
 
 // Keys is the registered list of config keys, used for validation and help.
-var Keys = []string{KeyOutput, KeyAppSlug, KeyAPIBaseURL, KeyWebBaseURL}
+var Keys = []string{KeyOutput, KeyAppSlug, KeyAPIBaseURL, KeyWebBaseURL, KeyTheme}
 
 // Config is the on-disk shape. Fields use omitempty so unset values
 // don't appear in the saved YAML.
@@ -41,6 +43,7 @@ type Config struct {
 	AppSlug    string `yaml:"app_slug,omitempty"`
 	APIBaseURL string `yaml:"api_base_url,omitempty"`
 	WebBaseURL string `yaml:"web_base_url,omitempty"`
+	Theme      string `yaml:"theme,omitempty"`
 }
 
 // DirFileName is the file looked up in the working directory and its
@@ -170,6 +173,11 @@ func (c *Config) Validate() error {
 			return fmt.Errorf("field %q: not a valid URL: %s", KeyWebBaseURL, c.WebBaseURL)
 		}
 	}
+	if c.Theme != "" {
+		if _, err := style.ParseTheme(c.Theme); err != nil {
+			return fmt.Errorf("field %q: %w", KeyTheme, err)
+		}
+	}
 	return nil
 }
 
@@ -184,6 +192,8 @@ func (c *Config) Get(key string) (string, error) {
 		return c.APIBaseURL, nil
 	case KeyWebBaseURL:
 		return c.WebBaseURL, nil
+	case KeyTheme:
+		return c.Theme, nil
 	default:
 		return "", unknownKeyErr(key)
 	}
@@ -202,6 +212,8 @@ func (c *Config) Set(key, value string) error {
 		next.APIBaseURL = value
 	case KeyWebBaseURL:
 		next.WebBaseURL = value
+	case KeyTheme:
+		next.Theme = value
 	default:
 		return unknownKeyErr(key)
 	}
