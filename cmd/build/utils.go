@@ -148,6 +148,9 @@ func buildWatchHeader(b internalbuild.Build) string {
 	} else if b.Tag != "" {
 		s += fmt.Sprintf(" on tag '%s'", b.Tag)
 	}
+	if b.BuildURL != "" {
+		s += fmt.Sprintf("\n→ %s", b.BuildURL)
+	}
 	return s
 }
 
