@@ -134,7 +134,7 @@ func newGetCmd() *cobra.Command {
 Valid keys: %s`,
 			strings.Join(internalconfig.Keys, ", "),
 		),
-		Args: cobra.ExactArgs(1),
+		Args: cmdutil.RequireArgs("KEY"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg, err := internalconfig.Load()
 			if err != nil {
@@ -167,7 +167,7 @@ If VALUE is "-", the value is read from stdin (trailing newline trimmed).`,
 		),
 		Example: `  bitrise-cli config set output json
   bitrise-cli config set app_slug 5db8b1d8-cae8-4cea-b943-ddc8f48e5e7c`,
-		Args: cobra.ExactArgs(2),
+		Args: cmdutil.RequireArgs("KEY", "VALUE"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			key := args[0]
 			value := args[1]
@@ -217,7 +217,7 @@ func newUnsetCmd() *cobra.Command {
 		Long: fmt.Sprintf(`Remove a config key and save the file.
 
 Valid keys: %s`, strings.Join(internalconfig.Keys, ", ")),
-		Args: cobra.ExactArgs(1),
+		Args: cmdutil.RequireArgs("KEY"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg, err := internalconfig.Load()
 			if err != nil {
