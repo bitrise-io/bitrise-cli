@@ -476,6 +476,91 @@ func TestService_Watch_SortsChunksByPosition(t *testing.T) {
 	}
 }
 
+func TestService_Watch_CrossPollOutOfOrderChunksHeldUntilContiguous(t *testing.T) {
+	// Reproduces the previously-broken behavior: position 2 arrives in
+	// poll 1, position 1 in poll 2, position 0 only in poll 3. With per-
+	// poll-only sorting the user would have seen "third" appear first;
+	// with cross-poll buffering, nothing is emitted until 0 arrives,
+	// then 0/1/2 flush together in order.
+	var logCalls atomic.Int32
+	client := fakeAPI(t, func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/apps/my-app/builds/b-1/log":
+			n := int(logCalls.Add(1))
+			switch n {
+			case 1:
+				_, _ = w.Write([]byte(`{"is_archived":false,"log_chunks":[{"chunk":"third\n","position":2}],"next_after_timestamp":"ts1"}`))
+			case 2:
+				_, _ = w.Write([]byte(`{"is_archived":false,"log_chunks":[{"chunk":"second\n","position":1}],"next_after_timestamp":"ts2"}`))
+			case 3:
+				_, _ = w.Write([]byte(`{"is_archived":false,"log_chunks":[{"chunk":"first\n","position":0}]}`))
+			default: // final flush
+				_, _ = w.Write([]byte(`{"is_archived":false,"log_chunks":[]}`))
+			}
+		case "/apps/my-app/builds/b-1":
+			n := int(buildCallsForOOOTest.Add(1))
+			if n <= 3 {
+				_, _ = w.Write([]byte(`{"data":{"slug":"b-1","build_number":1,"status":0}}`))
+			} else {
+				_, _ = w.Write([]byte(`{"data":{"slug":"b-1","build_number":1,"status":1,"triggered_workflow":"primary","branch":"main"}}`))
+			}
+		}
+	})
+	svc := NewService(client)
+
+	var buf bytes.Buffer
+	if _, err := svc.Watch(context.Background(), "my-app", "b-1", &buf, time.Millisecond); err != nil {
+		t.Fatal(err)
+	}
+	want := "first\nsecond\nthird\n"
+	if buf.String() != want {
+		t.Errorf("output = %q, want %q (chunks must be held until contiguous from position 0)", buf.String(), want)
+	}
+}
+
+// shared counter for the OOO test's build polls — kept top-level so the
+// fakeAPI handler closure can mutate it without race-y test-local state.
+var buildCallsForOOOTest atomic.Int32
+
+func TestService_Watch_DrainsRemainingBufferOnExit(t *testing.T) {
+	// If position 0 never arrives but 1 and 2 do, the build still
+	// finishes; drainRemaining emits 1 and 2 in order so no log line
+	// is silently dropped.
+	var logCalls atomic.Int32
+	client := fakeAPI(t, func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/apps/my-app/builds/b-2/log":
+			n := int(logCalls.Add(1))
+			switch n {
+			case 1:
+				_, _ = w.Write([]byte(`{"is_archived":false,"log_chunks":[{"chunk":"B\n","position":1},{"chunk":"C\n","position":2}],"next_after_timestamp":"ts1"}`))
+			default: // empty subsequent polls + final flush
+				_, _ = w.Write([]byte(`{"is_archived":false,"log_chunks":[]}`))
+			}
+		case "/apps/my-app/builds/b-2":
+			// Build flips to success on the second poll so the loop exits.
+			n := int(drainTestBuildCalls.Add(1))
+			if n == 1 {
+				_, _ = w.Write([]byte(`{"data":{"slug":"b-2","build_number":2,"status":0}}`))
+			} else {
+				_, _ = w.Write([]byte(`{"data":{"slug":"b-2","build_number":2,"status":1,"triggered_workflow":"primary","branch":"main"}}`))
+			}
+		}
+	})
+	svc := NewService(client)
+
+	var buf bytes.Buffer
+	if _, err := svc.Watch(context.Background(), "my-app", "b-2", &buf, time.Millisecond); err != nil {
+		t.Fatal(err)
+	}
+	want := "B\nC\n"
+	if buf.String() != want {
+		t.Errorf("output = %q, want %q (gap at position 0 → drain emits 1,2 in order)", buf.String(), want)
+	}
+}
+
+var drainTestBuildCalls atomic.Int32
+
 func TestService_Watch_AlreadyArchived(t *testing.T) {
 	rawSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte("ARCHIVED LOG\n"))

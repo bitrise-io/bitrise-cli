@@ -254,8 +254,15 @@ func (s *Service) Watch(ctx context.Context, appSlug, buildSlug string, w io.Wri
 		return s.View(ctx, appSlug, buildSlug)
 	}
 
-	// In-progress: write the first batch of chunks, then poll for more.
-	if err := writeLogChunks(w, manifest.LogChunks); err != nil {
+	// In-progress: maintain a position-keyed buffer across polls and only
+	// emit chunks that extend the contiguous run from position 0. The
+	// Bitrise log API delivers chunks in arbitrary order because the
+	// server collects them from parallel producers; without cross-poll
+	// buffering, a chunk arriving at position N before position N-1 would
+	// already be on screen by the time N-1 arrived in the next poll.
+	buffer := map[int]string{}
+	nextEmit := 0
+	if err := flushContiguous(w, buffer, &nextEmit, manifest.LogChunks); err != nil {
 		return Build{}, err
 	}
 
@@ -277,7 +284,7 @@ func (s *Service) Watch(ctx context.Context, appSlug, buildSlug string, w io.Wri
 			if err != nil {
 				return Build{}, err
 			}
-			if err := writeLogChunks(w, manifest.LogChunks); err != nil {
+			if err := flushContiguous(w, buffer, &nextEmit, manifest.LogChunks); err != nil {
 				return Build{}, err
 			}
 			lastAfterTimestamp = afterTimestamp
@@ -294,24 +301,66 @@ func (s *Service) Watch(ctx context.Context, appSlug, buildSlug string, w io.Wri
 		if err != nil {
 			return Build{}, err
 		}
-		if err := writeLogChunks(w, final.LogChunks); err != nil {
+		if err := flushContiguous(w, buffer, &nextEmit, final.LogChunks); err != nil {
 			return Build{}, err
 		}
+	}
+
+	// Failsafe: any chunks still buffered (a position before them never
+	// arrived from the server) get emitted in position order so we don't
+	// silently drop log lines. The build is finished — no more polls
+	// will fill the gap.
+	if err := drainRemaining(w, buffer); err != nil {
+		return Build{}, err
 	}
 
 	return fromAPI(current, appSlug), nil
 }
 
-// writeLogChunks writes chunks to w in Position order. The Bitrise log API
-// can return chunks in arbitrary order within a single manifest response
-// because the server collects them from parallel producers; sorting by
-// Position before writing gives us the line ordering the user expects.
-func writeLogChunks(w io.Writer, chunks []bitriseapi.BuildLogChunk) error {
-	slices.SortFunc(chunks, func(a, b bitriseapi.BuildLogChunk) int {
-		return a.Position - b.Position
-	})
-	for _, c := range chunks {
-		if _, err := io.WriteString(w, c.Chunk); err != nil {
+// flushContiguous merges batch into buffer and writes any chunks whose
+// position extends the contiguous run from *nextEmit. Out-of-order chunks
+// stay in buffer until the gap before them fills in via a later poll.
+//
+// Behavior on duplicates / replays:
+//   - position < *nextEmit:  already emitted, drop the chunk silently
+//   - position already in buffer: keep the first-arrived copy
+func flushContiguous(w io.Writer, buffer map[int]string, nextEmit *int, batch []bitriseapi.BuildLogChunk) error {
+	for _, c := range batch {
+		if c.Position < *nextEmit {
+			continue
+		}
+		if _, exists := buffer[c.Position]; exists {
+			continue
+		}
+		buffer[c.Position] = c.Chunk
+	}
+	for {
+		chunk, ok := buffer[*nextEmit]
+		if !ok {
+			return nil
+		}
+		if _, err := io.WriteString(w, chunk); err != nil {
+			return fmt.Errorf("write log chunk: %w", err)
+		}
+		delete(buffer, *nextEmit)
+		*nextEmit++
+	}
+}
+
+// drainRemaining writes any chunks still in buffer in position order.
+// Called once the build has finished and no further polls will fill any
+// remaining gap, so it's better to print what we have than to drop it.
+func drainRemaining(w io.Writer, buffer map[int]string) error {
+	if len(buffer) == 0 {
+		return nil
+	}
+	positions := make([]int, 0, len(buffer))
+	for p := range buffer {
+		positions = append(positions, p)
+	}
+	slices.Sort(positions)
+	for _, p := range positions {
+		if _, err := io.WriteString(w, buffer[p]); err != nil {
 			return fmt.Errorf("write log chunk: %w", err)
 		}
 	}
