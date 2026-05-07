@@ -447,6 +447,35 @@ func TestService_Watch_DeltaStreaming(t *testing.T) {
 	}
 }
 
+func TestService_Watch_SortsChunksByPosition(t *testing.T) {
+	// API returns chunks shuffled within a single response — the watch
+	// streamer must sort by position before printing.
+	var logCalls atomic.Int32
+	client := fakeAPI(t, func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/apps/my-app/builds/b-1/log":
+			n := int(logCalls.Add(1))
+			if n == 1 {
+				_, _ = w.Write([]byte(`{"is_archived":false,"log_chunks":[{"chunk":"third\n","position":2},{"chunk":"first\n","position":0},{"chunk":"second\n","position":1}]}`))
+			} else {
+				_, _ = w.Write([]byte(`{"is_archived":false,"log_chunks":[]}`))
+			}
+		case "/apps/my-app/builds/b-1":
+			_, _ = w.Write([]byte(`{"data":{"slug":"b-1","build_number":1,"status":1,"triggered_workflow":"primary","branch":"main"}}`))
+		}
+	})
+	svc := NewService(client)
+
+	var buf bytes.Buffer
+	if _, err := svc.Watch(context.Background(), "my-app", "b-1", &buf, time.Millisecond); err != nil {
+		t.Fatal(err)
+	}
+	want := "first\nsecond\nthird\n"
+	if buf.String() != want {
+		t.Errorf("output = %q, want %q (chunks must be sorted by position)", buf.String(), want)
+	}
+}
+
 func TestService_Watch_AlreadyArchived(t *testing.T) {
 	rawSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte("ARCHIVED LOG\n"))
