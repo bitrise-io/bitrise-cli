@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"slices"
 	"strconv"
 	"time"
 
@@ -255,8 +254,10 @@ func (s *Service) Watch(ctx context.Context, appSlug, buildSlug string, w io.Wri
 	}
 
 	// In-progress: write the first batch of chunks, then poll for more.
-	if err := writeLogChunks(w, manifest.LogChunks); err != nil {
-		return Build{}, err
+	for _, chunk := range manifest.LogChunks {
+		if _, err := io.WriteString(w, chunk.Chunk); err != nil {
+			return Build{}, fmt.Errorf("write log chunk: %w", err)
+		}
 	}
 
 	lastAfterTimestamp := ""
@@ -277,8 +278,10 @@ func (s *Service) Watch(ctx context.Context, appSlug, buildSlug string, w io.Wri
 			if err != nil {
 				return Build{}, err
 			}
-			if err := writeLogChunks(w, manifest.LogChunks); err != nil {
-				return Build{}, err
+			for _, chunk := range manifest.LogChunks {
+				if _, err := io.WriteString(w, chunk.Chunk); err != nil {
+					return Build{}, fmt.Errorf("write log chunk: %w", err)
+				}
 			}
 			lastAfterTimestamp = afterTimestamp
 			afterTimestamp = manifest.NextAfterTimestamp
@@ -294,28 +297,14 @@ func (s *Service) Watch(ctx context.Context, appSlug, buildSlug string, w io.Wri
 		if err != nil {
 			return Build{}, err
 		}
-		if err := writeLogChunks(w, final.LogChunks); err != nil {
-			return Build{}, err
+		for _, chunk := range final.LogChunks {
+			if _, err := io.WriteString(w, chunk.Chunk); err != nil {
+				return Build{}, fmt.Errorf("write log chunk: %w", err)
+			}
 		}
 	}
 
 	return fromAPI(current, appSlug), nil
-}
-
-// writeLogChunks writes chunks to w in Position order. The Bitrise log API
-// can return chunks in arbitrary order within a single manifest response
-// because the server collects them from parallel producers; sorting by
-// Position before writing gives us the line ordering the user expects.
-func writeLogChunks(w io.Writer, chunks []bitriseapi.BuildLogChunk) error {
-	slices.SortFunc(chunks, func(a, b bitriseapi.BuildLogChunk) int {
-		return a.Position - b.Position
-	})
-	for _, c := range chunks {
-		if _, err := io.WriteString(w, c.Chunk); err != nil {
-			return fmt.Errorf("write log chunk: %w", err)
-		}
-	}
-	return nil
 }
 
 // WaitForCompletion blocks until the build is no longer in-progress, polling
