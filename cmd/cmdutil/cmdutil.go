@@ -14,16 +14,18 @@ import (
 	"golang.org/x/term"
 
 	"github.com/bitrise-io/bitrise-cli/bitriseapi"
+	rdeapi "github.com/bitrise-io/bitrise-cli/bitriseapi/rde"
 	"github.com/bitrise-io/bitrise-cli/internal/config"
 	"github.com/bitrise-io/bitrise-cli/internal/output"
 )
 
 const (
-	FlagOutput = "output"
-	FlagApp    = "app"
-	FlagQuiet  = "quiet"
-	FlagWeb    = "web"
-	FlagTheme  = "theme"
+	FlagOutput    = "output"
+	FlagApp       = "app"
+	FlagWorkspace = "workspace"
+	FlagQuiet     = "quiet"
+	FlagWeb       = "web"
+	FlagTheme     = "theme"
 )
 
 // IsQuiet reports whether the persistent --quiet flag was set.
@@ -57,6 +59,21 @@ func ResolveAppSlug(cmd *cobra.Command) (string, error) {
 		return v, nil
 	}
 	return "", AppSlugRequiredErr("--app")
+}
+
+// ResolveWorkspaceID returns the RDE workspace ID (== workspace slug),
+// preferring --workspace, then BITRISE_WORKSPACE_ID, then the
+// default_organization_slug config key (per the RDE plan, the workspaceId
+// is the workspace/org slug).
+func ResolveWorkspaceID(cmd *cobra.Command) (string, error) {
+	if v, _ := cmd.Flags().GetString(FlagWorkspace); v != "" {
+		return v, nil
+	}
+	if v := config.FromContext(cmd.Context()).WorkspaceID; v != "" {
+		return v, nil
+	}
+	return "", fmt.Errorf("--workspace is required (or set %s, or run 'bitrise-cli config set %s <slug>')",
+		config.EnvWorkspaceID, config.KeyOrgSlug)
 }
 
 // ResolveAppSlugArg returns the positional APP_SLUG argument, falling back to Resolved.
@@ -98,6 +115,18 @@ func NewAPIClient(cmd *cobra.Command) (*bitriseapi.Client, error) {
 		return nil, ErrNoToken
 	}
 	return bitriseapi.New(r.APIBaseURL, r.Token), nil
+}
+
+// NewRDEClient builds an *rdeapi.Client for the Remote Dev Environments API
+// from the Resolved settings on cmd.Context(). Returns ErrNoToken if no
+// token is set anywhere. The RDE service uses Bearer auth (vs the legacy
+// "token <PAT>" header on the main bitriseapi client).
+func NewRDEClient(cmd *cobra.Command) (*rdeapi.Client, error) {
+	r := config.FromContext(cmd.Context())
+	if r.Token == "" {
+		return nil, ErrNoToken
+	}
+	return rdeapi.New(r.RDEAPIBaseURL, r.Token), nil
 }
 
 // ErrWriter wraps an io.Writer and captures the first write error so callers
