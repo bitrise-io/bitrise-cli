@@ -376,7 +376,7 @@ func TestService_NilClientFails(t *testing.T) {
 	if err := svc.Log(context.Background(), "a", "b", io.Discard); err == nil {
 		t.Fatal("Log with nil client should fail")
 	}
-	if _, err := svc.Watch(context.Background(), "a", "b", io.Discard, nil, time.Second); err == nil {
+	if _, err := svc.Watch(context.Background(), "a", "b", io.Discard, time.Second); err == nil {
 		t.Fatal("Watch with nil client should fail")
 	}
 }
@@ -418,7 +418,7 @@ func TestService_Watch_DeltaStreaming(t *testing.T) {
 	svc := NewService(client)
 
 	var buf bytes.Buffer
-	build, err := svc.Watch(context.Background(), "my-app", "b-1", &buf, nil, time.Millisecond)
+	build, err := svc.Watch(context.Background(), "my-app", "b-1", &buf, time.Millisecond)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -447,65 +447,6 @@ func TestService_Watch_DeltaStreaming(t *testing.T) {
 	}
 }
 
-// recordingSink captures every OnUpdate snapshot for assertion. The sink
-// stores a fresh copy of the map each call so later mutations from Watch
-// don't leak into earlier snapshots.
-type recordingSink struct {
-	snapshots []map[int]string
-}
-
-func (s *recordingSink) OnUpdate(chunks map[int]string) error {
-	c := make(map[int]string, len(chunks))
-	for k, v := range chunks {
-		c[k] = v
-	}
-	s.snapshots = append(s.snapshots, c)
-	return nil
-}
-
-func TestService_Watch_SinkAccumulatesAcrossPolls(t *testing.T) {
-	// Across two live polls the API delivers chunks at positions 1, 0, 2.
-	// The sink must see the cumulative state on each call (not just the
-	// new batch) so the cmd layer can render the full sorted log.
-	var logCalls atomic.Int32
-	client := fakeAPI(t, func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case "/apps/my-app/builds/b-1/log":
-			n := int(logCalls.Add(1))
-			switch n {
-			case 1:
-				// Out-of-order within a batch.
-				_, _ = w.Write([]byte(`{"is_archived":false,"log_chunks":[{"chunk":"B\n","position":1},{"chunk":"A\n","position":0}],"next_after_timestamp":"ts1"}`))
-			case 2:
-				_, _ = w.Write([]byte(`{"is_archived":false,"log_chunks":[{"chunk":"C\n","position":2}]}`))
-			default:
-				_, _ = w.Write([]byte(`{"is_archived":false,"log_chunks":[]}`))
-			}
-		case "/apps/my-app/builds/b-1":
-			_, _ = w.Write([]byte(`{"data":{"slug":"b-1","build_number":1,"status":1,"triggered_workflow":"primary","branch":"main"}}`))
-		}
-	})
-	svc := NewService(client)
-
-	sink := &recordingSink{}
-	if _, err := svc.Watch(context.Background(), "my-app", "b-1", io.Discard, sink, time.Millisecond); err != nil {
-		t.Fatal(err)
-	}
-	if len(sink.snapshots) < 2 {
-		t.Fatalf("expected at least 2 sink updates, got %d", len(sink.snapshots))
-	}
-	// First snapshot: positions 0,1 from batch 1.
-	first := sink.snapshots[0]
-	if first[0] != "A\n" || first[1] != "B\n" || len(first) != 2 {
-		t.Errorf("first snapshot = %v, want {0:A\\n, 1:B\\n}", first)
-	}
-	// Last snapshot: cumulative — position 2 from batch 2 plus carryover.
-	last := sink.snapshots[len(sink.snapshots)-1]
-	if last[0] != "A\n" || last[1] != "B\n" || last[2] != "C\n" {
-		t.Errorf("last snapshot = %v, want {0:A\\n, 1:B\\n, 2:C\\n}", last)
-	}
-}
-
 func TestService_Watch_SortsChunksByPosition(t *testing.T) {
 	// API returns chunks shuffled within a single response — the watch
 	// streamer must sort by position before printing.
@@ -526,7 +467,7 @@ func TestService_Watch_SortsChunksByPosition(t *testing.T) {
 	svc := NewService(client)
 
 	var buf bytes.Buffer
-	if _, err := svc.Watch(context.Background(), "my-app", "b-1", &buf, nil, time.Millisecond); err != nil {
+	if _, err := svc.Watch(context.Background(), "my-app", "b-1", &buf, time.Millisecond); err != nil {
 		t.Fatal(err)
 	}
 	want := "first\nsecond\nthird\n"
@@ -557,7 +498,7 @@ func TestService_Watch_AlreadyArchived(t *testing.T) {
 	svc := NewService(client)
 
 	var buf bytes.Buffer
-	build, err := svc.Watch(context.Background(), "my-app", "b-done", &buf, nil, time.Millisecond)
+	build, err := svc.Watch(context.Background(), "my-app", "b-done", &buf, time.Millisecond)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -593,7 +534,7 @@ func TestService_Watch_RetriesOn404(t *testing.T) {
 	svc := NewService(client)
 
 	var buf bytes.Buffer
-	build, err := svc.Watch(context.Background(), "my-app", "b-1", &buf, nil, time.Millisecond)
+	build, err := svc.Watch(context.Background(), "my-app", "b-1", &buf, time.Millisecond)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -612,7 +553,7 @@ func TestService_Watch_FailsOnSecond404(t *testing.T) {
 	})
 	svc := NewService(client)
 
-	_, err := svc.Watch(context.Background(), "my-app", "b-1", io.Discard, nil, time.Millisecond)
+	_, err := svc.Watch(context.Background(), "my-app", "b-1", io.Discard, time.Millisecond)
 	if err == nil {
 		t.Fatal("expected error on persistent 404")
 	}
@@ -644,7 +585,7 @@ func TestService_Watch_StopsOnIsArchived(t *testing.T) {
 	svc := NewService(client)
 
 	var buf bytes.Buffer
-	build, err := svc.Watch(context.Background(), "my-app", "b-1", &buf, nil, time.Millisecond)
+	build, err := svc.Watch(context.Background(), "my-app", "b-1", &buf, time.Millisecond)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -668,7 +609,7 @@ func TestService_Watch_ContextCancel(t *testing.T) {
 	svc := NewService(client)
 
 	var buf bytes.Buffer
-	_, err := svc.Watch(ctx, "my-app", "b-1", &buf, nil, 10*time.Millisecond)
+	_, err := svc.Watch(ctx, "my-app", "b-1", &buf, 10*time.Millisecond)
 	if !errors.Is(err, context.Canceled) {
 		t.Errorf("expected context.Canceled, got %v", err)
 	}
@@ -697,7 +638,7 @@ func TestService_Watch_StopsOnBuildStatus(t *testing.T) {
 	svc := NewService(client)
 
 	var buf bytes.Buffer
-	build, err := svc.Watch(context.Background(), "my-app", "b-1", &buf, nil, time.Millisecond)
+	build, err := svc.Watch(context.Background(), "my-app", "b-1", &buf, time.Millisecond)
 	if err != nil {
 		t.Fatal(err)
 	}
