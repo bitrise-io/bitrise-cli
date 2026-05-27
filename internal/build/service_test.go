@@ -376,7 +376,7 @@ func TestService_NilClientFails(t *testing.T) {
 	if err := svc.Log(context.Background(), "a", "b", io.Discard); err == nil {
 		t.Fatal("Log with nil client should fail")
 	}
-	if _, err := svc.Watch(context.Background(), "a", "b", io.Discard, nil, time.Second); err == nil {
+	if _, err := svc.Watch(context.Background(), "a", "b", io.Discard, time.Second); err == nil {
 		t.Fatal("Watch with nil client should fail")
 	}
 }
@@ -418,7 +418,7 @@ func TestService_Watch_DeltaStreaming(t *testing.T) {
 	svc := NewService(client)
 
 	var buf bytes.Buffer
-	build, err := svc.Watch(context.Background(), "my-app", "b-1", &buf, nil, time.Millisecond)
+	build, err := svc.Watch(context.Background(), "my-app", "b-1", &buf, time.Millisecond)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -447,91 +447,120 @@ func TestService_Watch_DeltaStreaming(t *testing.T) {
 	}
 }
 
-// recordingSink captures every OnUpdate snapshot for assertion. The sink
-// stores a fresh copy of the map each call so later mutations from Watch
-// don't leak into earlier snapshots.
-type recordingSink struct {
-	snapshots []map[int]string
-}
-
-func (s *recordingSink) OnUpdate(chunks map[int]string) error {
-	c := make(map[int]string, len(chunks))
-	for k, v := range chunks {
-		c[k] = v
-	}
-	s.snapshots = append(s.snapshots, c)
-	return nil
-}
-
-func TestService_Watch_SinkAccumulatesAcrossPolls(t *testing.T) {
-	// Across two live polls the API delivers chunks at positions 1, 0, 2.
-	// The sink must see the cumulative state on each call (not just the
-	// new batch) so the cmd layer can render the full sorted log.
-	var logCalls atomic.Int32
+func TestService_Watch_CrossPollGapFillsInLaterFlushesInOrder(t *testing.T) {
+	// Realistic cross-poll out-of-order: poll 1 returns positions 0, 1, 3
+	// (position 2 is delayed by the server-side parallel producer); poll
+	// 2 delivers position 2. Without cross-poll buffering the user would
+	// see 3 emitted before 2; with the buffer we emit 0, 1, hold 3, then
+	// emit 2 and 3 in order once 2 arrives.
+	var logCalls, buildCalls atomic.Int32
 	client := fakeAPI(t, func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/apps/my-app/builds/b-1/log":
 			n := int(logCalls.Add(1))
 			switch n {
 			case 1:
-				// Out-of-order within a batch.
-				_, _ = w.Write([]byte(`{"is_archived":false,"log_chunks":[{"chunk":"B\n","position":1},{"chunk":"A\n","position":0}],"next_after_timestamp":"ts1"}`))
+				_, _ = w.Write([]byte(`{"is_archived":false,"log_chunks":[{"chunk":"A\n","position":0},{"chunk":"B\n","position":1},{"chunk":"D\n","position":3}],"next_after_timestamp":"ts1"}`))
 			case 2:
-				_, _ = w.Write([]byte(`{"is_archived":false,"log_chunks":[{"chunk":"C\n","position":2}]}`))
+				_, _ = w.Write([]byte(`{"is_archived":false,"log_chunks":[{"chunk":"C\n","position":2}],"next_after_timestamp":"ts2"}`))
 			default:
 				_, _ = w.Write([]byte(`{"is_archived":false,"log_chunks":[]}`))
 			}
 		case "/apps/my-app/builds/b-1":
-			_, _ = w.Write([]byte(`{"data":{"slug":"b-1","build_number":1,"status":1,"triggered_workflow":"primary","branch":"main"}}`))
-		}
-	})
-	svc := NewService(client)
-
-	sink := &recordingSink{}
-	if _, err := svc.Watch(context.Background(), "my-app", "b-1", io.Discard, sink, time.Millisecond); err != nil {
-		t.Fatal(err)
-	}
-	if len(sink.snapshots) < 2 {
-		t.Fatalf("expected at least 2 sink updates, got %d", len(sink.snapshots))
-	}
-	// First snapshot: positions 0,1 from batch 1.
-	first := sink.snapshots[0]
-	if first[0] != "A\n" || first[1] != "B\n" || len(first) != 2 {
-		t.Errorf("first snapshot = %v, want {0:A\\n, 1:B\\n}", first)
-	}
-	// Last snapshot: cumulative — position 2 from batch 2 plus carryover.
-	last := sink.snapshots[len(sink.snapshots)-1]
-	if last[0] != "A\n" || last[1] != "B\n" || last[2] != "C\n" {
-		t.Errorf("last snapshot = %v, want {0:A\\n, 1:B\\n, 2:C\\n}", last)
-	}
-}
-
-func TestService_Watch_SortsChunksByPosition(t *testing.T) {
-	// API returns chunks shuffled within a single response — the watch
-	// streamer must sort by position before printing.
-	var logCalls atomic.Int32
-	client := fakeAPI(t, func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case "/apps/my-app/builds/b-1/log":
-			n := int(logCalls.Add(1))
-			if n == 1 {
-				_, _ = w.Write([]byte(`{"is_archived":false,"log_chunks":[{"chunk":"third\n","position":2},{"chunk":"first\n","position":0},{"chunk":"second\n","position":1}]}`))
+			n := int(buildCalls.Add(1))
+			if n <= 2 {
+				_, _ = w.Write([]byte(`{"data":{"slug":"b-1","build_number":1,"status":0}}`))
 			} else {
-				_, _ = w.Write([]byte(`{"is_archived":false,"log_chunks":[]}`))
+				_, _ = w.Write([]byte(`{"data":{"slug":"b-1","build_number":1,"status":1,"triggered_workflow":"primary","branch":"main"}}`))
 			}
-		case "/apps/my-app/builds/b-1":
-			_, _ = w.Write([]byte(`{"data":{"slug":"b-1","build_number":1,"status":1,"triggered_workflow":"primary","branch":"main"}}`))
 		}
 	})
 	svc := NewService(client)
 
 	var buf bytes.Buffer
-	if _, err := svc.Watch(context.Background(), "my-app", "b-1", &buf, nil, time.Millisecond); err != nil {
+	if _, err := svc.Watch(context.Background(), "my-app", "b-1", &buf, time.Millisecond); err != nil {
 		t.Fatal(err)
 	}
-	want := "first\nsecond\nthird\n"
+	want := "A\nB\nC\nD\n"
 	if buf.String() != want {
-		t.Errorf("output = %q, want %q (chunks must be sorted by position)", buf.String(), want)
+		t.Errorf("output = %q, want %q (chunk D must be held until C arrives)", buf.String(), want)
+	}
+}
+
+func TestService_Watch_LazyInitsCursorToFirstBatchMinPosition(t *testing.T) {
+	// Real-world positions may not start at 0 (e.g. 1-indexed, or
+	// numbered per build session). The first non-empty batch's lowest
+	// position becomes the cursor floor — otherwise the algorithm would
+	// stall forever waiting for a position that will never arrive.
+	var logCalls, buildCalls atomic.Int32
+	client := fakeAPI(t, func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/apps/my-app/builds/b-2/log":
+			n := int(logCalls.Add(1))
+			switch n {
+			case 1:
+				_, _ = w.Write([]byte(`{"is_archived":false,"log_chunks":[{"chunk":"first\n","position":100},{"chunk":"second\n","position":101}],"next_after_timestamp":"ts1"}`))
+			default:
+				_, _ = w.Write([]byte(`{"is_archived":false,"log_chunks":[]}`))
+			}
+		case "/apps/my-app/builds/b-2":
+			n := int(buildCalls.Add(1))
+			if n == 1 {
+				_, _ = w.Write([]byte(`{"data":{"slug":"b-2","build_number":2,"status":0}}`))
+			} else {
+				_, _ = w.Write([]byte(`{"data":{"slug":"b-2","build_number":2,"status":1,"triggered_workflow":"primary","branch":"main"}}`))
+			}
+		}
+	})
+	svc := NewService(client)
+
+	var buf bytes.Buffer
+	if _, err := svc.Watch(context.Background(), "my-app", "b-2", &buf, time.Millisecond); err != nil {
+		t.Fatal(err)
+	}
+	want := "first\nsecond\n"
+	if buf.String() != want {
+		t.Errorf("output = %q, want %q (cursor must lazy-init to lowest position, not assume 0)", buf.String(), want)
+	}
+}
+
+func TestService_Watch_StaleBufferDrainsAfterGapStalls(t *testing.T) {
+	// If a gap never fills in (the missing chunk was dropped server-side
+	// or never gets surfaced), the stale-buffer guard force-flushes
+	// after a few polls so streaming keeps moving instead of stalling
+	// until the build finishes.
+	var logCalls, buildCalls atomic.Int32
+	client := fakeAPI(t, func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/apps/my-app/builds/b-3/log":
+			n := int(logCalls.Add(1))
+			switch n {
+			case 1:
+				// Position 3 + 5 with a gap (4 missing) — gap never fills.
+				// Lazy init sets cursor to 3, so 3 emits immediately and 5
+				// stays buffered waiting for 4 that never comes.
+				_, _ = w.Write([]byte(`{"is_archived":false,"log_chunks":[{"chunk":"early\n","position":3},{"chunk":"late\n","position":5}],"next_after_timestamp":"ts1"}`))
+			default:
+				_, _ = w.Write([]byte(`{"is_archived":false,"log_chunks":[],"next_after_timestamp":"ts1"}`))
+			}
+		case "/apps/my-app/builds/b-3":
+			n := int(buildCalls.Add(1))
+			if n <= 6 {
+				_, _ = w.Write([]byte(`{"data":{"slug":"b-3","build_number":3,"status":0}}`))
+			} else {
+				_, _ = w.Write([]byte(`{"data":{"slug":"b-3","build_number":3,"status":1,"triggered_workflow":"primary","branch":"main"}}`))
+			}
+		}
+	})
+	svc := NewService(client)
+
+	var buf bytes.Buffer
+	if _, err := svc.Watch(context.Background(), "my-app", "b-3", &buf, time.Millisecond); err != nil {
+		t.Fatal(err)
+	}
+	want := "early\nlate\n"
+	if buf.String() != want {
+		t.Errorf("output = %q, want %q (stale-buffer drain must emit both chunks in order)", buf.String(), want)
 	}
 }
 
@@ -557,7 +586,7 @@ func TestService_Watch_AlreadyArchived(t *testing.T) {
 	svc := NewService(client)
 
 	var buf bytes.Buffer
-	build, err := svc.Watch(context.Background(), "my-app", "b-done", &buf, nil, time.Millisecond)
+	build, err := svc.Watch(context.Background(), "my-app", "b-done", &buf, time.Millisecond)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -593,7 +622,7 @@ func TestService_Watch_RetriesOn404(t *testing.T) {
 	svc := NewService(client)
 
 	var buf bytes.Buffer
-	build, err := svc.Watch(context.Background(), "my-app", "b-1", &buf, nil, time.Millisecond)
+	build, err := svc.Watch(context.Background(), "my-app", "b-1", &buf, time.Millisecond)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -612,7 +641,7 @@ func TestService_Watch_FailsOnSecond404(t *testing.T) {
 	})
 	svc := NewService(client)
 
-	_, err := svc.Watch(context.Background(), "my-app", "b-1", io.Discard, nil, time.Millisecond)
+	_, err := svc.Watch(context.Background(), "my-app", "b-1", io.Discard, time.Millisecond)
 	if err == nil {
 		t.Fatal("expected error on persistent 404")
 	}
@@ -644,7 +673,7 @@ func TestService_Watch_StopsOnIsArchived(t *testing.T) {
 	svc := NewService(client)
 
 	var buf bytes.Buffer
-	build, err := svc.Watch(context.Background(), "my-app", "b-1", &buf, nil, time.Millisecond)
+	build, err := svc.Watch(context.Background(), "my-app", "b-1", &buf, time.Millisecond)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -668,7 +697,7 @@ func TestService_Watch_ContextCancel(t *testing.T) {
 	svc := NewService(client)
 
 	var buf bytes.Buffer
-	_, err := svc.Watch(ctx, "my-app", "b-1", &buf, nil, 10*time.Millisecond)
+	_, err := svc.Watch(ctx, "my-app", "b-1", &buf, 10*time.Millisecond)
 	if !errors.Is(err, context.Canceled) {
 		t.Errorf("expected context.Canceled, got %v", err)
 	}
@@ -697,7 +726,7 @@ func TestService_Watch_StopsOnBuildStatus(t *testing.T) {
 	svc := NewService(client)
 
 	var buf bytes.Buffer
-	build, err := svc.Watch(context.Background(), "my-app", "b-1", &buf, nil, time.Millisecond)
+	build, err := svc.Watch(context.Background(), "my-app", "b-1", &buf, time.Millisecond)
 	if err != nil {
 		t.Fatal(err)
 	}

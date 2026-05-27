@@ -201,31 +201,14 @@ func (s *Service) View(ctx context.Context, appSlug, buildSlug string) (Build, e
 	return fromAPI(b, appSlug), nil
 }
 
-// LogSink receives the cumulative state of build log chunks during Watch's
-// live polling. The map is keyed by chunk Position; each call replaces the
-// sink's view of the log so far. Implementations decide how to render: the
-// terminal-clearing sink wipes the screen and reprints the full sorted log
-// every update; the contiguous-stream sink emits only new chunks once they
-// can be appended in order from the lowest unwritten position.
-//
-// The Bitrise log API can return chunks across polls in arbitrary order
-// because the server collects them from parallel producers. Without
-// cumulative reordering, naive append produces jumbled output.
-type LogSink interface {
-	OnUpdate(chunks map[int]string) error
-}
-
 // Watch streams the build log to w using the API's delta-log protocol,
 // blocking until the build finishes. Returns the final Build so the caller
 // can determine the exit code. Ctrl-C (context cancellation) causes Watch to
 // return context.Canceled; the build continues running on Bitrise.
 //
-// Live (in-progress) chunks flow through sink so the cmd layer can reorder
-// them. w is used directly only for the already-archived case (the API
-// delivers archived logs as a single ordered stream). When sink is nil the
-// chunks are appended to w in arrival order — legacy behavior preserved
-// for tests that don't care about ordering.
-func (s *Service) Watch(ctx context.Context, appSlug, buildSlug string, w io.Writer, sink LogSink, interval time.Duration) (Build, error) {
+// For builds that are already finished when Watch is called, the archived log
+// is fetched and streamed immediately.
+func (s *Service) Watch(ctx context.Context, appSlug, buildSlug string, w io.Writer, interval time.Duration) (Build, error) {
 	if s.client == nil {
 		return Build{}, fmt.Errorf("API client not configured")
 	}
@@ -271,22 +254,48 @@ func (s *Service) Watch(ctx context.Context, appSlug, buildSlug string, w io.Wri
 		return s.View(ctx, appSlug, buildSlug)
 	}
 
-	// In-progress: accumulate chunks by position and notify sink after each
-	// poll. The sink decides how to render (clear + reprint, contiguous-
-	// emit, etc.). When sink is nil, fall back to writing chunks in arrival
-	// order to w (legacy behavior used by some tests).
-	chunks := map[int]string{}
-	notify := func(batch []bitriseapi.BuildLogChunk) error {
-		if sink == nil {
-			return writeLogChunks(w, batch)
+	// In-progress: maintain a position-keyed buffer across polls so chunks
+	// delivered out of order can be reordered before reaching the writer.
+	// The Bitrise log API returns chunks in arbitrary order across polls
+	// because the server collects them from parallel producers; without
+	// cross-poll buffering, a chunk at position N can land on screen
+	// before position N-1 arrives in the next poll.
+	//
+	// The cursor (nextEmit) is lazy-initialized to the lowest position in
+	// the first non-empty batch — we don't assume positions start at zero,
+	// since the API doesn't document the numbering and may be 1-indexed.
+	// A "stale buffer" guard force-drains after maxStaleFlushes polls with
+	// no progress: positions can have real gaps (parallel sections, dropped
+	// chunks), and waiting for a chunk that never arrives would stall
+	// streaming until the build finishes.
+	const maxStaleFlushes = 3
+	buffer := map[int]string{}
+	nextEmit := -1
+	staleFlushes := 0
+	flush := func(batch []bitriseapi.BuildLogChunk) error {
+		emitted, err := flushContiguous(w, buffer, &nextEmit, batch)
+		if err != nil {
+			return err
 		}
-		for _, c := range batch {
-			chunks[c.Position] = c.Chunk
+		if emitted > 0 {
+			staleFlushes = 0
+			return nil
 		}
-		return sink.OnUpdate(chunks)
+		if len(buffer) == 0 {
+			return nil
+		}
+		staleFlushes++
+		if staleFlushes < maxStaleFlushes {
+			return nil
+		}
+		if err := drainRemaining(w, buffer, &nextEmit); err != nil {
+			return err
+		}
+		staleFlushes = 0
+		return nil
 	}
 
-	if err := notify(manifest.LogChunks); err != nil {
+	if err := flush(manifest.LogChunks); err != nil {
 		return Build{}, err
 	}
 
@@ -308,7 +317,7 @@ func (s *Service) Watch(ctx context.Context, appSlug, buildSlug string, w io.Wri
 			if err != nil {
 				return Build{}, err
 			}
-			if err := notify(manifest.LogChunks); err != nil {
+			if err := flush(manifest.LogChunks); err != nil {
 				return Build{}, err
 			}
 			lastAfterTimestamp = afterTimestamp
@@ -325,27 +334,92 @@ func (s *Service) Watch(ctx context.Context, appSlug, buildSlug string, w io.Wri
 		if err != nil {
 			return Build{}, err
 		}
-		if err := notify(final.LogChunks); err != nil {
+		if _, err := flushContiguous(w, buffer, &nextEmit, final.LogChunks); err != nil {
 			return Build{}, err
 		}
+	}
+
+	// Failsafe drain: any chunks still buffered (a position before them
+	// never arrived from the server) get emitted in position order.
+	// Better to surface them with a gap than to silently drop log lines.
+	if err := drainRemaining(w, buffer, &nextEmit); err != nil {
+		return Build{}, err
 	}
 
 	return fromAPI(current, appSlug), nil
 }
 
-// writeLogChunks writes chunks to w in Position order. Used as the fallback
-// when Watch is called without a LogSink — emits chunks in arrival order
-// (sorted within the batch). For correct ordering across polls, callers
-// should pass a LogSink that maintains cumulative state.
-func writeLogChunks(w io.Writer, chunks []bitriseapi.BuildLogChunk) error {
-	slices.SortFunc(chunks, func(a, b bitriseapi.BuildLogChunk) int {
-		return a.Position - b.Position
-	})
-	for _, c := range chunks {
-		if _, err := io.WriteString(w, c.Chunk); err != nil {
+// flushContiguous merges batch into buffer and writes any chunks whose
+// position extends the contiguous run from *nextEmit. Returns the number
+// of chunks emitted. Out-of-order chunks stay in buffer until the gap
+// before them fills in via a later poll or the stale-buffer drain.
+//
+// *nextEmit == -1 signals "not yet initialized"; the first non-empty
+// batch initializes it to the lowest position seen so the algorithm
+// works regardless of whether the API uses 0-indexed or 1-indexed
+// positions.
+//
+// Replay handling:
+//   - position < *nextEmit (after init): already emitted, drop silently
+//   - position already in buffer: keep the first-arrived copy
+func flushContiguous(w io.Writer, buffer map[int]string, nextEmit *int, batch []bitriseapi.BuildLogChunk) (int, error) {
+	for _, c := range batch {
+		if *nextEmit >= 0 && c.Position < *nextEmit {
+			continue
+		}
+		if _, exists := buffer[c.Position]; exists {
+			continue
+		}
+		buffer[c.Position] = c.Chunk
+	}
+	if *nextEmit < 0 {
+		if len(buffer) == 0 {
+			return 0, nil
+		}
+		min := -1
+		for p := range buffer {
+			if min < 0 || p < min {
+				min = p
+			}
+		}
+		*nextEmit = min
+	}
+	emitted := 0
+	for {
+		chunk, ok := buffer[*nextEmit]
+		if !ok {
+			return emitted, nil
+		}
+		if _, err := io.WriteString(w, chunk); err != nil {
+			return emitted, fmt.Errorf("write log chunk: %w", err)
+		}
+		delete(buffer, *nextEmit)
+		*nextEmit++
+		emitted++
+	}
+}
+
+// drainRemaining writes any chunks still in buffer in position order and
+// advances *nextEmit past the highest drained position so future chunks
+// at positions below it are dropped as already-emitted. Called both as the
+// final failsafe at build end and as the stale-buffer escape hatch when a
+// gap has stalled streaming for too many polls.
+func drainRemaining(w io.Writer, buffer map[int]string, nextEmit *int) error {
+	if len(buffer) == 0 {
+		return nil
+	}
+	positions := make([]int, 0, len(buffer))
+	for p := range buffer {
+		positions = append(positions, p)
+	}
+	slices.Sort(positions)
+	for _, p := range positions {
+		if _, err := io.WriteString(w, buffer[p]); err != nil {
 			return fmt.Errorf("write log chunk: %w", err)
 		}
+		delete(buffer, p)
 	}
+	*nextEmit = positions[len(positions)-1] + 1
 	return nil
 }
 

@@ -8,6 +8,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/charmbracelet/bubbles/spinner"
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/spf13/cobra"
 
 	"github.com/bitrise-io/bitrise-cli/cmd/cmdutil"
@@ -90,13 +93,13 @@ func renderBuildText(w io.Writer, b internalbuild.Build) error {
 // For output.JSON format it renders the final build record as JSON to
 // cmd.OutOrStdout() instead of the text footer.
 //
-// Log chunks come back from the API in arbitrary order across polls
-// (parallel server-side producers); we mirror the website's approach by
-// keying chunks on Position and rendering the cumulative sorted log:
-//   - on a TTY: clear the screen and reprint the full log on each update
-//   - off a TTY (pipes/files): append only chunks that extend the
-//     contiguous run from position 0 — preserves order without rewinding
+// In human format on an interactive terminal it switches to a TUI that
+// pins a spinner + status bar to the bottom and streams logs above it.
 func runWatch(cmd *cobra.Command, svc *internalbuild.Service, b internalbuild.Build, interval time.Duration, logWriter io.Writer, format output.Format) error {
+	if format == output.Human && cmdutil.WriterIsTTY(cmd.OutOrStdout()) {
+		return runWatchTUI(cmd, svc, b, interval)
+	}
+
 	stderr := cmd.ErrOrStderr()
 
 	headerEW := cmdutil.NewErrWriter(stderr)
@@ -106,8 +109,7 @@ func runWatch(cmd *cobra.Command, svc *internalbuild.Service, b internalbuild.Bu
 		return headerEW.Err
 	}
 
-	sink := newLogSinkFor(logWriter)
-	finalBuild, err := svc.Watch(cmd.Context(), b.AppSlug, b.Slug, logWriter, sink, interval)
+	finalBuild, err := svc.Watch(cmd.Context(), b.AppSlug, b.Slug, logWriter, interval)
 	if errors.Is(err, context.Canceled) {
 		detachEW := cmdutil.NewErrWriter(stderr)
 		detachEW.F("\nDetached — build is still running.\n")
@@ -125,6 +127,9 @@ func runWatch(cmd *cobra.Command, svc *internalbuild.Service, b internalbuild.Bu
 	footerEW := cmdutil.NewErrWriter(stderr)
 	footerEW.F("\n%s\n", watchDivider)
 	footerEW.F("Build #%d finished: %s%s\n", finalBuild.BuildNumber, finalBuild.Status, buildElapsed(finalBuild))
+	if url := buildDetailURL(cmd, b); url != "" {
+		footerEW.F("→ %s\n", url)
+	}
 	if footerEW.Err != nil {
 		return footerEW.Err
 	}
@@ -160,79 +165,290 @@ func buildElapsed(b internalbuild.Build) string {
 	return fmt.Sprintf(" (%s)", d)
 }
 
-// newLogSinkFor returns a LogSink appropriate for the given writer:
-//   - clearTTYSink when the writer is a TTY (clear + reprint on each update)
-//   - contiguousSink otherwise (append once a position is contiguous from 0)
-func newLogSinkFor(w io.Writer) internalbuild.LogSink {
-	if cmdutil.WriterIsTTY(w) {
-		return &clearTTYSink{w: w}
+// buildDetailURL returns the web URL of the build's detail page. It prefers
+// the URL the API supplied (set on triggered builds) and falls back to
+// constructing one from the resolved web base URL when the record doesn't
+// carry it — e.g. the View path used by `build watch`.
+func buildDetailURL(cmd *cobra.Command, b internalbuild.Build) string {
+	if b.BuildURL != "" {
+		return b.BuildURL
 	}
-	return &contiguousSink{w: w}
+	if b.AppSlug == "" || b.Slug == "" {
+		return ""
+	}
+	return fmt.Sprintf("%s/app/%s/build/%s", cmdutil.ResolveWebBaseURL(cmd), b.AppSlug, b.Slug)
 }
 
-// clearTTYSink wipes the terminal and reprints the full log sorted by
-// position on every update. This matches the website's polling behavior:
-// each poll's batch may carry chunks at higher positions than missing
-// earlier ones, and re-rendering from scratch keeps the visible output
-// in canonical order even as gaps fill in.
-type clearTTYSink struct {
-	w io.Writer
+// runWatchTUI is the interactive variant of runWatch. It renders a permanent
+// status bar (spinner + build info + clickable URL) at the bottom of the
+// terminal while build logs scroll above it. When the build finishes the TUI
+// exits cleanly and the caller renders the final summary.
+func runWatchTUI(cmd *cobra.Command, svc *internalbuild.Service, b internalbuild.Build, interval time.Duration) error {
+	ctx, cancel := context.WithCancel(cmd.Context())
+	defer cancel()
+
+	m := newWaitModel(b)
+	p := tea.NewProgram(m, tea.WithContext(ctx), tea.WithOutput(cmd.OutOrStdout()))
+
+	doneCh := make(chan struct{})
+	go func() {
+		defer close(doneCh)
+		finalBuild, err := svc.Watch(ctx, b.AppSlug, b.Slug, &teaLogWriter{p: p}, interval)
+		p.Send(watchDoneMsg{build: finalBuild, err: err})
+	}()
+
+	finalModel, err := p.Run()
+	cancel()
+	<-doneCh
+	if err != nil {
+		return fmt.Errorf("render wait UI: %w", err)
+	}
+
+	fm, ok := finalModel.(waitModel)
+	if !ok {
+		return fmt.Errorf("unexpected final model type %T", finalModel)
+	}
+
+	stderr := cmd.ErrOrStderr()
+	// User interrupted (Ctrl-C, SIGTERM) before the watch returned a result.
+	// fm.finished is only true after watchDoneMsg arrived and was handled;
+	// fm.finalErr is context.Canceled when Watch itself observed the cancel.
+	if !fm.finished || errors.Is(fm.finalErr, context.Canceled) {
+		ew := cmdutil.NewErrWriter(stderr)
+		ew.F("Detached — build is still running.\n")
+		ew.F("Use 'bitrise-cli build watch %s' to resume streaming.\n", b.Slug)
+		return ew.Err
+	}
+	if fm.finalErr != nil {
+		return fm.finalErr
+	}
+
+	final := fm.finalBuild
+	footerEW := cmdutil.NewErrWriter(stderr)
+	footerEW.F("Build #%d finished: %s%s\n", final.BuildNumber, final.Status, buildElapsed(final))
+	if url := buildDetailURL(cmd, b); url != "" {
+		footerEW.F("→ %s\n", url)
+	}
+	if footerEW.Err != nil {
+		return footerEW.Err
+	}
+	if final.Status != "success" && final.Status != "aborted-with-success" {
+		cmdutil.SilenceRootErrors(cmd)
+		return fmt.Errorf("build %s", final.Status)
+	}
+	return nil
 }
 
-// ANSI clear sequence:
-//
-//	ESC[H   home the cursor (top-left)
-//	ESC[2J  clear the visible viewport
-//	ESC[3J  clear the scrollback buffer (xterm extension)
-//
-// Without ESC[3J most modern terminals (macOS Terminal, iTerm2, GNOME Terminal)
-// push cleared content into the scrollback buffer instead of discarding it,
-// so the user sees every redraw stacked on top of the previous ones when they
-// scroll up. The order matters: ESC[3J after ESC[2J on the empty viewport
-// drops the current screen out of scrollback as well.
-const ansiClearAndHome = "\033[H\033[2J\033[3J"
+// teaLogWriter adapts svc.Watch's io.Writer log sink to the bubbletea
+// program. Each Write becomes a logChunkMsg the model splits into lines
+// printed above the status bar via tea.Println.
+type teaLogWriter struct {
+	p *tea.Program
+}
 
-func (s *clearTTYSink) OnUpdate(chunks map[int]string) error {
-	if len(chunks) == 0 {
-		return nil
+func (w *teaLogWriter) Write(p []byte) (int, error) {
+	w.p.Send(logChunkMsg(string(p)))
+	return len(p), nil
+}
+
+type logChunkMsg string
+
+// printDoneMsg signals that the in-flight tea.Println sequence has finished,
+// so the next batch of buffered log lines may be printed. See flushPending.
+type printDoneMsg struct{}
+
+type watchDoneMsg struct {
+	build internalbuild.Build
+	err   error
+}
+
+type tickMsg time.Time
+
+type waitModel struct {
+	build      internalbuild.Build
+	spinner    spinner.Model
+	leftover   string
+	pending    []string
+	printing   bool
+	quitting   bool
+	startedAt  time.Time
+	finalBuild internalbuild.Build
+	finalErr   error
+	finished   bool
+	width      int
+	labelStyle lipgloss.Style
+	dimStyle   lipgloss.Style
+	urlStyle   lipgloss.Style
+}
+
+// bitrisePurple is the Bitrise brand purple, used for the spinner and the
+// build URL in the status bar. lipgloss downsamples to 256/16-color
+// automatically when the terminal can't render truecolor.
+const bitrisePurple = lipgloss.Color("#7B61FF")
+
+func newWaitModel(b internalbuild.Build) waitModel {
+	sp := spinner.New()
+	sp.Spinner = spinner.Dot
+	sp.Style = lipgloss.NewStyle().Foreground(bitrisePurple)
+	started := b.TriggeredAt
+	if started.IsZero() {
+		started = time.Now()
 	}
-	maxPos := -1
-	for k := range chunks {
-		if k > maxPos {
-			maxPos = k
+	return waitModel{
+		build:      b,
+		spinner:    sp,
+		startedAt:  started,
+		width:      80,
+		labelStyle: lipgloss.NewStyle().Bold(true),
+		dimStyle:   lipgloss.NewStyle().Foreground(lipgloss.Color("245")),
+		urlStyle:   lipgloss.NewStyle().Foreground(bitrisePurple).Underline(true),
+	}
+}
+
+func (m waitModel) Init() tea.Cmd {
+	return tea.Batch(m.spinner.Tick, elapsedTick())
+}
+
+func (m waitModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		m.width = msg.Width
+		return m, nil
+
+	case tea.KeyMsg:
+		if msg.Type == tea.KeyCtrlC {
+			return m, tea.Quit
 		}
+
+	case logChunkMsg:
+		m.leftover += string(msg)
+		for {
+			i := strings.IndexByte(m.leftover, '\n')
+			if i < 0 {
+				break
+			}
+			line := strings.TrimRight(m.leftover[:i], "\r")
+			m.leftover = m.leftover[i+1:]
+			m.pending = append(m.pending, line)
+		}
+		return m.flushPending()
+
+	case printDoneMsg:
+		m.printing = false
+		if m.quitting {
+			return m.flushFinal()
+		}
+		return m.flushPending()
+
+	case watchDoneMsg:
+		m.finalBuild = msg.build
+		m.finalErr = msg.err
+		m.finished = true
+		m.quitting = true
+		// Any trailing partial line (no terminating newline) is the last
+		// thing to print.
+		if m.leftover != "" {
+			m.pending = append(m.pending, m.leftover)
+			m.leftover = ""
+		}
+		// If a print is still in flight, wait for it; printDoneMsg will
+		// run flushFinal once it completes. Otherwise flush + quit now.
+		if m.printing {
+			return m, nil
+		}
+		return m.flushFinal()
+
+	case spinner.TickMsg:
+		var cmd tea.Cmd
+		m.spinner, cmd = m.spinner.Update(msg)
+		return m, cmd
+
+	case tickMsg:
+		if m.finished {
+			return m, nil
+		}
+		return m, elapsedTick()
 	}
-	var b strings.Builder
-	b.Grow(len(ansiClearAndHome) + (maxPos+1)*32)
-	b.WriteString(ansiClearAndHome)
-	for i := 0; i <= maxPos; i++ {
-		// Missing positions render as empty strings — placeholders the
-		// next update will fill in once the chunk arrives.
-		b.WriteString(chunks[i])
-	}
-	_, err := io.WriteString(s.w, b.String())
-	return err
+	return m, nil
 }
 
-// contiguousSink appends chunks to w only once they extend the contiguous
-// run from position 0. A non-TTY consumer (file, pipe, log aggregator)
-// can't undo writes, so we hold back chunks at higher positions until
-// every preceding position has arrived. This trades latency for correct
-// in-order output.
-type contiguousSink struct {
-	w        io.Writer
-	nextEmit int
+// flushPending prints all buffered complete lines as one ordered block,
+// but only when no print is already in flight. Bubbletea runs commands
+// returned from Update concurrently (tea.Batch makes no ordering promise,
+// and even separate Update calls race), so emitting one tea.Println per
+// line lets the scheduler interleave them — which is exactly the log
+// scrambling we're fixing. Instead we serialize: at most one print
+// command is outstanding, new lines accumulate in m.pending while it runs,
+// and printDoneMsg releases the next block once the previous one lands.
+func (m waitModel) flushPending() (tea.Model, tea.Cmd) {
+	if m.printing || len(m.pending) == 0 {
+		return m, nil
+	}
+	block := strings.Join(m.pending, "\n")
+	m.pending = nil
+	m.printing = true
+	return m, tea.Sequence(
+		tea.Println(block),
+		func() tea.Msg { return printDoneMsg{} },
+	)
 }
 
-func (s *contiguousSink) OnUpdate(chunks map[int]string) error {
-	for {
-		c, ok := chunks[s.nextEmit]
-		if !ok {
-			return nil
-		}
-		if _, err := io.WriteString(s.w, c); err != nil {
-			return fmt.Errorf("write log chunk: %w", err)
-		}
-		s.nextEmit++
+// flushFinal prints any remaining buffered lines and quits. Called once the
+// build is done and no print is in flight, so ordering is preserved.
+func (m waitModel) flushFinal() (tea.Model, tea.Cmd) {
+	var cmds []tea.Cmd
+	if len(m.pending) > 0 {
+		cmds = append(cmds, tea.Println(strings.Join(m.pending, "\n")))
+		m.pending = nil
 	}
+	cmds = append(cmds, tea.Quit)
+	return m, tea.Sequence(cmds...)
 }
+
+func (m waitModel) View() string {
+	if m.finished {
+		return ""
+	}
+
+	info := strings.Builder{}
+	info.WriteString(m.spinner.View())
+	info.WriteString(" ")
+	info.WriteString(m.labelStyle.Render("Building"))
+	if m.build.BuildNumber > 0 {
+		info.WriteString(m.dimStyle.Render(fmt.Sprintf(" #%d", m.build.BuildNumber)))
+	}
+	if m.build.Workflow != "" {
+		info.WriteString("  ")
+		info.WriteString(m.build.Workflow)
+	}
+	switch {
+	case m.build.Branch != "":
+		info.WriteString(m.dimStyle.Render(" on "))
+		info.WriteString(m.build.Branch)
+	case m.build.Tag != "":
+		info.WriteString(m.dimStyle.Render(" tag "))
+		info.WriteString(m.build.Tag)
+	}
+	info.WriteString(m.dimStyle.Render(fmt.Sprintf("  %s elapsed", m.elapsed())))
+
+	if m.build.BuildURL == "" {
+		return info.String()
+	}
+	// URL on its own line — most modern terminals make plain URLs Cmd-/Ctrl-
+	// clickable, and a full-line URL avoids truncation on narrow terminals.
+	url := m.dimStyle.Render("→ ") + m.urlStyle.Render(m.build.BuildURL)
+	return info.String() + "\n" + url
+}
+
+func (m waitModel) elapsed() string {
+	return time.Since(m.startedAt).Round(time.Second).String()
+}
+
+// elapsedTick redraws the status bar once per second so the elapsed-time
+// counter advances even between log chunks.
+func elapsedTick() tea.Cmd {
+	return tea.Tick(time.Second, func(t time.Time) tea.Msg { return tickMsg(t) })
+}
+
+// ensure io.Writer interface.
+var _ io.Writer = (*teaLogWriter)(nil)
