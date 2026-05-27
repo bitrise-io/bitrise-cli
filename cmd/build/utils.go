@@ -123,6 +123,9 @@ func runWatch(cmd *cobra.Command, svc *internalbuild.Service, b internalbuild.Bu
 	footerEW := cmdutil.NewErrWriter(stderr)
 	footerEW.F("\n%s\n", watchDivider)
 	footerEW.F("Build #%d finished: %s%s\n", finalBuild.BuildNumber, finalBuild.Status, buildElapsed(finalBuild))
+	if url := buildDetailURL(cmd, b); url != "" {
+		footerEW.F("→ %s\n", url)
+	}
 	if footerEW.Err != nil {
 		return footerEW.Err
 	}
@@ -156,4 +159,18 @@ func buildElapsed(b internalbuild.Build) string {
 	}
 	d := b.FinishedAt.Sub(b.TriggeredAt).Round(time.Second)
 	return fmt.Sprintf(" (%s)", d)
+}
+
+// buildDetailURL returns the web URL of the build's detail page. It prefers
+// the URL the API supplied (set on triggered builds) and falls back to
+// constructing one from the resolved web base URL when the record doesn't
+// carry it — e.g. the View path used by `build watch`.
+func buildDetailURL(cmd *cobra.Command, b internalbuild.Build) string {
+	if b.BuildURL != "" {
+		return b.BuildURL
+	}
+	if b.AppSlug == "" || b.Slug == "" {
+		return ""
+	}
+	return fmt.Sprintf("%s/app/%s/build/%s", cmdutil.ResolveWebBaseURL(cmd), b.AppSlug, b.Slug)
 }

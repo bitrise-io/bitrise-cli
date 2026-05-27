@@ -76,6 +76,9 @@ func runWatchTUI(cmd *cobra.Command, svc *internalbuild.Service, b internalbuild
 	final := fm.finalBuild
 	footerEW := cmdutil.NewErrWriter(stderr)
 	footerEW.F("Build #%d finished: %s%s\n", final.BuildNumber, final.Status, buildElapsed(final))
+	if url := buildDetailURL(cmd, b); url != "" {
+		footerEW.F("→ %s\n", url)
+	}
 	if footerEW.Err != nil {
 		return footerEW.Err
 	}
@@ -100,6 +103,10 @@ func (w *teaLogWriter) Write(p []byte) (int, error) {
 
 type logChunkMsg string
 
+// printDoneMsg signals that the in-flight tea.Println sequence has finished,
+// so the next batch of buffered log lines may be printed. See flushPending.
+type printDoneMsg struct{}
+
 type watchDoneMsg struct {
 	build internalbuild.Build
 	err   error
@@ -111,6 +118,9 @@ type waitModel struct {
 	build      internalbuild.Build
 	spinner    spinner.Model
 	leftover   string
+	pending    []string
+	printing   bool
+	quitting   bool
 	startedAt  time.Time
 	finalBuild internalbuild.Build
 	finalErr   error
@@ -162,7 +172,6 @@ func (m waitModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case logChunkMsg:
 		m.leftover += string(msg)
-		var cmds []tea.Cmd
 		for {
 			i := strings.IndexByte(m.leftover, '\n')
 			if i < 0 {
@@ -170,21 +179,34 @@ func (m waitModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			line := strings.TrimRight(m.leftover[:i], "\r")
 			m.leftover = m.leftover[i+1:]
-			cmds = append(cmds, tea.Println(line))
+			m.pending = append(m.pending, line)
 		}
-		return m, tea.Batch(cmds...)
+		return m.flushPending()
+
+	case printDoneMsg:
+		m.printing = false
+		if m.quitting {
+			return m.flushFinal()
+		}
+		return m.flushPending()
 
 	case watchDoneMsg:
 		m.finalBuild = msg.build
 		m.finalErr = msg.err
 		m.finished = true
-		var cmds []tea.Cmd
+		m.quitting = true
+		// Any trailing partial line (no terminating newline) is the last
+		// thing to print.
 		if m.leftover != "" {
-			cmds = append(cmds, tea.Println(m.leftover))
+			m.pending = append(m.pending, m.leftover)
 			m.leftover = ""
 		}
-		cmds = append(cmds, tea.Quit)
-		return m, tea.Sequence(cmds...)
+		// If a print is still in flight, wait for it; printDoneMsg will
+		// run flushFinal once it completes. Otherwise flush + quit now.
+		if m.printing {
+			return m, nil
+		}
+		return m.flushFinal()
 
 	case spinner.TickMsg:
 		var cmd tea.Cmd
@@ -198,6 +220,39 @@ func (m waitModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, elapsedTick()
 	}
 	return m, nil
+}
+
+// flushPending prints all buffered complete lines as one ordered block,
+// but only when no print is already in flight. Bubbletea runs commands
+// returned from Update concurrently (tea.Batch makes no ordering promise,
+// and even separate Update calls race), so emitting one tea.Println per
+// line lets the scheduler interleave them — which is exactly the log
+// scrambling we're fixing. Instead we serialize: at most one print
+// command is outstanding, new lines accumulate in m.pending while it runs,
+// and printDoneMsg releases the next block once the previous one lands.
+func (m waitModel) flushPending() (tea.Model, tea.Cmd) {
+	if m.printing || len(m.pending) == 0 {
+		return m, nil
+	}
+	block := strings.Join(m.pending, "\n")
+	m.pending = nil
+	m.printing = true
+	return m, tea.Sequence(
+		tea.Println(block),
+		func() tea.Msg { return printDoneMsg{} },
+	)
+}
+
+// flushFinal prints any remaining buffered lines and quits. Called once the
+// build is done and no print is in flight, so ordering is preserved.
+func (m waitModel) flushFinal() (tea.Model, tea.Cmd) {
+	var cmds []tea.Cmd
+	if len(m.pending) > 0 {
+		cmds = append(cmds, tea.Println(strings.Join(m.pending, "\n")))
+		m.pending = nil
+	}
+	cmds = append(cmds, tea.Quit)
+	return m, tea.Sequence(cmds...)
 }
 
 func (m waitModel) View() string {
