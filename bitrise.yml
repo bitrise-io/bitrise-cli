@@ -5,6 +5,9 @@ app:
   envs:
     - GOTOOLCHAIN: auto
 
+tools:
+  golang: 1.26:latest
+
 workflows:
 
   # ── Quality gate ──────────────────────────────────────────────────────────
