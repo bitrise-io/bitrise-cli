@@ -252,6 +252,52 @@ func TestWaitForReady_ContextCancelled(t *testing.T) {
 	}
 }
 
+func TestWaitForTerminated_PollsUntilSettledStatus(t *testing.T) {
+	// Two polls: first returns TERMINATING, second returns TERMINATED.
+	var calls int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		calls++
+		switch calls {
+		case 1:
+			_, _ = io.WriteString(w, `{"session":{"id":"s1","status":"SESSION_STATUS_TERMINATING"}}`)
+		default:
+			_, _ = io.WriteString(w, `{"session":{"id":"s1","status":"SESSION_STATUS_TERMINATED"}}`)
+		}
+	}))
+	t.Cleanup(srv.Close)
+
+	svc := NewService(rdeapi.New(srv.URL, "tok"))
+	// 1ms interval keeps the test fast.
+	sess, err := svc.WaitForTerminated(context.Background(), "ws-1", "s1", time.Millisecond)
+	if err != nil {
+		t.Fatalf("WaitForTerminated: %v", err)
+	}
+	if sess.Status != "terminated" {
+		t.Errorf("status = %q, want terminated", sess.Status)
+	}
+	if calls < 2 {
+		t.Errorf("expected at least 2 polls, got %d", calls)
+	}
+}
+
+func TestWaitForTerminated_ContextCancelled(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, `{"session":{"id":"s1","status":"SESSION_STATUS_TERMINATING"}}`)
+	}))
+	t.Cleanup(srv.Close)
+
+	svc := NewService(rdeapi.New(srv.URL, "tok"))
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	_, err := svc.WaitForTerminated(ctx, "ws-1", "s1", time.Millisecond)
+	if err == nil {
+		t.Fatal("expected timeout error, got nil")
+	}
+	if !errors.Is(err, context.DeadlineExceeded) && !errors.Is(err, context.Canceled) {
+		t.Errorf("err = %v, want a context error", err)
+	}
+}
+
 func TestResolveTemplateID_UUIDShortCircuits(t *testing.T) {
 	// httptest server fails the test if anything reaches it — UUID input
 	// should never trigger a list call.

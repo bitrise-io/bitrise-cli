@@ -373,6 +373,43 @@ func (s *Service) WaitForReady(ctx context.Context, workspaceID, sessionID strin
 	}
 }
 
+// WaitForTerminated polls GetSession until the session leaves the
+// transitional teardown states ("terminating" / "draining") and returns the
+// resulting Session — normally "terminated" (or "failed"). The caller decides
+// whether the final status is acceptable. Returns context.Canceled when ctx
+// is cancelled.
+//
+// This is the teardown companion to WaitForReady: a bare TerminateSession
+// returns while the session is still "terminating", so a
+// 'terminate && delete' pipeline races the backend — delete rejects any
+// session that isn't yet "terminated" or "failed". Waiting here closes
+// that gap.
+func (s *Service) WaitForTerminated(ctx context.Context, workspaceID, sessionID string, interval time.Duration) (Session, error) {
+	if s.client == nil {
+		return Session{}, errClient()
+	}
+	if interval <= 0 {
+		interval = 3 * time.Second
+	}
+	for {
+		sess, err := s.GetSession(ctx, workspaceID, sessionID)
+		if err != nil {
+			return Session{}, err
+		}
+		switch sess.Status {
+		case "terminating", "draining":
+			// still tearing down — keep polling
+		default:
+			return sess, nil
+		}
+		select {
+		case <-ctx.Done():
+			return Session{}, ctx.Err()
+		case <-time.After(interval):
+		}
+	}
+}
+
 // DeleteSession permanently removes a session.
 func (s *Service) DeleteSession(ctx context.Context, workspaceID, sessionID string) error {
 	if s.client == nil {

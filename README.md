@@ -61,7 +61,7 @@ Workspace resolution (highest to lowest precedence): `--workspace SLUG` → `BIT
 | `rde session create --template ID_OR_NAME --name N` | Create a session from a template (`--input k=v`, `--secret-input k=v`, `--saved-input k=ID`, `--feature-flag F`, `--cluster C`, `--ai-prompt P`, `--auto-terminate-minutes N`, `--map-saved-inputs`, `--wait`) |
 | `rde session update SESSION_ID` | Update a session's `--name`, `--description`, or `--auto-terminate-minutes` |
 | `rde session restore SESSION_ID` | Restore a terminated session (re-provisions its VM from the persistent disk) |
-| `rde session terminate SESSION_ID` | Terminate a running session (preserves it for later restart) |
+| `rde session terminate SESSION_ID` | Terminate a running session (preserves it for later restart; `--wait` blocks until terminated/failed so `terminate --wait && delete` is reliable) |
 | `rde session delete SESSION_ID` | Permanently delete a session |
 | `rde session delete-terminated` | Delete every terminated session in the workspace (`--yes` to skip the prompt) |
 | `rde session diff SESSION_ID` | Compare a session's template snapshot with the current template |
