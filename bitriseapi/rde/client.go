@@ -65,30 +65,58 @@ func New(baseURL, token string, opts ...Option) *Client {
 
 // APIError represents a non-2xx response from the RDE API. Message is the
 // human-readable text extracted from the {"message": "..."} field RDE uses
-// universally; Body is the raw response body, surfaced only when no
-// structured field was found.
+// universally; Violations holds field-level validation messages pulled from
+// the gRPC error details (details[].fieldViolations[]), which carry the
+// actionable "why" for 400s (e.g. "missing required input: BUILD_TOKEN");
+// Body is the raw response body, surfaced only when no structured field
+// was found.
 type APIError struct {
 	StatusCode int
 	Message    string
+	Violations []string
 	Body       string
 }
 
 func (e *APIError) Error() string {
-	if e.Message != "" {
-		return fmt.Sprintf("RDE API %d: %s", e.StatusCode, e.Message)
+	msg := e.Message
+	if msg == "" {
+		msg = truncate(e.Body, 500)
 	}
-	if e.Body != "" {
-		return fmt.Sprintf("RDE API %d: %s", e.StatusCode, truncate(e.Body, 500))
+	if detail := strings.Join(e.Violations, "; "); detail != "" {
+		if msg != "" {
+			msg = msg + ": " + detail
+		} else {
+			msg = detail
+		}
+	}
+	if msg != "" {
+		return fmt.Sprintf("RDE API %d: %s", e.StatusCode, msg)
 	}
 	return fmt.Sprintf("RDE API %d", e.StatusCode)
 }
 
-// errorBody covers the JSON error envelope RDE uses
-// ({"code": int, "message": string, "details": [...]}).
+// errorBody covers the JSON error envelope RDE uses: a gRPC-gateway status
+// ({"code": int, "message": string, "details": [...]}). Each details entry
+// is a google.rpc.* message; BadRequest entries carry fieldViolations whose
+// descriptions explain validation failures.
 type errorBody struct {
-	Code    int      `json:"code"`
-	Message string   `json:"message"`
-	Details []string `json:"details"`
+	Code    int           `json:"code"`
+	Message string        `json:"message"`
+	Details []errorDetail `json:"details"`
+}
+
+// errorDetail is one entry of the gRPC status details array. Only the
+// fieldViolations of google.rpc.BadRequest are consumed; other detail
+// types unmarshal with an empty FieldViolations and are ignored.
+type errorDetail struct {
+	Type            string           `json:"@type"`
+	FieldViolations []fieldViolation `json:"fieldViolations"`
+}
+
+// fieldViolation is a single google.rpc.BadRequest.FieldViolation.
+type fieldViolation struct {
+	Field       string `json:"field"`
+	Description string `json:"description"`
 }
 
 func truncate(s string, max int) string {
@@ -139,7 +167,19 @@ func (c *Client) do(req *http.Request) ([]byte, error) {
 		var e errorBody
 		_ = json.Unmarshal(body, &e)
 		apiErr := &APIError{StatusCode: resp.StatusCode, Message: e.Message}
-		if e.Message == "" {
+		for _, d := range e.Details {
+			for _, v := range d.FieldViolations {
+				switch {
+				case v.Description != "":
+					apiErr.Violations = append(apiErr.Violations, v.Description)
+				case v.Field != "":
+					apiErr.Violations = append(apiErr.Violations, v.Field)
+				}
+			}
+		}
+		// Fall back to the raw body only when neither a message nor any
+		// field violation gave us something human-readable.
+		if e.Message == "" && len(apiErr.Violations) == 0 {
 			apiErr.Body = strings.TrimSpace(string(body))
 		}
 		return nil, apiErr
