@@ -1,0 +1,284 @@
+package session
+
+import (
+	"encoding/json"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+
+	"github.com/bitrise-io/bitrise-cli/internal/output"
+)
+
+// uuidTemplate is a UUID-shaped template arg so ResolveTemplateID
+// short-circuits without an extra ListTemplates call.
+const uuidTemplate = "11111111-2222-3333-4444-555555555555"
+
+func TestCreateCmd_HappyPath(t *testing.T) {
+	var gotBody map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/v1/workspaces/ws-1/sessions" {
+			t.Errorf("unexpected: %s %s", r.Method, r.URL.Path)
+		}
+		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		_, _ = io.WriteString(w, `{"session":{"id":"s-new","name":"dev","status":"SESSION_STATUS_PENDING"}}`)
+	}))
+	defer srv.Close()
+
+	stdout, _, err := run(t, newCreateCmd(), srv.URL, "ws-1",
+		[]string{"--template", uuidTemplate, "--name", "dev", "--input", "repo=my-app"}, output.Human)
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if gotBody["templateId"] != uuidTemplate || gotBody["name"] != "dev" {
+		t.Errorf("unexpected create body: %v", gotBody)
+	}
+	if !strings.Contains(stdout, "Session created") || !strings.Contains(stdout, "s-new") {
+		t.Errorf("stdout missing create confirmation:\n%s", stdout)
+	}
+}
+
+func TestCreateCmd_JSONOutput(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, `{"session":{"id":"s-new","name":"dev","status":"SESSION_STATUS_PENDING"},
+			"autoMappedInputs":[{"sessionInputKey":"gh","savedInputId":"sv-1"}]}`)
+	}))
+	defer srv.Close()
+
+	stdout, _, err := run(t, newCreateCmd(), srv.URL, "ws-1",
+		[]string{"--template", uuidTemplate, "--name", "dev", "--map-saved-inputs"}, output.JSON)
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	var got struct {
+		Session struct {
+			ID     string `json:"id"`
+			Status string `json:"status"`
+		} `json:"session"`
+		AutoMapped []struct {
+			SessionInputKey string `json:"session_input_key"`
+		} `json:"auto_mapped_inputs"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
+		t.Fatalf("unmarshal JSON output: %v\n%s", err, stdout)
+	}
+	if got.Session.ID != "s-new" || got.Session.Status != "pending" {
+		t.Errorf("unexpected session JSON: %+v", got.Session)
+	}
+	if len(got.AutoMapped) != 1 || got.AutoMapped[0].SessionInputKey != "gh" {
+		t.Errorf("unexpected auto-mapped JSON: %+v", got.AutoMapped)
+	}
+}
+
+func TestCreateCmd_RequiresName(t *testing.T) {
+	_, _, err := run(t, newCreateCmd(), "http://unused", "ws-1",
+		[]string{"--template", uuidTemplate}, output.Human)
+	if err == nil || !strings.Contains(err.Error(), "--name") {
+		t.Errorf("error = %v, want --name required", err)
+	}
+}
+
+func TestCreateCmd_AutoTerminateZeroIsSent(t *testing.T) {
+	var gotBody map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		_, _ = io.WriteString(w, `{"session":{"id":"s-new","name":"dev"}}`)
+	}))
+	defer srv.Close()
+
+	// Explicitly setting --auto-terminate-minutes 0 must send 0 (disable),
+	// distinct from omitting the flag (backend default).
+	_, _, err := run(t, newCreateCmd(), srv.URL, "ws-1",
+		[]string{"--template", uuidTemplate, "--name", "dev", "--auto-terminate-minutes", "0"}, output.Human)
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	v, ok := gotBody["autoTerminateMinutes"]
+	if !ok {
+		t.Fatalf("autoTerminateMinutes should be present when flag is set, body=%v", gotBody)
+	}
+	if v != float64(0) {
+		t.Errorf("autoTerminateMinutes = %v, want 0", v)
+	}
+}
+
+func TestCreateCmd_AutoTerminateOmittedWhenFlagUnset(t *testing.T) {
+	var gotBody map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		_, _ = io.WriteString(w, `{"session":{"id":"s-new","name":"dev"}}`)
+	}))
+	defer srv.Close()
+
+	_, _, err := run(t, newCreateCmd(), srv.URL, "ws-1",
+		[]string{"--template", uuidTemplate, "--name", "dev"}, output.Human)
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if _, ok := gotBody["autoTerminateMinutes"]; ok {
+		t.Errorf("autoTerminateMinutes should be omitted when flag unset, body=%v", gotBody)
+	}
+}
+
+func TestUpdateCmd_RequiresAField(t *testing.T) {
+	_, _, err := run(t, newUpdateCmd(), "http://unused", "ws-1", []string{"s-1"}, output.Human)
+	if err == nil || !strings.Contains(err.Error(), "--name") {
+		t.Errorf("error = %v, want at-least-one-field error", err)
+	}
+}
+
+func TestUpdateCmd_OnlySetFieldsSent(t *testing.T) {
+	var gotBody map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPatch || r.URL.Path != "/v1/workspaces/ws-1/sessions/s-1" {
+			t.Errorf("unexpected: %s %s", r.Method, r.URL.Path)
+		}
+		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		_, _ = io.WriteString(w, `{"session":{"id":"s-1","name":"renamed"}}`)
+	}))
+	defer srv.Close()
+
+	_, _, err := run(t, newUpdateCmd(), srv.URL, "ws-1",
+		[]string{"s-1", "--name", "renamed"}, output.Human)
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if gotBody["name"] != "renamed" {
+		t.Errorf("name = %v, want renamed", gotBody["name"])
+	}
+	// --description / --auto-terminate-minutes weren't set, so they drop out.
+	if _, ok := gotBody["description"]; ok {
+		t.Errorf("description should be omitted, body=%v", gotBody)
+	}
+	if _, ok := gotBody["autoTerminateMinutes"]; ok {
+		t.Errorf("autoTerminateMinutes should be omitted, body=%v", gotBody)
+	}
+}
+
+func TestTerminateCmd_HappyPath(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/v1/workspaces/ws-1/sessions/s-1/terminate" {
+			t.Errorf("unexpected: %s %s", r.Method, r.URL.Path)
+		}
+		_, _ = io.WriteString(w, `{"session":{"id":"s-1","name":"dev","status":"SESSION_STATUS_TERMINATING"}}`)
+	}))
+	defer srv.Close()
+
+	stdout, _, err := run(t, newTerminateCmd(), srv.URL, "ws-1", []string{"s-1"}, output.Human)
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if !strings.Contains(stdout, "terminating") {
+		t.Errorf("stdout missing status:\n%s", stdout)
+	}
+}
+
+func TestRestoreCmd_HappyPath(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/v1/workspaces/ws-1/sessions/s-1/restore" {
+			t.Errorf("unexpected: %s %s", r.Method, r.URL.Path)
+		}
+		_, _ = io.WriteString(w, `{"session":{"id":"s-1","name":"dev","status":"SESSION_STATUS_STARTING"}}`)
+	}))
+	defer srv.Close()
+
+	stdout, _, err := run(t, newRestoreCmd(), srv.URL, "ws-1", []string{"s-1"}, output.Human)
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if !strings.Contains(stdout, "starting") {
+		t.Errorf("stdout missing status:\n%s", stdout)
+	}
+}
+
+func TestDeleteCmd_HappyPath(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodDelete || r.URL.Path != "/v1/workspaces/ws-1/sessions/s-1" {
+			t.Errorf("unexpected: %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer srv.Close()
+
+	stdout, stderr, err := run(t, newDeleteCmd(), srv.URL, "ws-1", []string{"s-1"}, output.Human)
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if !strings.Contains(stderr, "Deleted session s-1") {
+		t.Errorf("stderr missing confirmation: %q", stderr)
+	}
+	if stdout != "" {
+		t.Errorf("stdout should be empty for delete, got: %q", stdout)
+	}
+}
+
+func TestDeleteTerminatedCmd_YesSkipsPrompt(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/v1/workspaces/ws-1/sessions:delete-terminated" {
+			t.Errorf("unexpected: %s %s", r.Method, r.URL.Path)
+		}
+		_, _ = io.WriteString(w, `{"deletedCount":3}`)
+	}))
+	defer srv.Close()
+
+	stdout, _, err := run(t, newDeleteTerminatedCmd(), srv.URL, "ws-1", []string{"--yes"}, output.Human)
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if !strings.Contains(stdout, "Deleted 3 terminated session(s)") {
+		t.Errorf("unexpected stdout: %q", stdout)
+	}
+}
+
+func TestDeleteTerminatedCmd_JSONOutput(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, `{"deletedCount":3}`)
+	}))
+	defer srv.Close()
+
+	stdout, _, err := run(t, newDeleteTerminatedCmd(), srv.URL, "ws-1", []string{"--yes"}, output.JSON)
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	var got struct {
+		DeletedCount int `json:"deleted_count"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
+		t.Fatalf("unmarshal JSON output: %v\n%s", err, stdout)
+	}
+	if got.DeletedCount != 3 {
+		t.Errorf("deleted_count = %d, want 3", got.DeletedCount)
+	}
+}
+
+func TestDeleteTerminatedCmd_AbortsOnNo(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		t.Error("server should not be hit when the user declines confirmation")
+	}))
+	defer srv.Close()
+
+	// No --yes; feed "n" to the confirmation prompt.
+	c := newDeleteTerminatedCmd()
+	c.SetIn(strings.NewReader("n\n"))
+	_, _, err := run(t, c, srv.URL, "ws-1", nil, output.Human)
+	if err == nil || !strings.Contains(err.Error(), "aborted") {
+		t.Errorf("error = %v, want aborted", err)
+	}
+}
+
+func TestDeleteTerminatedCmd_ProceedsOnYes(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, `{"deletedCount":1}`)
+	}))
+	defer srv.Close()
+
+	c := newDeleteTerminatedCmd()
+	c.SetIn(strings.NewReader("y\n"))
+	stdout, _, err := run(t, c, srv.URL, "ws-1", nil, output.Human)
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if !strings.Contains(stdout, "Deleted 1 terminated session(s)") {
+		t.Errorf("unexpected stdout: %q", stdout)
+	}
+}
