@@ -29,8 +29,9 @@ type Template struct {
 	UpdatedAt         string             `json:"updatedAt,omitempty"`
 }
 
-// TemplateVariable is a baked-in template variable. The server masks
-// `Value` for secrets — we never see plaintext for is_secret=true.
+// TemplateVariable is a baked-in template variable. The backend currently
+// returns `Value` in cleartext even when IsSecret=true; the internal/rde
+// mapper masks secret values before the CLI hands them to renderers.
 type TemplateVariable struct {
 	ID             string `json:"id,omitempty"`
 	Key            string `json:"key"`

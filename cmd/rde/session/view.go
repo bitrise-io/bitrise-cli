@@ -121,10 +121,9 @@ func renderSessionDetail(w io.Writer, sess internalrde.Session) error {
 		ew.F("%s%s\n", lbl("Template ID:"), s.Slug.Render(sess.TemplateID))
 	}
 	if sess.TemplateDeleted {
-		ew.F("%s%s\n", lbl("Template:"), s.Dim.Render("(deleted)"))
-	}
-	if sess.TemplateOutdated {
-		ew.F("%s%s\n", lbl("Template:"), s.Dim.Render("outdated (template changed since session creation)"))
+		ew.F("%s%s\n", lbl("Template state:"), s.Dim.Render("(deleted)"))
+	} else if sess.TemplateOutdated {
+		ew.F("%s%s\n", lbl("Template state:"), s.Dim.Render("outdated (template changed since session creation)"))
 	}
 	if sess.SSHAddress != "" {
 		ew.F("%s%s\n", lbl("SSH:"), sess.SSHAddress)
@@ -155,6 +154,28 @@ func renderSessionDetail(w io.Writer, sess internalrde.Session) error {
 			}
 			if snap.WorkingDirectory != "" {
 				ew.F("%s%s\n", lbl("  Working dir:"), snap.WorkingDirectory)
+			}
+		}
+		if len(snap.SessionInputs) > 0 {
+			ew.Ln()
+			ew.Ln(s.Dim.Render("Session inputs"))
+			for _, in := range snap.SessionInputs {
+				val := in.Value
+				if in.IsSecret {
+					val = s.Dim.Render("(hidden)")
+				}
+				ew.F("%s %s\n", lbl("  "+in.Key+":"), val)
+			}
+		}
+		if len(snap.FeatureFlags) > 0 {
+			ew.Ln()
+			ew.Ln(s.Dim.Render("Feature flags"))
+			for _, f := range snap.FeatureFlags {
+				state := "off"
+				if f.Enabled {
+					state = "on"
+				}
+				ew.F("%s %s\n", lbl("  "+f.Name+":"), state)
 			}
 		}
 	}

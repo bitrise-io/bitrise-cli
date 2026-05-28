@@ -471,9 +471,17 @@ func snapshotFromAPI(w rdeapi.SessionTemplateSnapshot) SessionTemplateSnapshot {
 		UpdatedAt:        parseTime(w.UpdatedAt),
 	}
 	for _, i := range w.SessionInputs {
+		// Mask secret values at the CLI boundary. The backend currently
+		// returns them in cleartext, so passing them through would leak
+		// the value into stdout, shell history, and log files. Keep the
+		// key + is_secret marker so callers can still see what was set.
+		val := i.Value
+		if i.IsSecret {
+			val = ""
+		}
 		out.SessionInputs = append(out.SessionInputs, SnapshotInput{
 			Key:            i.Key,
-			Value:          i.Value,
+			Value:          val,
 			IsSecret:       i.IsSecret,
 			ExposeAsEnvVar: i.ExposeAsEnvVar,
 		})

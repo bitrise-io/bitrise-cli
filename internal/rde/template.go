@@ -378,9 +378,16 @@ func templateFromAPI(w rdeapi.Template) Template {
 		UpdatedAt:        parseTime(w.UpdatedAt),
 	}
 	for _, v := range w.TemplateVariables {
+		// Mask secret values at the CLI boundary. The backend currently
+		// returns them in cleartext; passing them through would leak the
+		// value into stdout, shell history, and log files.
+		val := v.Value
+		if v.IsSecret {
+			val = ""
+		}
 		out.TemplateVariables = append(out.TemplateVariables, TemplateVariable{
 			Key:            v.Key,
-			Value:          v.Value,
+			Value:          val,
 			IsSecret:       v.IsSecret,
 			ExposeAsEnvVar: v.ExposeAsEnvVar,
 		})

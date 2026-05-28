@@ -54,7 +54,7 @@ them inside the session.`,
 		DisableFlagParsing: false,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			sessionID := args[0]
-			command := strings.Join(args[1:], " ")
+			command := joinShellArgs(args[1:])
 			if strings.TrimSpace(command) == "" {
 				return fmt.Errorf("command is empty")
 			}
@@ -75,6 +75,47 @@ them inside the session.`,
 		},
 	}
 	return c
+}
+
+// joinShellArgs joins argv into a single shell-safe command string by
+// POSIX-quoting each argument. Without quoting, `bash -c 'echo a; pwd'`
+// would arrive at the remote as three space-separated tokens and the `;`
+// would be reinterpreted by the remote shell, dropping `echo a`.
+func joinShellArgs(args []string) string {
+	q := make([]string, len(args))
+	for i, a := range args {
+		q[i] = shellQuote(a)
+	}
+	return strings.Join(q, " ")
+}
+
+// shellQuote wraps s in POSIX single-quotes, escaping any embedded single
+// quotes with the standard `'\”` sequence. Strings made entirely of
+// shell-safe characters are returned as-is to keep readable commands
+// readable in logs.
+func shellQuote(s string) string {
+	if s == "" {
+		return "''"
+	}
+	safe := true
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		switch {
+		case c >= 'a' && c <= 'z',
+			c >= 'A' && c <= 'Z',
+			c >= '0' && c <= '9',
+			c == '_', c == '-', c == '.', c == '/', c == ':', c == '=', c == ',', c == '@', c == '+', c == '%':
+		default:
+			safe = false
+		}
+		if !safe {
+			break
+		}
+	}
+	if safe {
+		return s
+	}
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
 
 func renderExecResult(cmd *cobra.Command, format output.Format, res internalrde.ExecResult) error {
