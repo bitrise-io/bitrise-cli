@@ -110,20 +110,23 @@ of an unrelated change:
 
 ## Build, vet, run
 
-- `go build -o ./bitrise-cli .` — binary lands at the repo root, gitignored
-- `go mod tidy && git diff --exit-code go.mod go.sum` — dependency hygiene check
-- `gofmt -l .` — formatting check (must produce no output)
-- `go vet ./...` — static analysis
-- Lint: binary is cached at `./bin/golangci-lint-<version>` and downloaded on first use via the official install script (see the `Lint` step in `bitrise.yml`). Run `./bin/golangci-lint-v2.12.2 run ./...` locally once it exists.
-- `go test -race -count=1 -timeout=5m ./...` — tests
-- Run all of the above via `bitrise run test`
+Prefer the `make` targets — they're the source of truth and also what CI runs:
+
+- `make build` — binary lands at the repo root, gitignored
+- `make tidy` — `go mod tidy` + ensures `go.mod`/`go.sum` are unchanged
+- `make fmt` — formatting check (must produce no output)
+- `make vet` — static analysis
+- `make lint` — runs golangci-lint via `go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@<pinned-version>`. Version is pinned in the `Makefile`; no separate install step needed. The compiled binary is cached in `GOCACHE`, so subsequent runs are fast.
+- `make lint-fix` — same as `make lint` but applies auto-fixes (`--fix`).
+- `make test` — `go test -race -count=1 -timeout=5m ./...`
+- Run the full quality gate via `bitrise run test`
 - When adding tests, put them in the same package as the file under test
 - `go.mod` is at module path `github.com/bitrise-io/bitrise-cli`
 
 ## Lint compliance — required before declaring any task done
 
-**Always run `./bin/golangci-lint-v2.12.2 run ./...` and fix all issues before
-reporting work as complete.** `go vet` alone is not sufficient.
+**Always run `make lint fix` and fix all issues before reporting work as
+complete.** `go vet` alone is not sufficient.
 
 ### errcheck — the most common failure
 
