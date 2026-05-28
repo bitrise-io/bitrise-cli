@@ -7,8 +7,9 @@ import (
 	rdeapi "github.com/bitrise-io/bitrise-cli/bitriseapi/rde"
 )
 
-// SavedInput is the CLI-facing saved-input record. `Value` is masked
-// (server-side) when IsSecret=true.
+// SavedInput is the CLI-facing saved-input record. `Value` is masked by
+// savedInputFromAPI when IsSecret=true — the backend returns it in
+// cleartext, so the CLI blanks it before any renderer sees it.
 type SavedInput struct {
 	ID        string     `json:"id"`
 	Key       string     `json:"key"`
@@ -101,10 +102,20 @@ func (s *Service) DeleteSavedInput(ctx context.Context, id string) error {
 }
 
 func savedInputFromAPI(w rdeapi.SavedInput) SavedInput {
+	// Mask secret values at the CLI boundary. The backend returns them in
+	// cleartext (and echoes the just-submitted value back on create/update),
+	// so passing them through would leak the value into --output json,
+	// shell history, and log files. Keep the key + is_secret marker so
+	// callers can still see what was set. Mirrors templateFromAPI /
+	// snapshotFromAPI.
+	val := w.Value
+	if w.IsSecret {
+		val = ""
+	}
 	return SavedInput{
 		ID:        w.ID,
 		Key:       w.Key,
-		Value:     w.Value,
+		Value:     val,
 		IsSecret:  w.IsSecret,
 		CreatedAt: parseTime(w.CreatedAt),
 		UpdatedAt: parseTime(w.UpdatedAt),

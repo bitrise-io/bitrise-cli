@@ -85,6 +85,45 @@ func TestListCmd_JSONOutput(t *testing.T) {
 	}
 }
 
+// TestJSONOutput_MasksSecrets is the regression guard for the secret leak:
+// the backend returns secret values in cleartext (and echoes the
+// just-submitted value back on create/update), so the CLI must blank them
+// before --output json marshals the record. Covers both list and view.
+func TestJSONOutput_MasksSecrets(t *testing.T) {
+	t.Run("list", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			_, _ = io.WriteString(w, `{"savedInputs":[
+				{"id":"sv-1","key":"repo","value":"my-app"},
+				{"id":"sv-2","key":"gh-token","isSecret":true,"value":"ghp_LEAK"}
+			]}`)
+		}))
+		defer srv.Close()
+
+		stdout, _, err := run(t, newListCmd(), srv.URL, nil, output.JSON)
+		if err != nil {
+			t.Fatalf("Execute: %v", err)
+		}
+		if strings.Contains(stdout, "ghp_LEAK") {
+			t.Errorf("secret value leaked into JSON output:\n%s", stdout)
+		}
+	})
+
+	t.Run("view", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			_, _ = io.WriteString(w, `{"savedInput":{"id":"sv-2","key":"gh-token","isSecret":true,"value":"ghp_LEAK"}}`)
+		}))
+		defer srv.Close()
+
+		stdout, _, err := run(t, newViewCmd(), srv.URL, []string{"sv-2"}, output.JSON)
+		if err != nil {
+			t.Fatalf("Execute: %v", err)
+		}
+		if strings.Contains(stdout, "ghp_LEAK") {
+			t.Errorf("secret value leaked into JSON output:\n%s", stdout)
+		}
+	})
+}
+
 func TestViewCmd_SecretHuman(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/v1/saved-inputs/sv-2" {

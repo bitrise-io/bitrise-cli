@@ -8,7 +8,9 @@ import (
 )
 
 // SavedInput is a user-scoped credential/value reusable across sessions.
-// `Value` is masked when IsSecret=true — we never see plaintext for those.
+// The backend returns `Value` in cleartext even when IsSecret=true (and
+// echoes the just-submitted value back on create/update); the internal/rde
+// mapper masks secret values before any renderer sees them.
 type SavedInput struct {
 	ID        string `json:"id"`
 	Key       string `json:"key"`

@@ -310,11 +310,18 @@ func templateConfigFromAPI(w rdeapi.TemplateConfig) TemplateConfig {
 		UpdatedAt:        parseTime(w.UpdatedAt),
 	}
 	for _, i := range w.SessionInputs {
+		// Mask secret default values at the CLI boundary, same as
+		// snapshotFromAPI — the backend may return them in cleartext and
+		// the diff is rendered verbatim in --output json.
+		def := i.DefaultValue
+		if i.IsSecret {
+			def = ""
+		}
 		out.SessionInputs = append(out.SessionInputs, TemplateConfigInput{
 			Key:            i.Key,
 			Description:    i.Description,
 			Required:       i.Required,
-			DefaultValue:   i.DefaultValue,
+			DefaultValue:   def,
 			ExposeAsEnvVar: i.ExposeAsEnvVar,
 			IsSecret:       i.IsSecret,
 		})
