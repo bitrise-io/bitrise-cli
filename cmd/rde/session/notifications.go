@@ -59,7 +59,12 @@ seen to poll for new events incrementally.`,
 			if err != nil {
 				return err
 			}
-			items, err := internalrde.NewService(client).ListSessionNotifications(cmd.Context(), workspaceID, args[0], internalrde.ListSessionNotificationsOptions{
+			svc := internalrde.NewService(client)
+			sessionID, err := svc.ResolveSessionID(cmd.Context(), workspaceID, args[0])
+			if err != nil {
+				return err
+			}
+			items, err := svc.ListSessionNotifications(cmd.Context(), workspaceID, sessionID, internalrde.ListSessionNotificationsOptions{
 				CreatedBefore: before,
 				CreatedAfter:  since,
 				Limit:         limit,

@@ -340,6 +340,56 @@ func TestResolveTemplateID_AmbiguousNameError(t *testing.T) {
 	}
 }
 
+func TestResolveSessionID_UUIDShortCircuits(t *testing.T) {
+	// httptest server fails the test if anything reaches it — UUID input
+	// should never trigger a list call.
+	rs := newRecordingServer(t, "")
+	id := "11111111-2222-3333-4444-555555555555"
+	got, err := rs.service().ResolveSessionID(context.Background(), "ws-1", id)
+	if err != nil {
+		t.Fatalf("ResolveSessionID(uuid): %v", err)
+	}
+	if got != id {
+		t.Errorf("got %q, want passthrough %q", got, id)
+	}
+	if rs.lastPath != "" {
+		t.Errorf("UUID input made an HTTP call to %q (should short-circuit)", rs.lastPath)
+	}
+}
+
+func TestResolveSessionID_NameLookup(t *testing.T) {
+	rs := newRecordingServer(t, `{"sessions":[
+		{"id":"s1","name":"dev"},
+		{"id":"s2","name":"empty-linux-box3"}
+	]}`)
+	got, err := rs.service().ResolveSessionID(context.Background(), "ws-1", "empty-linux-box3")
+	if err != nil {
+		t.Fatalf("ResolveSessionID(name): %v", err)
+	}
+	if got != "s2" {
+		t.Errorf("got %q, want s2", got)
+	}
+}
+
+func TestResolveSessionID_AmbiguousNameError(t *testing.T) {
+	rs := newRecordingServer(t, `{"sessions":[
+		{"id":"s1","name":"dev"},
+		{"id":"s2","name":"DEV"}
+	]}`)
+	_, err := rs.service().ResolveSessionID(context.Background(), "ws-1", "dev")
+	if err == nil || !strings.Contains(err.Error(), "ambiguous") {
+		t.Errorf("err = %v, want ambiguous-name error", err)
+	}
+}
+
+func TestResolveSessionID_NoMatchError(t *testing.T) {
+	rs := newRecordingServer(t, `{"sessions":[{"id":"s1","name":"dev"}]}`)
+	_, err := rs.service().ResolveSessionID(context.Background(), "ws-1", "nope")
+	if err == nil || !strings.Contains(err.Error(), "no session named") {
+		t.Errorf("err = %v, want no-match error", err)
+	}
+}
+
 func TestNilClientGuards(t *testing.T) {
 	svc := NewService(nil)
 	if _, err := svc.ListSessions(context.Background(), "ws"); err == nil {

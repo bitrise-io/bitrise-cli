@@ -54,6 +54,8 @@ A CLI tool to manage all Bitrise platform resources — CI, RM, RDE, and more �
 
 Workspace resolution (highest to lowest precedence): `--workspace SLUG` → `BITRISE_WORKSPACE_ID` → `default_organization_slug` config key. Saved inputs are user-scoped and do not require a workspace.
 
+Anywhere a `SESSION_ID` or `TEMPLATE_ID` is accepted you can pass the resource's name instead — it's resolved to an ID for you. Names aren't unique, so if more than one resource matches the command errors and lists the candidate IDs to choose from.
+
 | Command | Description |
 |---|---|
 | `rde session list` | List RDE sessions in the workspace |
@@ -69,6 +71,8 @@ Workspace resolution (highest to lowest precedence): `--workspace SLUG` → `BIT
 | `rde session exec SESSION_ID -- CMD…` | Run a bash command on the session over SSH; returns `{exit_code, stdout, stderr}` in JSON mode |
 | `rde session upload SESSION_ID LOCAL REMOTE_FOLDER` | tar.gz LOCAL and extract it on the session at REMOTE_FOLDER |
 | `rde session download SESSION_ID REMOTE LOCAL` | Download REMOTE from the session into LOCAL (`--only-contents` for directories) |
+| `rde session vnc SESSION_ID` | Print the VNC connection URL (human: single `vnc://user:pass@host:port` line; JSON: `{address, username, password, url}`) |
+| `rde session open-vnc SESSION_ID` | Hand the VNC URL to the OS-default viewer (Screen Sharing on macOS, `xdg-open` on Linux, `cmd /c start` on Windows); password never hits stdout |
 | `rde template list` | List templates in the workspace |
 | `rde template view TEMPLATE_ID` | Show details of a single template |
 | `rde template create --file FILE` | Create a template from a JSON spec file (or `--file -` for stdin) |

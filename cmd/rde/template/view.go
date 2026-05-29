@@ -27,7 +27,12 @@ func newViewCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			t, err := internalrde.NewService(client).GetTemplate(cmd.Context(), workspaceID, args[0])
+			svc := internalrde.NewService(client)
+			templateID, err := svc.ResolveTemplateID(cmd.Context(), workspaceID, args[0])
+			if err != nil {
+				return err
+			}
+			t, err := svc.GetTemplate(cmd.Context(), workspaceID, templateID)
 			if err != nil {
 				return err
 			}

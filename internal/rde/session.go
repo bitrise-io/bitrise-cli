@@ -2,6 +2,7 @@ package rde
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	rdeapi "github.com/bitrise-io/bitrise-cli/bitriseapi/rde"
@@ -32,10 +33,15 @@ type Session struct {
 	// Excluded from --output json with json:"-" — secrets shouldn't leak
 	// into the stable contract. The field is consumed internally by
 	// `rde session exec` for the SSH dial.
-	SSHPassword          string     `json:"-"`
-	SSHConnectionOpen    bool       `json:"ssh_connection_open,omitempty"`
-	VNCAddress           string     `json:"vnc_address,omitempty"`
-	VNCUsername          string     `json:"vnc_username,omitempty"`
+	SSHPassword       string `json:"-"`
+	SSHConnectionOpen bool   `json:"ssh_connection_open,omitempty"`
+	VNCAddress        string `json:"vnc_address,omitempty"`
+	VNCUsername       string `json:"vnc_username,omitempty"`
+	// VNCPassword is the ephemeral VNC password issued for this session.
+	// Same handling as SSHPassword: excluded from --output json so the
+	// stable contract doesn't leak secrets. Surfaced only through the
+	// opt-in `rde session vnc` and `rde session open-vnc` commands.
+	VNCPassword          string     `json:"-"`
 	PersistentDiskStatus string     `json:"persistent_disk_status,omitempty"`
 	CreatedAt            *time.Time `json:"created_at,omitempty"`
 	UpdatedAt            *time.Time `json:"updated_at,omitempty"`
@@ -147,6 +153,45 @@ func (s *Service) GetSession(ctx context.Context, workspaceID, sessionID string)
 		return Session{}, err
 	}
 	return sessionFromAPI(w), nil
+}
+
+// ResolveSessionID maps `value` to a session ID. UUID-shaped inputs
+// short-circuit (no network call); names trigger a ListSessions call and an
+// exact case-insensitive match. Errors clearly when zero or multiple sessions
+// match the name, so callers can surface ambiguity to the user.
+//
+// Session names aren't unique (unlike a UUID), so an ambiguous match is an
+// expected outcome — the error lists the candidate IDs so the user can re-run
+// with the exact one. Mirrors ResolveTemplateID.
+func (s *Service) ResolveSessionID(ctx context.Context, workspaceID, value string) (string, error) {
+	if value == "" {
+		return "", fmt.Errorf("session is required")
+	}
+	if looksLikeUUID(value) {
+		return value, nil
+	}
+	sessions, err := s.ListSessions(ctx, workspaceID)
+	if err != nil {
+		return "", fmt.Errorf("list sessions to resolve %q: %w", value, err)
+	}
+	var matches []Session
+	for _, sess := range sessions {
+		if equalFold(sess.Name, value) {
+			matches = append(matches, sess)
+		}
+	}
+	switch len(matches) {
+	case 0:
+		return "", fmt.Errorf("no session named %q in workspace (try 'rde session list')", value)
+	case 1:
+		return matches[0].ID, nil
+	default:
+		ids := make([]string, 0, len(matches))
+		for _, m := range matches {
+			ids = append(ids, m.ID)
+		}
+		return "", fmt.Errorf("session name %q is ambiguous (matches %d sessions: %v) — pass a session ID instead", value, len(matches), ids)
+	}
 }
 
 // CreateSession creates a session from a template.
@@ -453,6 +498,7 @@ func sessionFromAPI(w rdeapi.Session) Session {
 		SSHConnectionOpen:    w.SSHConnectionOpen,
 		VNCAddress:           w.VNCAddress,
 		VNCUsername:          w.VNCUsername,
+		VNCPassword:          w.VNCPassword,
 		PersistentDiskStatus: diskStatusFromAPI(w.PersistentDiskStatus),
 	}
 	out.AgentSessionStatusUpdatedAt = parseTime(w.AgentSessionStatusUpdatedAt)

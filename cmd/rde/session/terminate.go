@@ -39,7 +39,11 @@ that isn't yet terminated or failed.`,
 				return err
 			}
 			svc := internalrde.NewService(client)
-			sess, err := svc.TerminateSession(cmd.Context(), workspaceID, args[0])
+			sessionID, err := svc.ResolveSessionID(cmd.Context(), workspaceID, args[0])
+			if err != nil {
+				return err
+			}
+			sess, err := svc.TerminateSession(cmd.Context(), workspaceID, sessionID)
 			if err != nil {
 				return err
 			}

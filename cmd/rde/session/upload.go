@@ -33,10 +33,15 @@ For directories: the directory's contents are extracted into REMOTE_FOLDER
 			if err != nil {
 				return err
 			}
+			svc := internalrde.NewService(client)
+			sessionID, err = svc.ResolveSessionID(cmd.Context(), workspaceID, sessionID)
+			if err != nil {
+				return err
+			}
 			if !cmdutil.IsQuiet(cmd) {
 				_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Uploading %s → %s on session %s…\n", sourcePath, destFolder, sessionID)
 			}
-			if err := internalrde.NewService(client).UploadFile(cmd.Context(), workspaceID, sessionID, sourcePath, destFolder); err != nil {
+			if err := svc.UploadFile(cmd.Context(), workspaceID, sessionID, sourcePath, destFolder); err != nil {
 				return err
 			}
 			if !cmdutil.IsQuiet(cmd) {

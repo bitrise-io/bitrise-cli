@@ -28,7 +28,26 @@ ignored), so the natural workflow is:
 
 Pass --file - to read the JSON from stdin.
 
-Required fields in the JSON: name, image, machine_type.`,
+Required fields:
+  name           template name
+  image          machine image name (see 'rde image list')
+  machine_type   machine type name (see 'rde machine-type list')
+
+Optional fields:
+  description         free-text description
+  working_directory   default working directory for sessions
+  startup_script      bash script run on every session start
+  warmup_script       bash script baked into the image during pre-warming
+  session_inputs      array of {key, description, required, default_value,
+                      expose_as_env_var} — values callers supply at create time
+  template_variables  array of {key, value, is_secret, expose_as_env_var} —
+                      baked-in values available to startup/warmup scripts
+  feature_flags       array of {name, description}
+  workspace_links     array of {label, folder_path, feature_flag_name} — IDE
+                      folder shortcuts
+
+When unsure of a field's exact shape, copy it from an existing template's
+'rde template view -o json' output.`,
 		Example: `  bitrise-cli rde template create --file template.json
   cat template.json | bitrise-cli rde template create --file -`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -95,7 +114,12 @@ Pass --file - to read the JSON from stdin.`,
 			if err != nil {
 				return err
 			}
-			t, err := internalrde.NewService(client).UpdateTemplate(cmd.Context(), workspaceID, args[0], spec)
+			svc := internalrde.NewService(client)
+			templateID, err := svc.ResolveTemplateID(cmd.Context(), workspaceID, args[0])
+			if err != nil {
+				return err
+			}
+			t, err := svc.UpdateTemplate(cmd.Context(), workspaceID, templateID, spec)
 			if err != nil {
 				return err
 			}
@@ -123,11 +147,16 @@ the template can no longer be selected for new sessions.`,
 			if err != nil {
 				return err
 			}
-			if err := internalrde.NewService(client).DeleteTemplate(cmd.Context(), workspaceID, args[0]); err != nil {
+			svc := internalrde.NewService(client)
+			templateID, err := svc.ResolveTemplateID(cmd.Context(), workspaceID, args[0])
+			if err != nil {
+				return err
+			}
+			if err := svc.DeleteTemplate(cmd.Context(), workspaceID, templateID); err != nil {
 				return err
 			}
 			if !cmdutil.IsQuiet(cmd) {
-				_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Deleted template %s\n", args[0])
+				_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Deleted template %s\n", templateID)
 			}
 			return nil
 		},

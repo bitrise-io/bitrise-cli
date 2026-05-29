@@ -15,6 +15,11 @@ import (
 // short-circuits without an extra ListTemplates call.
 const uuidTemplate = "11111111-2222-3333-4444-555555555555"
 
+// uuidSession is a UUID-shaped session arg. Real RDE session IDs are UUIDs,
+// so passing one exercises the ResolveSessionID short-circuit (no extra
+// ListSessions call) — the same path production hits when a user pastes an ID.
+const uuidSession = "99999999-8888-7777-6666-555555555555"
+
 func TestCreateCmd_HappyPath(t *testing.T) {
 	var gotBody map[string]any
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -131,7 +136,7 @@ func TestUpdateCmd_RequiresAField(t *testing.T) {
 func TestUpdateCmd_OnlySetFieldsSent(t *testing.T) {
 	var gotBody map[string]any
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPatch || r.URL.Path != "/v1/workspaces/ws-1/sessions/s-1" {
+		if r.Method != http.MethodPatch || r.URL.Path != "/v1/workspaces/ws-1/sessions/"+uuidSession {
 			t.Errorf("unexpected: %s %s", r.Method, r.URL.Path)
 		}
 		_ = json.NewDecoder(r.Body).Decode(&gotBody)
@@ -140,7 +145,7 @@ func TestUpdateCmd_OnlySetFieldsSent(t *testing.T) {
 	defer srv.Close()
 
 	_, _, err := run(t, newUpdateCmd(), srv.URL, "ws-1",
-		[]string{"s-1", "--name", "renamed"}, output.Human)
+		[]string{uuidSession, "--name", "renamed"}, output.Human)
 	if err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
@@ -158,14 +163,14 @@ func TestUpdateCmd_OnlySetFieldsSent(t *testing.T) {
 
 func TestTerminateCmd_HappyPath(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost || r.URL.Path != "/v1/workspaces/ws-1/sessions/s-1/terminate" {
+		if r.Method != http.MethodPost || r.URL.Path != "/v1/workspaces/ws-1/sessions/"+uuidSession+"/terminate" {
 			t.Errorf("unexpected: %s %s", r.Method, r.URL.Path)
 		}
 		_, _ = io.WriteString(w, `{"session":{"id":"s-1","name":"dev","status":"SESSION_STATUS_TERMINATING"}}`)
 	}))
 	defer srv.Close()
 
-	stdout, _, err := run(t, newTerminateCmd(), srv.URL, "ws-1", []string{"s-1"}, output.Human)
+	stdout, _, err := run(t, newTerminateCmd(), srv.URL, "ws-1", []string{uuidSession}, output.Human)
 	if err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
@@ -177,10 +182,10 @@ func TestTerminateCmd_HappyPath(t *testing.T) {
 func TestRestoreCmd_HappyPath(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
-		case r.Method == http.MethodGet && r.URL.Path == "/v1/workspaces/ws-1/sessions/s-1":
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/workspaces/ws-1/sessions/"+uuidSession:
 			// Pre-flight disk-status check before the restore call.
 			_, _ = io.WriteString(w, `{"session":{"id":"s-1","name":"dev","status":"SESSION_STATUS_TERMINATED","persistentDiskStatus":"PERSISTENT_DISK_STATUS_AVAILABLE"}}`)
-		case r.Method == http.MethodPost && r.URL.Path == "/v1/workspaces/ws-1/sessions/s-1/restore":
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/workspaces/ws-1/sessions/"+uuidSession+"/restore":
 			_, _ = io.WriteString(w, `{"session":{"id":"s-1","name":"dev","status":"SESSION_STATUS_STARTING"}}`)
 		default:
 			t.Errorf("unexpected: %s %s", r.Method, r.URL.Path)
@@ -188,7 +193,7 @@ func TestRestoreCmd_HappyPath(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	stdout, _, err := run(t, newRestoreCmd(), srv.URL, "ws-1", []string{"s-1"}, output.Human)
+	stdout, _, err := run(t, newRestoreCmd(), srv.URL, "ws-1", []string{uuidSession}, output.Human)
 	if err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
@@ -201,9 +206,9 @@ func TestRestoreCmd_DiskUnavailableFailsFast(t *testing.T) {
 	var restoreCalled bool
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
-		case r.Method == http.MethodGet && r.URL.Path == "/v1/workspaces/ws-1/sessions/s-1":
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/workspaces/ws-1/sessions/"+uuidSession:
 			_, _ = io.WriteString(w, `{"session":{"id":"s-1","name":"dev","status":"SESSION_STATUS_TERMINATED","persistentDiskStatus":"PERSISTENT_DISK_STATUS_UNAVAILABLE"}}`)
-		case r.URL.Path == "/v1/workspaces/ws-1/sessions/s-1/restore":
+		case r.URL.Path == "/v1/workspaces/ws-1/sessions/"+uuidSession+"/restore":
 			restoreCalled = true
 		default:
 			t.Errorf("unexpected: %s %s", r.Method, r.URL.Path)
@@ -211,7 +216,7 @@ func TestRestoreCmd_DiskUnavailableFailsFast(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	_, _, err := run(t, newRestoreCmd(), srv.URL, "ws-1", []string{"s-1"}, output.Human)
+	_, _, err := run(t, newRestoreCmd(), srv.URL, "ws-1", []string{uuidSession}, output.Human)
 	if err == nil {
 		t.Fatal("expected restore to fail when the persistent disk is unavailable")
 	}
@@ -226,9 +231,9 @@ func TestRestoreCmd_DiskUnavailableFailsFast(t *testing.T) {
 func TestRestoreCmd_DiskExpiringSoonWarnsButProceeds(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
-		case r.Method == http.MethodGet && r.URL.Path == "/v1/workspaces/ws-1/sessions/s-1":
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/workspaces/ws-1/sessions/"+uuidSession:
 			_, _ = io.WriteString(w, `{"session":{"id":"s-1","name":"dev","status":"SESSION_STATUS_TERMINATED","persistentDiskStatus":"PERSISTENT_DISK_STATUS_UNAVAILABLE_SOON"}}`)
-		case r.Method == http.MethodPost && r.URL.Path == "/v1/workspaces/ws-1/sessions/s-1/restore":
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/workspaces/ws-1/sessions/"+uuidSession+"/restore":
 			_, _ = io.WriteString(w, `{"session":{"id":"s-1","name":"dev","status":"SESSION_STATUS_STARTING"}}`)
 		default:
 			t.Errorf("unexpected: %s %s", r.Method, r.URL.Path)
@@ -236,7 +241,7 @@ func TestRestoreCmd_DiskExpiringSoonWarnsButProceeds(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	stdout, stderr, err := run(t, newRestoreCmd(), srv.URL, "ws-1", []string{"s-1"}, output.Human)
+	stdout, stderr, err := run(t, newRestoreCmd(), srv.URL, "ws-1", []string{uuidSession}, output.Human)
 	if err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
@@ -250,21 +255,68 @@ func TestRestoreCmd_DiskExpiringSoonWarnsButProceeds(t *testing.T) {
 
 func TestDeleteCmd_HappyPath(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodDelete || r.URL.Path != "/v1/workspaces/ws-1/sessions/s-1" {
+		if r.Method != http.MethodDelete || r.URL.Path != "/v1/workspaces/ws-1/sessions/"+uuidSession {
 			t.Errorf("unexpected: %s %s", r.Method, r.URL.Path)
 		}
 	}))
 	defer srv.Close()
 
-	stdout, stderr, err := run(t, newDeleteCmd(), srv.URL, "ws-1", []string{"s-1"}, output.Human)
+	stdout, stderr, err := run(t, newDeleteCmd(), srv.URL, "ws-1", []string{uuidSession}, output.Human)
 	if err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
-	if !strings.Contains(stderr, "Deleted session s-1") {
+	if !strings.Contains(stderr, "Deleted session "+uuidSession) {
 		t.Errorf("stderr missing confirmation: %q", stderr)
 	}
 	if stdout != "" {
 		t.Errorf("stdout should be empty for delete, got: %q", stdout)
+	}
+}
+
+// TestDeleteCmd_ResolvesName: a non-UUID arg is treated as a session name,
+// looked up via ListSessions, and the resolved ID is what actually gets
+// deleted.
+func TestDeleteCmd_ResolvesName(t *testing.T) {
+	var deletedPath string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/workspaces/ws-1/sessions":
+			_, _ = io.WriteString(w, `{"sessions":[{"id":"s-9","name":"my-box"},{"id":"s-7","name":"other"}]}`)
+		case r.Method == http.MethodDelete:
+			deletedPath = r.URL.Path
+		default:
+			t.Errorf("unexpected: %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer srv.Close()
+
+	_, stderr, err := run(t, newDeleteCmd(), srv.URL, "ws-1", []string{"my-box"}, output.Human)
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if deletedPath != "/v1/workspaces/ws-1/sessions/s-9" {
+		t.Errorf("deleted path = %q, want the resolved id s-9", deletedPath)
+	}
+	if !strings.Contains(stderr, "Deleted session s-9") {
+		t.Errorf("stderr should confirm deletion of the resolved id: %q", stderr)
+	}
+}
+
+// TestDeleteCmd_AmbiguousNameError pins the non-uniqueness guard: when a name
+// matches more than one session, delete refuses rather than guessing.
+func TestDeleteCmd_AmbiguousNameError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet && r.URL.Path == "/v1/workspaces/ws-1/sessions" {
+			_, _ = io.WriteString(w, `{"sessions":[{"id":"s-1","name":"dup"},{"id":"s-2","name":"dup"}]}`)
+			return
+		}
+		t.Errorf("nothing should be deleted for an ambiguous name: %s %s", r.Method, r.URL.Path)
+	}))
+	defer srv.Close()
+
+	_, _, err := run(t, newDeleteCmd(), srv.URL, "ws-1", []string{"dup"}, output.Human)
+	if err == nil || !strings.Contains(err.Error(), "ambiguous") {
+		t.Errorf("error = %v, want ambiguous-name error", err)
 	}
 }
 

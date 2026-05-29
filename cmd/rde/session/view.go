@@ -39,20 +39,26 @@ stream); use 'session create --wait' or a polling jq loop instead.`,
 			if err != nil {
 				return err
 			}
+			// Reject the unsupported flag combo before resolving the name —
+			// no point in a lookup round-trip for a request we won't serve.
+			if watch && format == output.JSON {
+				return fmt.Errorf("--watch cannot be combined with --output json (JSON is a single-object contract)")
+			}
+
 			svc := internalrde.NewService(client)
+			sessionID, err := svc.ResolveSessionID(cmd.Context(), workspaceID, args[0])
+			if err != nil {
+				return err
+			}
 
 			if !watch {
-				sess, err := svc.GetSession(cmd.Context(), workspaceID, args[0])
+				sess, err := svc.GetSession(cmd.Context(), workspaceID, sessionID)
 				if err != nil {
 					return err
 				}
 				return output.Render(cmd.OutOrStdout(), format, sess, renderSessionDetail)
 			}
-
-			if format == output.JSON {
-				return fmt.Errorf("--watch cannot be combined with --output json (JSON is a single-object contract)")
-			}
-			return watchSession(cmd, svc, workspaceID, args[0], interval)
+			return watchSession(cmd, svc, workspaceID, sessionID, interval)
 		},
 	}
 	c.Flags().BoolVar(&watch, "watch", false, "poll the session and re-render on every change until Ctrl-C")

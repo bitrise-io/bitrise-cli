@@ -12,7 +12,12 @@ func NewCmd() *cobra.Command {
 	c := &cobra.Command{
 		Use:   "template",
 		Short: "List and inspect RDE templates",
-		RunE:  cmdutil.DelegateToList,
+		Long: `List and inspect RDE templates.
+
+Commands that take a TEMPLATE_ID also accept a template name — it's resolved
+to an ID for you. Names aren't unique, so if more than one template shares the
+name the command errors and lists the candidate IDs to pick from.`,
+		RunE: cmdutil.DelegateToList,
 	}
 	c.AddCommand(
 		newListCmd(),

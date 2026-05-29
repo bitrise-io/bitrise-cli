@@ -13,7 +13,7 @@ import (
 
 func TestViewCmd_HappyPath(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/v1/workspaces/ws-1/sessions/s-1" {
+		if r.URL.Path != "/v1/workspaces/ws-1/sessions/"+uuidSession {
 			t.Errorf("unexpected path: %s", r.URL.Path)
 		}
 		_, _ = io.WriteString(w, `{"session":{
@@ -24,7 +24,7 @@ func TestViewCmd_HappyPath(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	stdout, _, err := run(t, newViewCmd(), srv.URL, "ws-1", []string{"s-1"}, output.Human)
+	stdout, _, err := run(t, newViewCmd(), srv.URL, "ws-1", []string{uuidSession}, output.Human)
 	if err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
@@ -41,7 +41,7 @@ func TestViewCmd_JSONOutput_MapsStatus(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	stdout, _, err := run(t, newViewCmd(), srv.URL, "ws-1", []string{"s-1"}, output.JSON)
+	stdout, _, err := run(t, newViewCmd(), srv.URL, "ws-1", []string{uuidSession}, output.JSON)
 	if err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
@@ -64,7 +64,7 @@ func TestViewCmd_JSONOmitsSSHPassword(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	stdout, _, err := run(t, newViewCmd(), srv.URL, "ws-1", []string{"s-1"}, output.JSON)
+	stdout, _, err := run(t, newViewCmd(), srv.URL, "ws-1", []string{uuidSession}, output.JSON)
 	if err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
@@ -93,7 +93,7 @@ func TestViewCmd_WatchRejectsJSON(t *testing.T) {
 
 func TestNotificationsCmd_HappyPath_MapsType(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/v1/workspaces/ws-1/sessions/s-1/notifications" {
+		if r.URL.Path != "/v1/workspaces/ws-1/sessions/"+uuidSession+"/notifications" {
 			t.Errorf("unexpected path: %s", r.URL.Path)
 		}
 		_, _ = io.WriteString(w, `{"notifications":[
@@ -102,7 +102,7 @@ func TestNotificationsCmd_HappyPath_MapsType(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	stdout, _, err := run(t, newNotificationsCmd(), srv.URL, "ws-1", []string{"s-1"}, output.Human)
+	stdout, _, err := run(t, newNotificationsCmd(), srv.URL, "ws-1", []string{uuidSession}, output.Human)
 	if err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
@@ -121,7 +121,7 @@ func TestNotificationsCmd_JSONOutput(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	stdout, _, err := run(t, newNotificationsCmd(), srv.URL, "ws-1", []string{"s-1"}, output.JSON)
+	stdout, _, err := run(t, newNotificationsCmd(), srv.URL, "ws-1", []string{uuidSession}, output.JSON)
 	if err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
@@ -145,7 +145,7 @@ func TestNotificationsCmd_EmptyHuman(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	stdout, _, err := run(t, newNotificationsCmd(), srv.URL, "ws-1", []string{"s-1"}, output.Human)
+	stdout, _, err := run(t, newNotificationsCmd(), srv.URL, "ws-1", []string{uuidSession}, output.Human)
 	if err != nil {
 		t.Fatalf("Execute: %v", err)
 	}

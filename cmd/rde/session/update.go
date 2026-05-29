@@ -48,7 +48,12 @@ func newUpdateCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			sess, err := internalrde.NewService(client).UpdateSession(cmd.Context(), workspaceID, args[0], req)
+			svc := internalrde.NewService(client)
+			sessionID, err := svc.ResolveSessionID(cmd.Context(), workspaceID, args[0])
+			if err != nil {
+				return err
+			}
+			sess, err := svc.UpdateSession(cmd.Context(), workspaceID, sessionID, req)
 			if err != nil {
 				return err
 			}

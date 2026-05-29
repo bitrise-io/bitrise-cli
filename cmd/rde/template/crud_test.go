@@ -11,6 +11,12 @@ import (
 	"github.com/bitrise-io/bitrise-cli/internal/output"
 )
 
+// uuidTemplateID is a UUID-shaped template arg. Real RDE template IDs are
+// UUIDs, so passing one exercises the ResolveTemplateID short-circuit (no
+// extra ListTemplates call) — the path production hits when a user pastes an
+// ID rather than a name.
+const uuidTemplateID = "33333333-4444-4444-8444-555555555555"
+
 func TestCreateCmd_HappyPath(t *testing.T) {
 	var gotBody map[string]any
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -72,7 +78,7 @@ func TestCreateCmd_MalformedJSON(t *testing.T) {
 func TestUpdateCmd_SendsReplaceFlagForArrays(t *testing.T) {
 	var gotBody map[string]any
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPatch || r.URL.Path != "/v1/workspaces/ws-1/templates/t-1" {
+		if r.Method != http.MethodPatch || r.URL.Path != "/v1/workspaces/ws-1/templates/"+uuidTemplateID {
 			t.Errorf("unexpected: %s %s", r.Method, r.URL.Path)
 		}
 		_ = json.NewDecoder(r.Body).Decode(&gotBody)
@@ -82,7 +88,7 @@ func TestUpdateCmd_SendsReplaceFlagForArrays(t *testing.T) {
 
 	c := newUpdateCmd()
 	c.SetIn(strings.NewReader(`{"name":"Renamed","session_inputs":[{"key":"repo"}]}`))
-	_, _, err := run(t, c, srv.URL, "ws-1", []string{"t-1", "--file", "-"}, output.Human)
+	_, _, err := run(t, c, srv.URL, "ws-1", []string{uuidTemplateID, "--file", "-"}, output.Human)
 	if err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
@@ -116,22 +122,51 @@ func TestUpdateCmd_RequiresArg(t *testing.T) {
 
 func TestDeleteCmd_HappyPath(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodDelete || r.URL.Path != "/v1/workspaces/ws-1/templates/t-1" {
+		if r.Method != http.MethodDelete || r.URL.Path != "/v1/workspaces/ws-1/templates/"+uuidTemplateID {
 			t.Errorf("unexpected: %s %s", r.Method, r.URL.Path)
 		}
 	}))
 	defer srv.Close()
 
-	stdout, stderr, err := run(t, newDeleteCmd(), srv.URL, "ws-1", []string{"t-1"}, output.Human)
+	stdout, stderr, err := run(t, newDeleteCmd(), srv.URL, "ws-1", []string{uuidTemplateID}, output.Human)
 	if err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
 	// Confirmation goes to stderr, never stdout.
-	if !strings.Contains(stderr, "Deleted template t-1") {
+	if !strings.Contains(stderr, "Deleted template "+uuidTemplateID) {
 		t.Errorf("stderr missing confirmation: %q", stderr)
 	}
 	if stdout != "" {
 		t.Errorf("stdout should be empty for delete, got: %q", stdout)
+	}
+}
+
+// TestDeleteCmd_ResolvesName covers name → ID resolution: a non-UUID arg is
+// treated as a template name, looked up via ListTemplates, and the resolved ID
+// is what gets deleted.
+func TestDeleteCmd_ResolvesName(t *testing.T) {
+	var deletedPath string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/workspaces/ws-1/templates":
+			_, _ = io.WriteString(w, `{"templates":[{"id":"t-9","name":"Linux Dev"},{"id":"t-7","name":"macOS Dev"}]}`)
+		case r.Method == http.MethodDelete:
+			deletedPath = r.URL.Path
+		default:
+			t.Errorf("unexpected: %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer srv.Close()
+
+	_, stderr, err := run(t, newDeleteCmd(), srv.URL, "ws-1", []string{"Linux Dev"}, output.Human)
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if deletedPath != "/v1/workspaces/ws-1/templates/t-9" {
+		t.Errorf("deleted path = %q, want the resolved id t-9", deletedPath)
+	}
+	if !strings.Contains(stderr, "Deleted template t-9") {
+		t.Errorf("stderr should confirm deletion of the resolved id: %q", stderr)
 	}
 }
 

@@ -100,7 +100,7 @@ func TestListCmd_EmptyHuman(t *testing.T) {
 
 func TestViewCmd_HappyPath(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/v1/workspaces/ws-1/templates/t-1" {
+		if r.URL.Path != "/v1/workspaces/ws-1/templates/"+uuidTemplateID {
 			t.Errorf("unexpected path: %s", r.URL.Path)
 		}
 		_, _ = io.WriteString(w, `{"template":{
@@ -111,7 +111,7 @@ func TestViewCmd_HappyPath(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	stdout, _, err := run(t, newViewCmd(), srv.URL, "ws-1", []string{"t-1"}, output.Human)
+	stdout, _, err := run(t, newViewCmd(), srv.URL, "ws-1", []string{uuidTemplateID}, output.Human)
 	if err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
@@ -128,7 +128,7 @@ func TestViewCmd_JSONOutput(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	stdout, _, err := run(t, newViewCmd(), srv.URL, "ws-1", []string{"t-1"}, output.JSON)
+	stdout, _, err := run(t, newViewCmd(), srv.URL, "ws-1", []string{uuidTemplateID}, output.JSON)
 	if err != nil {
 		t.Fatalf("Execute: %v", err)
 	}

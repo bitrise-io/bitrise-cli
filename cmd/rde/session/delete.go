@@ -23,11 +23,16 @@ func newDeleteCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if err := internalrde.NewService(client).DeleteSession(cmd.Context(), workspaceID, args[0]); err != nil {
+			svc := internalrde.NewService(client)
+			sessionID, err := svc.ResolveSessionID(cmd.Context(), workspaceID, args[0])
+			if err != nil {
+				return err
+			}
+			if err := svc.DeleteSession(cmd.Context(), workspaceID, sessionID); err != nil {
 				return err
 			}
 			if !cmdutil.IsQuiet(cmd) {
-				_, err := fmt.Fprintf(cmd.ErrOrStderr(), "Deleted session %s\n", args[0])
+				_, err := fmt.Fprintf(cmd.ErrOrStderr(), "Deleted session %s\n", sessionID)
 				return err
 			}
 			return nil

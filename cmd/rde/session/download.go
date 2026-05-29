@@ -35,10 +35,15 @@ LOCAL_PATH instead.`,
 			if err != nil {
 				return err
 			}
+			svc := internalrde.NewService(client)
+			sessionID, err = svc.ResolveSessionID(cmd.Context(), workspaceID, sessionID)
+			if err != nil {
+				return err
+			}
 			if !cmdutil.IsQuiet(cmd) {
 				_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Downloading %s → %s from session %s…\n", sourcePath, localDest, sessionID)
 			}
-			if err := internalrde.NewService(client).DownloadFile(cmd.Context(), workspaceID, sessionID, sourcePath, localDest, onlyContents); err != nil {
+			if err := svc.DownloadFile(cmd.Context(), workspaceID, sessionID, sourcePath, localDest, onlyContents); err != nil {
 				return err
 			}
 			if !cmdutil.IsQuiet(cmd) {

@@ -26,18 +26,22 @@ func newRestoreCmd() *cobra.Command {
 				return err
 			}
 			svc := internalrde.NewService(client)
+			sessionID, err := svc.ResolveSessionID(cmd.Context(), workspaceID, args[0])
+			if err != nil {
+				return err
+			}
 
 			// A terminated session is restored from its persistent disk, so
 			// check the disk first: fail fast with a clear reason when it's
 			// gone, and warn when it's about to expire (the server still
 			// allows the restore, so this is the only chance to surface it).
-			sess, err := svc.GetSession(cmd.Context(), workspaceID, args[0])
+			sess, err := svc.GetSession(cmd.Context(), workspaceID, sessionID)
 			if err != nil {
 				return err
 			}
 			switch sess.PersistentDiskStatus {
 			case internalrde.DiskStatusUnavailable:
-				return fmt.Errorf("session %s cannot be restored: its persistent disk is no longer available", args[0])
+				return fmt.Errorf("session %s cannot be restored: its persistent disk is no longer available", sessionID)
 			case internalrde.DiskStatusUnavailableSoon:
 				if !cmdutil.IsQuiet(cmd) && format != output.JSON {
 					_, _ = fmt.Fprintf(cmd.ErrOrStderr(),
@@ -45,7 +49,7 @@ func newRestoreCmd() *cobra.Command {
 				}
 			}
 
-			restored, err := svc.RestoreSession(cmd.Context(), workspaceID, args[0])
+			restored, err := svc.RestoreSession(cmd.Context(), workspaceID, sessionID)
 			if err != nil {
 				return err
 			}

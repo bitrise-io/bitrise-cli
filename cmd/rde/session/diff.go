@@ -34,7 +34,12 @@ directory). When the template was deleted, only the snapshot is shown.`,
 			if err != nil {
 				return err
 			}
-			diff, err := internalrde.NewService(client).DiffSessionTemplate(cmd.Context(), workspaceID, args[0])
+			svc := internalrde.NewService(client)
+			sessionID, err := svc.ResolveSessionID(cmd.Context(), workspaceID, args[0])
+			if err != nil {
+				return err
+			}
+			diff, err := svc.DiffSessionTemplate(cmd.Context(), workspaceID, sessionID)
 			if err != nil {
 				return err
 			}

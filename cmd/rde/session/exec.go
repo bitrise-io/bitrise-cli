@@ -31,11 +31,6 @@ this CLI exits non-zero when the remote command exits non-zero.
 In --output json mode: a single {"exit_code", "stdout", "stderr"} object is
 emitted to stdout regardless of the command's exit status.
 
-NOTE: because the remote shell is forced-interactive without a TTY, bash
-emits two harmless startup diagnostic lines to stderr on every invocation
-("cannot set terminal process group", "no job control in this shell").
-Ignore them — the exit code is the source of truth.
-
 The remote command is capped at 2 minutes. For long-running jobs, nohup
 them inside the session.`,
 		Example: `  bitrise-cli rde session exec SESSION_ID -- echo hello
@@ -67,7 +62,12 @@ them inside the session.`,
 			if err != nil {
 				return err
 			}
-			res, err := internalrde.NewService(client).Execute(cmd.Context(), workspaceID, sessionID, command)
+			svc := internalrde.NewService(client)
+			sessionID, err = svc.ResolveSessionID(cmd.Context(), workspaceID, sessionID)
+			if err != nil {
+				return err
+			}
+			res, err := svc.Execute(cmd.Context(), workspaceID, sessionID, command)
 			if err != nil {
 				return err
 			}

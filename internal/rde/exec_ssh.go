@@ -193,7 +193,7 @@ func (c *sshClient) run(ctx context.Context, userCmd string) (ExecResult, error)
 
 	result := ExecResult{
 		Stdout: stdout.String(),
-		Stderr: stderr.String(),
+		Stderr: stripInteractiveBashStartupNoise(stderr.String()),
 	}
 
 	if runErr == nil {
@@ -217,6 +217,38 @@ func (c *sshClient) run(ctx context.Context, userCmd string) (ExecResult, error)
 
 func buildLoginShellCmd(userCmd string) string {
 	return "bash -i -l -c '" + strings.ReplaceAll(userCmd, "'", `'\''`) + "'"
+}
+
+// interactiveBashStartupNoise are the diagnostics `bash -i` writes to stderr
+// when it has no controlling TTY — which is always the case here, since exec
+// dials without allocating a PTY. They are emitted at shell startup, before
+// the user's command runs, and carry no signal. We force interactive mode on
+// purpose (see buildLoginShellCmd) so ~/.bashrc is sourced, and these lines
+// are the unavoidable side effect. For a CLI a human reads, printing them on
+// every invocation is pure noise, so we strip them from captured stderr.
+var interactiveBashStartupNoise = map[string]bool{
+	"bash: cannot set terminal process group (-1): Inappropriate ioctl for device": true,
+	"bash: no job control in this shell":                                           true,
+}
+
+// stripInteractiveBashStartupNoise removes the leading run of bash interactive
+// startup diagnostics from stderr, leaving everything after the user command's
+// first real output byte-for-byte intact. Only leading lines are dropped: the
+// noise is emitted before the command runs, and matching mid-stream would risk
+// eating a legitimate identical line the command itself printed.
+func stripInteractiveBashStartupNoise(stderr string) string {
+	if stderr == "" {
+		return ""
+	}
+	lines := strings.Split(stderr, "\n")
+	i := 0
+	for i < len(lines) && interactiveBashStartupNoise[lines[i]] {
+		i++
+	}
+	if i == 0 {
+		return stderr
+	}
+	return strings.Join(lines[i:], "\n")
 }
 
 // sshAuthMethods builds the auth-method chain. Password is tried FIRST:
