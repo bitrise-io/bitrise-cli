@@ -33,6 +33,15 @@ func run(t *testing.T, c *cobra.Command, srvURL string, args []string, format ou
 	return stdout.String(), stderr.String(), err
 }
 
+// runIn is run with a fixed stdin, for exercising --value-stdin and the
+// interactive-prompt fallback. The injected reader is not a terminal, so
+// ReadSecretInput reads it as a plain line rather than a masked prompt.
+func runIn(t *testing.T, c *cobra.Command, srvURL, stdin string, args []string, format output.Format) (string, string, error) {
+	t.Helper()
+	c.SetIn(strings.NewReader(stdin))
+	return run(t, c, srvURL, args, format)
+}
+
 func TestListCmd_HappyPath_MasksSecrets(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/v1/saved-inputs" {
@@ -151,10 +160,58 @@ func TestCreateCmd_RequiresKey(t *testing.T) {
 	}
 }
 
-func TestCreateCmd_RequiresValue(t *testing.T) {
-	_, _, err := run(t, newCreateCmd(), "http://unused", []string{"--key", "repo"}, output.Human)
-	if err == nil || !strings.Contains(err.Error(), "--value") {
-		t.Errorf("error = %v, want --value required", err)
+func TestCreateCmd_EmptyValueRejected(t *testing.T) {
+	// Neither --value nor --value-stdin, and empty stdin (the prompt fallback
+	// reads it as a line): there is nothing to store, so it must error rather
+	// than create an empty value.
+	_, _, err := runIn(t, newCreateCmd(), "http://unused", "", []string{"--key", "repo"}, output.Human)
+	if err == nil || !strings.Contains(err.Error(), "value is empty") {
+		t.Errorf("error = %v, want value-is-empty", err)
+	}
+}
+
+func TestCreateCmd_ValueStdin(t *testing.T) {
+	var body map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		_, _ = io.WriteString(w, `{"savedInput":{"id":"sv-new","key":"gh-token","isSecret":true,"value":"***"}}`)
+	}))
+	defer srv.Close()
+
+	_, _, err := runIn(t, newCreateCmd(), srv.URL, "ghp_secret\n",
+		[]string{"--key", "gh-token", "--value-stdin", "--secret"}, output.Human)
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if body["value"] != "ghp_secret" {
+		t.Errorf("value = %v, want ghp_secret (read from stdin, trailing newline trimmed)", body["value"])
+	}
+}
+
+// TestCreateCmd_LiteralDashValue guards the original question that started this:
+// with the "-" sentinel removed, --value - now stores a literal dash.
+func TestCreateCmd_LiteralDashValue(t *testing.T) {
+	var body map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		_, _ = io.WriteString(w, `{"savedInput":{"id":"sv-new","key":"dash","value":"-"}}`)
+	}))
+	defer srv.Close()
+
+	_, _, err := run(t, newCreateCmd(), srv.URL, []string{"--key", "dash", "--value", "-"}, output.Human)
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if body["value"] != "-" {
+		t.Errorf("value = %v, want literal -", body["value"])
+	}
+}
+
+func TestCreateCmd_ValueAndStdinMutuallyExclusive(t *testing.T) {
+	_, _, err := run(t, newCreateCmd(), "http://unused",
+		[]string{"--key", "repo", "--value", "x", "--value-stdin"}, output.Human)
+	if err == nil {
+		t.Fatal("expected error when --value and --value-stdin are both set")
 	}
 }
 

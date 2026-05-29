@@ -12,32 +12,38 @@ import (
 
 func newCreateCmd() *cobra.Command {
 	var (
-		key      string
-		value    string
-		isSecret bool
+		key        string
+		value      string
+		valueStdin bool
+		isSecret   bool
 	)
 	c := &cobra.Command{
 		Use:   "create",
 		Short: "Create a new saved input",
 		Long: `Create a new saved input.
 
-Pass --value - to read the value from stdin (keeps secrets out of shell history):
-  echo -n "ghp_xxx" | bitrise-cli rde saved-input create --key gh-token --value - --secret`,
+The value can be supplied three ways:
+  --value VALUE   use VALUE literally (pass --value - to store a literal dash)
+  --value-stdin   read the value from stdin without prompting; keeps secrets
+                  out of shell history
+  neither         prompt for the value interactively; input is masked when
+                  stdin is a terminal`,
 		Example: `  bitrise-cli rde saved-input create --key repo-name --value my-app
-  bitrise-cli rde saved-input create --key gh-token --value - --secret`,
+  echo -n "ghp_xxx" | bitrise-cli rde saved-input create --key gh-token --value-stdin --secret
+  bitrise-cli rde saved-input create --key gh-token --secret   # prompts for the value`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if key == "" {
 				return fmt.Errorf("--key is required")
 			}
-			if !cmd.Flags().Changed("value") {
-				return fmt.Errorf("--value is required (use --value - to read from stdin)")
+			valueChanged := cmd.Flags().Changed("value")
+			value, _, err := resolveValue(cmd, value, valueChanged, valueStdin, true)
+			if err != nil {
+				return err
 			}
-			if value == "-" {
-				v, err := cmdutil.ReadSecretInput(cmd.InOrStdin(), cmd.ErrOrStderr(), "Value: ", true)
-				if err != nil {
-					return err
-				}
-				value = v
+			// Empty is only allowed when the caller explicitly passed --value "".
+			// An empty prompt or empty piped stdin is treated as a mistake.
+			if value == "" && !valueChanged {
+				return fmt.Errorf("value is empty")
 			}
 			format := cmdutil.ResolveFormat(cmd)
 			client, err := cmdutil.NewRDEClient(cmd)
@@ -56,7 +62,33 @@ Pass --value - to read the value from stdin (keeps secrets out of shell history)
 		},
 	}
 	c.Flags().StringVar(&key, "key", "", "saved-input key (required)")
-	c.Flags().StringVar(&value, "value", "", "value (use '-' to read from stdin)")
+	c.Flags().StringVar(&value, "value", "", "value to store (literal)")
+	c.Flags().BoolVar(&valueStdin, "value-stdin", false, "read the value from stdin without prompting")
 	c.Flags().BoolVar(&isSecret, "secret", false, "encrypt value at rest; the value will be masked in subsequent reads")
+	c.MarkFlagsMutuallyExclusive("value", "value-stdin")
 	return c
+}
+
+// resolveValue determines a saved-input value from the --value / --value-stdin
+// flags, which the caller marks mutually exclusive. When --value-stdin is set it
+// reads a single line from stdin without prompting. When --value was passed it
+// returns the literal flag value. Otherwise, if promptIfMissing is true it prompts
+// interactively (masked when stdin is a terminal); if false it reports
+// provided=false so the caller can leave the value untouched.
+//
+// This mirrors the secret-input convention used by `bitrise-cli auth login`
+// (--with-token / --password-stdin plus a masked interactive default).
+func resolveValue(cmd *cobra.Command, value string, valueChanged, valueStdin, promptIfMissing bool) (resolved string, provided bool, err error) {
+	switch {
+	case valueStdin:
+		v, rerr := cmdutil.ReadSecretInput(cmd.InOrStdin(), cmd.ErrOrStderr(), "", true)
+		return v, true, rerr
+	case valueChanged:
+		return value, true, nil
+	case promptIfMissing:
+		v, rerr := cmdutil.ReadSecretInput(cmd.InOrStdin(), cmd.ErrOrStderr(), "Value: ", false)
+		return v, true, rerr
+	default:
+		return "", false, nil
+	}
 }

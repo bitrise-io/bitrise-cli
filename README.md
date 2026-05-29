@@ -76,8 +76,8 @@ Workspace resolution (highest to lowest precedence): `--workspace SLUG` → `BIT
 | `rde template delete TEMPLATE_ID` | Delete a template (existing sessions keep working from their snapshot) |
 | `rde saved-input list` | List saved inputs (user-scoped) |
 | `rde saved-input view ID` | Show details of a single saved input |
-| `rde saved-input create --key K --value V` | Create a saved input (`--secret`; `--value -` reads from stdin) |
-| `rde saved-input update ID` | Update a saved input's `--value` and/or `--secret` flag |
+| `rde saved-input create --key K --value V` | Create a saved input (`--secret`; `--value-stdin` reads the value from stdin, or it prompts when neither flag is given) |
+| `rde saved-input update ID` | Update a saved input's `--value` (or `--value-stdin`) and/or `--secret` flag |
 | `rde saved-input delete ID` | Delete a saved input |
 | `rde image list` | List machine images available to the workspace |
 | `rde machine-type list` | List machine types available to the workspace |

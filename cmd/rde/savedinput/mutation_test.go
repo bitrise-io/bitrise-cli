@@ -42,6 +42,24 @@ func TestUpdateCmd_ValueOnlyOmitsSecret(t *testing.T) {
 	}
 }
 
+func TestUpdateCmd_ValueStdin(t *testing.T) {
+	var gotBody map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		_, _ = io.WriteString(w, `{"savedInput":{"id":"sv-1","key":"repo","isSecret":true,"value":"***"}}`)
+	}))
+	defer srv.Close()
+
+	_, _, err := runIn(t, newUpdateCmd(), srv.URL, "new-secret\n",
+		[]string{"sv-1", "--value-stdin"}, output.Human)
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if gotBody["value"] != "new-secret" {
+		t.Errorf("value = %v, want new-secret (read from stdin)", gotBody["value"])
+	}
+}
+
 func TestUpdateCmd_SecretFlagSendsBool(t *testing.T) {
 	var gotBody map[string]any
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
