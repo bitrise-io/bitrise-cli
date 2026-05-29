@@ -45,10 +45,35 @@ func TestListCmd_HappyPath(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
-	for _, want := range []string{"i-1", "osx-xcode", "c1"} {
+	for _, want := range []string{"i-1", "osx-xcode"} {
 		if !strings.Contains(stdout, want) {
 			t.Errorf("stdout missing %q:\n%s", want, stdout)
 		}
+	}
+	if strings.Contains(stdout, "c1") {
+		t.Errorf("human output should not expose cluster, got:\n%s", stdout)
+	}
+}
+
+func TestListCmd_DedupesByName(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, `{"images":[
+			{"id":"i-1","name":"osx-xcode","clusterName":"c1"},
+			{"id":"i-2","name":"osx-xcode","clusterName":"c2"},
+			{"id":"i-3","name":"linux-ubuntu","clusterName":"c1"}
+		]}`)
+	}))
+	defer srv.Close()
+
+	stdout, _, err := run(t, newListCmd(), srv.URL, "ws-1", nil, output.Human)
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if got := strings.Count(stdout, "osx-xcode"); got != 1 {
+		t.Errorf("osx-xcode should appear exactly once after dedupe, got %d:\n%s", got, stdout)
+	}
+	if !strings.Contains(stdout, "linux-ubuntu") {
+		t.Errorf("stdout missing linux-ubuntu:\n%s", stdout)
 	}
 }
 

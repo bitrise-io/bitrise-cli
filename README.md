@@ -84,8 +84,7 @@ Anywhere a `SESSION_ID` or `TEMPLATE_ID` is accepted you can pass the resource's
 | `rde saved-input update ID` | Update a saved input's `--value` (or `--value-stdin`) and/or `--secret` flag |
 | `rde saved-input delete ID` | Delete a saved input |
 | `rde image list` | List machine images available to the workspace |
-| `rde machine-type list` | List machine types available to the workspace |
-| `rde cluster resolve --image I --machine-type M` | Find clusters offering both an image and a machine type |
+| `rde machine-type list --image NAME` | List machine types compatible with the given image; the CLUSTER column is shown only when a machine type is offered by multiple clusters for that image (use that name as `--cluster` on `session create`) |
 
 ### `config` — Manage CLI configuration (defaults persisted to a YAML file)
 

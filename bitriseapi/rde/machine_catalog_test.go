@@ -2,8 +2,6 @@ package rde
 
 import (
 	"context"
-	"encoding/json"
-	"net/http"
 	"testing"
 )
 
@@ -37,34 +35,6 @@ func TestListMachineTypes_PathAndParse(t *testing.T) {
 	}
 }
 
-func TestResolveClusters_BodyPathAndParse(t *testing.T) {
-	rs := newRecordingServer(t, `{"clusters":[{"clusterName":"c1","imageId":"i","machineTypeId":"m"}]}`)
-
-	clusters, err := rs.client().ResolveClusters(context.Background(), "ws-1", ResolveClustersRequest{
-		Image:       "osx-xcode-edge",
-		MachineType: "g2.mac",
-	})
-	if err != nil {
-		t.Fatalf("ResolveClusters: %v", err)
-	}
-	if rs.lastMethod != http.MethodPost {
-		t.Errorf("method = %s, want POST", rs.lastMethod)
-	}
-	if want := "/v1/workspaces/ws-1/resolve-clusters"; rs.lastPath != want {
-		t.Errorf("path = %s, want %s", rs.lastPath, want)
-	}
-	var sent ResolveClustersRequest
-	if err := json.Unmarshal(rs.lastBody, &sent); err != nil {
-		t.Fatalf("unmarshal: %v", err)
-	}
-	if sent.Image != "osx-xcode-edge" || sent.MachineType != "g2.mac" {
-		t.Errorf("sent = %+v", sent)
-	}
-	if len(clusters) != 1 || clusters[0].ClusterName != "c1" {
-		t.Errorf("clusters = %+v", clusters)
-	}
-}
-
 func TestMachineCatalog_ValidationGuards(t *testing.T) {
 	rs := newRecordingServer(t, `{}`)
 	c := rs.client()
@@ -73,15 +43,6 @@ func TestMachineCatalog_ValidationGuards(t *testing.T) {
 	cases := map[string]func() error{
 		"Images/no-ws":       func() error { _, err := c.ListImages(ctx, ""); return err },
 		"MachineTypes/no-ws": func() error { _, err := c.ListMachineTypes(ctx, ""); return err },
-		"Resolve/no-ws": func() error {
-			_, err := c.ResolveClusters(ctx, "", ResolveClustersRequest{Image: "i", MachineType: "m"})
-			return err
-		},
-		"Resolve/no-image": func() error {
-			_, err := c.ResolveClusters(ctx, "ws", ResolveClustersRequest{MachineType: "m"})
-			return err
-		},
-		"Resolve/no-machinetype": func() error { _, err := c.ResolveClusters(ctx, "ws", ResolveClustersRequest{Image: "i"}); return err },
 	}
 	for name, call := range cases {
 		t.Run(name, func(t *testing.T) {

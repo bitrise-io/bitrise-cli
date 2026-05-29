@@ -157,31 +157,6 @@ func TestSavedInputs_AreUserScopedNotWorkspaceScoped(t *testing.T) {
 	}
 }
 
-func TestResolveClusters_BodyAndPath(t *testing.T) {
-	rs := newRecordingServer(t, `{"clusters":[{"clusterName":"c1","imageId":"i","machineTypeId":"m"}]}`)
-
-	clusters, err := rs.service().ResolveClusters(context.Background(), "ws-1", ResolveClustersRequest{
-		Image:       "osx-xcode-edge",
-		MachineType: "g2.mac",
-	})
-	if err != nil {
-		t.Fatalf("ResolveClusters: %v", err)
-	}
-	if want := "/v1/workspaces/ws-1/resolve-clusters"; rs.lastPath != want {
-		t.Errorf("path = %s, want %s", rs.lastPath, want)
-	}
-	var sent rdeapi.ResolveClustersRequest
-	if err := json.Unmarshal(rs.lastBody, &sent); err != nil {
-		t.Fatalf("unmarshal: %v", err)
-	}
-	if sent.Image != "osx-xcode-edge" || sent.MachineType != "g2.mac" {
-		t.Errorf("sent = %+v", sent)
-	}
-	if len(clusters) != 1 || clusters[0].ClusterName != "c1" {
-		t.Errorf("clusters = %+v", clusters)
-	}
-}
-
 func TestAPIError_SurfacesMessage(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusNotFound)

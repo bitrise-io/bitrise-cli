@@ -57,13 +57,18 @@ func renderList(w io.Writer, res listResult) error {
 		return err
 	}
 	s := style.New(w)
-	headers := []string{"ID", "NAME", "CLUSTER"}
+	headers := []string{"NAME", "ID"}
+	seen := make(map[string]struct{}, len(res.Items))
 	rows := make([][]string, 0, len(res.Items))
 	for _, im := range res.Items {
-		rows = append(rows, []string{im.ID, im.Name, im.ClusterName})
+		if _, ok := seen[im.Name]; ok {
+			continue
+		}
+		seen[im.Name] = struct{}{}
+		rows = append(rows, []string{im.Name, im.ID})
 	}
 	styler := func(_, col int, content string) string {
-		if col == 0 {
+		if col == 1 {
 			return s.Slug.Render(content)
 		}
 		return content
