@@ -43,12 +43,21 @@ Provide session input values via --input (one --input per key), --secret-input
 input by ID). Use --map-saved-inputs to auto-fill any session input key that
 matches a saved input the user already has.
 
+For secret values, prefer storing them once with 'rde saved-input create
+--value-stdin --secret' and referencing them by ID via --saved-input. A value
+passed inline with --secret-input ends up in your shell history and in the
+process arguments (readable by other users via 'ps'); marking it secret only
+governs how the backend stores the value, not how it reaches the CLI.
+
 Example values:
   --input key=value
-  --secret-input api-key=sk_...
-  --saved-input session-key=savedInputUUID`,
+  --saved-input session-key=SAVED_INPUT_ID   # secret stored ahead of time
+  --secret-input api-key=VALUE               # inline; avoid for real secrets`,
 		Example: `  bitrise-cli rde session create --template TEMPLATE_ID --name dev
-  bitrise-cli rde session create --template TEMPLATE_ID --name dev --input repo=my-app --secret-input gh-token=ghp_xxx
+  bitrise-cli rde session create --template TEMPLATE_ID --name dev --input repo=my-app
+  # Keep secrets off the command line: store once, then reference by ID.
+  echo -n "ghp_xxx" | bitrise-cli rde saved-input create --key gh-token --value-stdin --secret
+  bitrise-cli rde session create --template TEMPLATE_ID --name dev --saved-input gh-token=SAVED_INPUT_ID
   bitrise-cli rde session create --template TEMPLATE_ID --name dev --map-saved-inputs`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if templateID == "" {
@@ -128,7 +137,7 @@ Example values:
 	c.Flags().StringVar(&description, "description", "", "session description")
 	c.Flags().StringVar(&templateID, "template", "", "template ID or name to create the session from (required)")
 	c.Flags().StringArrayVar(&inputs, "input", nil, "session input as key=value (repeatable)")
-	c.Flags().StringArrayVar(&secretInputs, "secret-input", nil, "session input as key=value, stored as a secret at rest (repeatable)")
+	c.Flags().StringArrayVar(&secretInputs, "secret-input", nil, "session input as key=value, stored as a secret at rest (repeatable; the value is visible in shell history and process args — prefer --saved-input)")
 	c.Flags().StringArrayVar(&savedInputs, "saved-input", nil, "session input as key=savedInputID — uses a stored saved-input value (repeatable)")
 	c.Flags().StringArrayVar(&featureFlags, "feature-flag", nil, "name of a feature flag to enable on the session (repeatable)")
 	c.Flags().StringVar(&cluster, "cluster", "", "target cluster name (use 'rde cluster resolve' to find candidates)")
