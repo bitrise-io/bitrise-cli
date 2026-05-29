@@ -176,16 +176,72 @@ func TestTerminateCmd_HappyPath(t *testing.T) {
 
 func TestRestoreCmd_HappyPath(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost || r.URL.Path != "/v1/workspaces/ws-1/sessions/s-1/restore" {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/workspaces/ws-1/sessions/s-1":
+			// Pre-flight disk-status check before the restore call.
+			_, _ = io.WriteString(w, `{"session":{"id":"s-1","name":"dev","status":"SESSION_STATUS_TERMINATED","persistentDiskStatus":"PERSISTENT_DISK_STATUS_AVAILABLE"}}`)
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/workspaces/ws-1/sessions/s-1/restore":
+			_, _ = io.WriteString(w, `{"session":{"id":"s-1","name":"dev","status":"SESSION_STATUS_STARTING"}}`)
+		default:
 			t.Errorf("unexpected: %s %s", r.Method, r.URL.Path)
 		}
-		_, _ = io.WriteString(w, `{"session":{"id":"s-1","name":"dev","status":"SESSION_STATUS_STARTING"}}`)
 	}))
 	defer srv.Close()
 
 	stdout, _, err := run(t, newRestoreCmd(), srv.URL, "ws-1", []string{"s-1"}, output.Human)
 	if err != nil {
 		t.Fatalf("Execute: %v", err)
+	}
+	if !strings.Contains(stdout, "starting") {
+		t.Errorf("stdout missing status:\n%s", stdout)
+	}
+}
+
+func TestRestoreCmd_DiskUnavailableFailsFast(t *testing.T) {
+	var restoreCalled bool
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/workspaces/ws-1/sessions/s-1":
+			_, _ = io.WriteString(w, `{"session":{"id":"s-1","name":"dev","status":"SESSION_STATUS_TERMINATED","persistentDiskStatus":"PERSISTENT_DISK_STATUS_UNAVAILABLE"}}`)
+		case r.URL.Path == "/v1/workspaces/ws-1/sessions/s-1/restore":
+			restoreCalled = true
+		default:
+			t.Errorf("unexpected: %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer srv.Close()
+
+	_, _, err := run(t, newRestoreCmd(), srv.URL, "ws-1", []string{"s-1"}, output.Human)
+	if err == nil {
+		t.Fatal("expected restore to fail when the persistent disk is unavailable")
+	}
+	if !strings.Contains(err.Error(), "no longer available") {
+		t.Errorf("error missing reason: %v", err)
+	}
+	if restoreCalled {
+		t.Error("restore endpoint should not be called when the disk is unavailable")
+	}
+}
+
+func TestRestoreCmd_DiskExpiringSoonWarnsButProceeds(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/workspaces/ws-1/sessions/s-1":
+			_, _ = io.WriteString(w, `{"session":{"id":"s-1","name":"dev","status":"SESSION_STATUS_TERMINATED","persistentDiskStatus":"PERSISTENT_DISK_STATUS_UNAVAILABLE_SOON"}}`)
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/workspaces/ws-1/sessions/s-1/restore":
+			_, _ = io.WriteString(w, `{"session":{"id":"s-1","name":"dev","status":"SESSION_STATUS_STARTING"}}`)
+		default:
+			t.Errorf("unexpected: %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer srv.Close()
+
+	stdout, stderr, err := run(t, newRestoreCmd(), srv.URL, "ws-1", []string{"s-1"}, output.Human)
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if !strings.Contains(stderr, "unavailable soon") {
+		t.Errorf("stderr missing expiry warning:\n%s", stderr)
 	}
 	if !strings.Contains(stdout, "starting") {
 		t.Errorf("stdout missing status:\n%s", stdout)

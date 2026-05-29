@@ -1,6 +1,8 @@
 package session
 
 import (
+	"fmt"
+
 	"github.com/spf13/cobra"
 
 	"github.com/bitrise-io/bitrise-cli/cmd/cmdutil"
@@ -23,11 +25,31 @@ func newRestoreCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			sess, err := internalrde.NewService(client).RestoreSession(cmd.Context(), workspaceID, args[0])
+			svc := internalrde.NewService(client)
+
+			// A terminated session is restored from its persistent disk, so
+			// check the disk first: fail fast with a clear reason when it's
+			// gone, and warn when it's about to expire (the server still
+			// allows the restore, so this is the only chance to surface it).
+			sess, err := svc.GetSession(cmd.Context(), workspaceID, args[0])
 			if err != nil {
 				return err
 			}
-			return output.Render(cmd.OutOrStdout(), format, sess, renderSessionDetail)
+			switch sess.PersistentDiskStatus {
+			case internalrde.DiskStatusUnavailable:
+				return fmt.Errorf("session %s cannot be restored: its persistent disk is no longer available", args[0])
+			case internalrde.DiskStatusUnavailableSoon:
+				if !cmdutil.IsQuiet(cmd) && format != output.JSON {
+					_, _ = fmt.Fprintf(cmd.ErrOrStderr(),
+						"Warning: this session's persistent disk will become unavailable soon (within ~1 week) — restore while you still can.\n")
+				}
+			}
+
+			restored, err := svc.RestoreSession(cmd.Context(), workspaceID, args[0])
+			if err != nil {
+				return err
+			}
+			return output.Render(cmd.OutOrStdout(), format, restored, renderSessionDetail)
 		},
 	}
 }

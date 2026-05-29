@@ -71,6 +71,17 @@ func agentStatusFromAPI(s string) string {
 	return strings.ToLower(v)
 }
 
+// Persistent-disk status values as produced by diskStatusFromAPI (the
+// PERSISTENT_DISK_STATUS_ prefix stripped and lowercased). Only terminated
+// sessions carry a disk status; running/active sessions report "". The disk
+// is what a terminated session is restored from, so its status determines
+// whether `rde session restore` can succeed.
+const (
+	DiskStatusAvailable       = "available"
+	DiskStatusUnavailableSoon = "unavailable_soon"
+	DiskStatusUnavailable     = "unavailable"
+)
+
 // diskStatusFromAPI strips the PERSISTENT_DISK_STATUS_ prefix.
 func diskStatusFromAPI(s string) string {
 	if s == "" {

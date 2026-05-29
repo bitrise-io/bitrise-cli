@@ -131,6 +131,9 @@ func renderSessionDetail(w io.Writer, sess internalrde.Session) error {
 	if sess.VNCAddress != "" {
 		ew.F("%s%s\n", lbl("VNC:"), sess.VNCAddress)
 	}
+	if sess.PersistentDiskStatus != "" {
+		ew.F("%s%s\n", lbl("Persistent disk:"), diskStatusText(s, sess.PersistentDiskStatus))
+	}
 	if sess.AutoTerminateAt != nil {
 		ew.F("%s%s\n", lbl("Auto-terminates at:"), formatTime(sess.AutoTerminateAt))
 	} else if sess.AutoTerminateMinutes > 0 {
