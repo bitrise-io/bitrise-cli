@@ -63,8 +63,8 @@ func ResolveAppSlug(cmd *cobra.Command) (string, error) {
 
 // ResolveWorkspaceID returns the RDE workspace ID (== workspace slug),
 // preferring --workspace, then BITRISE_WORKSPACE_ID, then the
-// default_organization_slug config key (per the RDE plan, the workspaceId
-// is the workspace/org slug).
+// default_workspace_slug config key (per the RDE plan, the workspaceId
+// is the workspace slug).
 func ResolveWorkspaceID(cmd *cobra.Command) (string, error) {
 	if v, _ := cmd.Flags().GetString(FlagWorkspace); v != "" {
 		return v, nil

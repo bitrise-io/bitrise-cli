@@ -64,7 +64,7 @@ type CreateResult struct {
 	DefaultBranch     string `json:"default_branch"`
 	BuildTriggerToken string `json:"build_trigger_token"`
 
-	OrgSlug            string `json:"organization_slug"`
+	OrgSlug            string `json:"workspace_slug"`
 	StackID            string `json:"stack_id"`
 	ProjectType        string `json:"project_type"`
 	BitriseYMLUploaded bool   `json:"bitrise_yml_uploaded"`
@@ -167,11 +167,11 @@ func (s *Service) Create(ctx context.Context, opts CreateOptions) (CreateResult,
 func (s *Service) autoDetectOrg(ctx context.Context) (string, error) {
 	orgs, err := s.client.Organizations(ctx)
 	if err != nil {
-		return "", fmt.Errorf("list organizations: %w", err)
+		return "", fmt.Errorf("list workspaces: %w", err)
 	}
 	switch len(orgs) {
 	case 0:
-		return "", errors.New("no organizations found for this account — pass --organization or create one in the Bitrise dashboard")
+		return "", errors.New("no workspaces found for this account — pass --workspace or create one in the Bitrise dashboard")
 	case 1:
 		return orgs[0].Slug, nil
 	default:
@@ -180,7 +180,7 @@ func (s *Service) autoDetectOrg(ctx context.Context) (string, error) {
 			slugs = append(slugs, o.Slug)
 		}
 		sort.Strings(slugs)
-		return "", fmt.Errorf("multiple organizations available — pass --organization or run 'bitrise-cli config set default_organization_slug <slug>'. Available: %s", strings.Join(slugs, ", "))
+		return "", fmt.Errorf("multiple workspaces available — pass --workspace or run 'bitrise-cli config set default_workspace_slug <slug>'. Available: %s", strings.Join(slugs, ", "))
 	}
 }
 

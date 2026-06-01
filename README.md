@@ -52,7 +52,7 @@ A CLI tool to manage all Bitrise platform resources — CI, RM, RDE, and more �
 
 ### `rde` — Manage Remote Dev Environments (sessions, templates, …)
 
-Workspace resolution (highest to lowest precedence): `--workspace SLUG` → `BITRISE_WORKSPACE_ID` → `default_organization_slug` config key. Saved inputs are user-scoped and do not require a workspace.
+Workspace resolution (highest to lowest precedence): `--workspace SLUG` → `BITRISE_WORKSPACE_ID` → `default_workspace_slug` config key. Saved inputs are user-scoped and do not require a workspace.
 
 Anywhere a `SESSION_ID` or `TEMPLATE_ID` is accepted you can pass the resource's name instead — it's resolved to an ID for you. Names aren't unique, so if more than one resource matches the command errors and lists the candidate IDs to choose from.
 
@@ -96,7 +96,7 @@ Anywhere a `SESSION_ID` or `TEMPLATE_ID` is accepted you can pass the resource's
 | `config set KEY VALUE` | Set a config key and save the file |
 | `config unset KEY` | Remove a config key and save the file |
 
-Recognized keys: `output`, `app_slug`, `default_organization_slug`, `api_base_url`, `rde_api_base_url`, `web_base_url`, `theme`.
+Recognized keys: `output`, `app_slug`, `default_workspace_slug`, `api_base_url`, `rde_api_base_url`, `web_base_url`, `theme`.
 
 ### `yml` — Get, update, or validate the bitrise.yml stored on Bitrise
 

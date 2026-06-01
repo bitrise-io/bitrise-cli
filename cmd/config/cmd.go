@@ -73,7 +73,7 @@ func newPathCmd() *cobra.Command {
 type configList struct {
 	Output     string `json:"output,omitempty"`
 	AppSlug    string `json:"app_slug,omitempty"`
-	OrgSlug    string `json:"default_organization_slug,omitempty"`
+	OrgSlug    string `json:"default_workspace_slug,omitempty"`
 	APIBaseURL string `json:"api_base_url,omitempty"`
 	WebBaseURL string `json:"web_base_url,omitempty"`
 	Theme      string `json:"theme,omitempty"`
