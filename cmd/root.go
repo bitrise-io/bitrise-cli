@@ -100,7 +100,6 @@ func init() {
 	rootCmd.AddCommand(cmdrde.NewCmd())
 	rootCmd.AddCommand(newAuthCmd())
 	rootCmd.AddCommand(cmdconfig.NewCmd())
-	rootCmd.AddCommand(cmduser.NewCmd())
 	rootCmd.AddCommand(newVersionCmd())
 
 	// Non-GA (stub) command namespaces. Visible in dev builds so contributors
@@ -135,6 +134,7 @@ func nonGACommands() []*cobra.Command {
 	return []*cobra.Command{
 		cmdbuild.NewCmd(),
 		cmdapp.NewCmd(),
+		cmduser.NewCmd(),
 		newStackCmd(),
 		newPurrCmd(),
 		cmdstep.NewCmd(),
