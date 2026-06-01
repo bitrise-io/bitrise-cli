@@ -17,7 +17,6 @@ import (
 
 func newCreateCmd() *cobra.Command {
 	var (
-		name                 string
 		description          string
 		templateID           string
 		inputs               []string
@@ -34,9 +33,12 @@ func newCreateCmd() *cobra.Command {
 	)
 
 	c := &cobra.Command{
-		Use:   "create",
+		Use:   "create NAME",
 		Short: "Create a new RDE session from a template",
 		Long: `Create a new RDE session from a template.
+
+NAME is a human-readable label for the session; you can use it in place of the
+session ID in later commands (view, terminate, …) as long as it stays unique.
 
 Provide session input values via --input (one --input per key), --secret-input
 (value stored as secret-at-rest), or --saved-input (reference an existing saved
@@ -53,18 +55,20 @@ Example values:
   --input key=value
   --saved-input session-key=SAVED_INPUT_ID   # secret stored ahead of time
   --secret-input api-key=VALUE               # inline; avoid for real secrets`,
-		Example: `  bitrise-cli rde session create --template TEMPLATE_ID --name dev
-  bitrise-cli rde session create --template TEMPLATE_ID --name dev --input repo=my-app
+		Example: `  bitrise-cli rde session create dev --template TEMPLATE_ID
+  bitrise-cli rde session create dev --template TEMPLATE_ID --input repo=my-app
   # Keep secrets off the command line: store once, then reference by ID.
   echo -n "ghp_xxx" | bitrise-cli rde saved-input create --key gh-token --value-stdin --secret
-  bitrise-cli rde session create --template TEMPLATE_ID --name dev --saved-input gh-token=SAVED_INPUT_ID
-  bitrise-cli rde session create --template TEMPLATE_ID --name dev --map-saved-inputs`,
-		RunE: func(cmd *cobra.Command, _ []string) error {
+  bitrise-cli rde session create dev --template TEMPLATE_ID --saved-input gh-token=SAVED_INPUT_ID
+  bitrise-cli rde session create dev --template TEMPLATE_ID --map-saved-inputs`,
+		Args: cmdutil.RequireArgs("NAME"),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			name := args[0]
+			if name == "" {
+				return fmt.Errorf("NAME must not be empty")
+			}
 			if templateID == "" {
 				return fmt.Errorf("--template is required")
-			}
-			if name == "" {
-				return fmt.Errorf("--name is required")
 			}
 			workspaceID, err := cmdutil.ResolveWorkspaceID(cmd)
 			if err != nil {
@@ -133,7 +137,6 @@ Example values:
 		},
 	}
 
-	c.Flags().StringVar(&name, "name", "", "human-readable name for the session (required)")
 	c.Flags().StringVar(&description, "description", "", "session description")
 	c.Flags().StringVar(&templateID, "template", "", "template ID or name to create the session from (required)")
 	c.Flags().StringArrayVar(&inputs, "input", nil, "session input as key=value (repeatable)")

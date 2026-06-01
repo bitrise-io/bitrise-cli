@@ -32,7 +32,7 @@ func TestCreateCmd_HappyPath(t *testing.T) {
 	defer srv.Close()
 
 	stdout, _, err := run(t, newCreateCmd(), srv.URL, "ws-1",
-		[]string{"--template", uuidTemplate, "--name", "dev", "--input", "repo=my-app"}, output.Human)
+		[]string{"dev", "--template", uuidTemplate, "--input", "repo=my-app"}, output.Human)
 	if err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
@@ -52,7 +52,7 @@ func TestCreateCmd_JSONOutput(t *testing.T) {
 	defer srv.Close()
 
 	stdout, _, err := run(t, newCreateCmd(), srv.URL, "ws-1",
-		[]string{"--template", uuidTemplate, "--name", "dev", "--map-saved-inputs"}, output.JSON)
+		[]string{"dev", "--template", uuidTemplate, "--map-saved-inputs"}, output.JSON)
 	if err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
@@ -79,8 +79,8 @@ func TestCreateCmd_JSONOutput(t *testing.T) {
 func TestCreateCmd_RequiresName(t *testing.T) {
 	_, _, err := run(t, newCreateCmd(), "http://unused", "ws-1",
 		[]string{"--template", uuidTemplate}, output.Human)
-	if err == nil || !strings.Contains(err.Error(), "--name") {
-		t.Errorf("error = %v, want --name required", err)
+	if err == nil || !strings.Contains(err.Error(), "NAME") {
+		t.Errorf("error = %v, want NAME positional required", err)
 	}
 }
 
@@ -95,7 +95,7 @@ func TestCreateCmd_AutoTerminateZeroIsSent(t *testing.T) {
 	// Explicitly setting --auto-terminate-minutes 0 must send 0 (disable),
 	// distinct from omitting the flag (backend default).
 	_, _, err := run(t, newCreateCmd(), srv.URL, "ws-1",
-		[]string{"--template", uuidTemplate, "--name", "dev", "--auto-terminate-minutes", "0"}, output.Human)
+		[]string{"dev", "--template", uuidTemplate, "--auto-terminate-minutes", "0"}, output.Human)
 	if err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
@@ -117,7 +117,7 @@ func TestCreateCmd_AutoTerminateOmittedWhenFlagUnset(t *testing.T) {
 	defer srv.Close()
 
 	_, _, err := run(t, newCreateCmd(), srv.URL, "ws-1",
-		[]string{"--template", uuidTemplate, "--name", "dev"}, output.Human)
+		[]string{"dev", "--template", uuidTemplate}, output.Human)
 	if err != nil {
 		t.Fatalf("Execute: %v", err)
 	}

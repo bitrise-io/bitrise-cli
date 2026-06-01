@@ -60,7 +60,7 @@ Anywhere a `SESSION_ID` or `TEMPLATE_ID` is accepted you can pass the resource's
 |---|---|
 | `rde session list` | List RDE sessions in the workspace |
 | `rde session view SESSION_ID` | Show details of a single session (`--watch` to poll until Ctrl-C) |
-| `rde session create --template ID_OR_NAME --name N` | Create a session from a template (`--input k=v`, `--secret-input k=v`, `--saved-input k=ID`, `--feature-flag F`, `--cluster C`, `--ai-prompt P`, `--auto-terminate-minutes N`, `--map-saved-inputs`, `--wait`) |
+| `rde session create NAME --template ID_OR_NAME` | Create a session from a template (`--input k=v`, `--secret-input k=v`, `--saved-input k=ID`, `--feature-flag F`, `--cluster C`, `--ai-prompt P`, `--auto-terminate-minutes N`, `--map-saved-inputs`, `--wait`) |
 | `rde session update SESSION_ID` | Update a session's `--name`, `--description`, or `--auto-terminate-minutes` |
 | `rde session restore SESSION_ID` | Restore a terminated session (re-provisions its VM from the persistent disk) |
 | `rde session terminate SESSION_ID` | Terminate a running session (preserves it for later restart; `--wait` blocks until terminated/failed so `terminate --wait && delete` is reliable) |

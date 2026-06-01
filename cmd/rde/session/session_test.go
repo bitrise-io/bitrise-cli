@@ -104,9 +104,9 @@ func TestListCmd_MissingWorkspace(t *testing.T) {
 }
 
 func TestCreateCmd_RequiresTemplateAndName(t *testing.T) {
-	// --name without --template fails fast.
+	// NAME given positionally but no --template fails fast.
 	_, _, err := run(t, newCreateCmd(), "http://unused", "ws-1",
-		[]string{"--name", "dev"}, output.Human)
+		[]string{"dev"}, output.Human)
 	if err == nil || !strings.Contains(err.Error(), "--template") {
 		t.Errorf("error = %v, want --template required", err)
 	}
