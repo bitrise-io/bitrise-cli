@@ -18,9 +18,9 @@ func newCreateCmd() *cobra.Command {
 	c := &cobra.Command{
 		Use:   "create",
 		Short: "Create a new RDE template from a JSON spec file",
-		Long: `Create a new RDE template from a JSON spec file. The JSON shape matches
-'rde template view --output json' (audit fields like id/created_at are
-ignored), so the natural workflow is:
+		Long: `Create a new RDE template from a JSON spec file. See the annotated
+example at the bottom for the JSON shape — or, once you have a template
+you like, round-trip from it (audit fields like id/created_at are ignored):
 
   bitrise-cli rde template view OTHER_TEMPLATE_ID -o json > template.json
   # edit template.json
@@ -46,8 +46,43 @@ Optional fields:
   workspace_links     array of {label, folder_path, feature_flag_name} — IDE
                       folder shortcuts
 
-When unsure of a field's exact shape, copy it from an existing template's
-'rde template view -o json' output.`,
+Example spec exercising every field (a macOS iOS-app dev environment —
+adjust to taste):
+
+  {
+    "name": "example-ios-app",
+    "description": "Example macOS dev environment for an iOS app.",
+    "image": "osx-sequoia-26",
+    "machine_type": "g2.mac.m2pro.6c-14g",
+    "working_directory": "/Users/vagrant/git",
+    "warmup_script": "set -euo pipefail\ncd ~\ngit clone \"https://${GITHUB_PAT}@github.com/example-org/example-app.git\" git\ncd git && bundle install && pod install --project-directory=ios\n",
+    "startup_script": "set -euo pipefail\ncd /Users/vagrant/git\ngit pull --ff-only || true\nsudo xcode-select -s \"/Applications/Xcode-${XCODE_VERSION}.app\"\n",
+    "session_inputs": [
+      {
+        "key": "GITHUB_PAT",
+        "description": "GitHub PAT with read access to example-org/example-app",
+        "required": true,
+        "expose_as_env_var": true
+      },
+      {
+        "key": "XCODE_VERSION",
+        "description": "Xcode version to select via xcode-select",
+        "default_value": "26.3",
+        "expose_as_env_var": true
+      }
+    ],
+    "template_variables": [
+      {"key": "APP_SCHEME", "value": "ExampleApp", "expose_as_env_var": true},
+      {"key": "FASTLANE_API_KEY", "is_secret": true, "expose_as_env_var": true}
+    ],
+    "feature_flags": [
+      {"name": "enable_beta_simulator", "description": "Boot the iOS beta simulator on session start"}
+    ],
+    "workspace_links": [
+      {"label": "Open app in Xcode", "folder_path": "/Users/vagrant/git/ios"},
+      {"label": "Open scripts (beta only)", "folder_path": "/Users/vagrant/git/scripts", "feature_flag_name": "enable_beta_simulator"}
+    ]
+  }`,
 		Example: `  bitrise-cli rde template create --file template.json
   cat template.json | bitrise-cli rde template create --file -`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
