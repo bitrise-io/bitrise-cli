@@ -5,6 +5,7 @@ import (
 	"io"
 	"runtime"
 	"runtime/debug"
+	"strconv"
 
 	"github.com/spf13/cobra"
 
@@ -22,6 +23,23 @@ var (
 	version = "dev"
 	commit  = ""
 )
+
+// releaseBuild gates the visible command surface. Plain `go build` leaves it
+// empty, so local/dev builds show every command. The release build injects
+//
+//	-X github.com/bitrise-io/bitrise-cli/cmd.releaseBuild=true
+//
+// which hides the non-GA (stub) command namespaces from --help and shell
+// completion. See nonGACommands in root.go for the gated set.
+var releaseBuild = ""
+
+// isReleaseBuild reports whether this binary was built as a release/GA build
+// (releaseBuild injected truthy via -ldflags). A malformed value parses as
+// false, i.e. dev behavior, which is the safe default for contributors.
+func isReleaseBuild() bool {
+	b, _ := strconv.ParseBool(releaseBuild)
+	return b
+}
 
 // versionInfo is the JSON shape of `bitrise-cli version`.
 type versionInfo struct {

@@ -134,7 +134,10 @@ workflows:
 
                 APP_NAME="bitrise-cli"
                 VERSION="${BITRISE_GIT_TAG:-$(git rev-parse --short HEAD)}"
-                LDFLAGS="-s -w -X github.com/bitrise-io/bitrise-cli/cmd.version=${VERSION}"
+                # releaseBuild=true hides the non-GA (stub) command namespaces
+                # from --help and completion in shipped binaries. The gated
+                # set lives in nonGACommands() in cmd/root.go.
+                LDFLAGS="-s -w -X github.com/bitrise-io/bitrise-cli/cmd.version=${VERSION} -X github.com/bitrise-io/bitrise-cli/cmd.releaseBuild=true"
                 if [ -n "${BITRISE_BUILD_URL:-}" ]; then
                   OUT_DIR="${BITRISE_DEPLOY_DIR}"
                 else

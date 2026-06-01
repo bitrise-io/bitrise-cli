@@ -96,17 +96,22 @@ func init() {
 	rootCmd.PersistentFlags().StringVar(&theme, cmdutil.FlagTheme, "", `color theme: auto|dark|light|none (default "auto"; overrides terminal background detection)`)
 	rootCmd.SetFlagErrorFunc(cmdutil.FlagErrorFunc)
 	rootCmd.SetHelpCommand(&cobra.Command{Hidden: true})
-	rootCmd.AddCommand(cmdbuild.NewCmd())
-	rootCmd.AddCommand(cmdapp.NewCmd())
+	// GA command surface — always visible.
+	rootCmd.AddCommand(cmdrde.NewCmd())
+	rootCmd.AddCommand(newAuthCmd())
 	rootCmd.AddCommand(cmdconfig.NewCmd())
 	rootCmd.AddCommand(cmduser.NewCmd())
-	rootCmd.AddCommand(newAuthCmd())
 	rootCmd.AddCommand(newVersionCmd())
-	rootCmd.AddCommand(newStackCmd())
-	rootCmd.AddCommand(newPurrCmd())
-	rootCmd.AddCommand(cmdstep.NewCmd())
-	rootCmd.AddCommand(cmdyml.NewCmd())
-	rootCmd.AddCommand(cmdrde.NewCmd())
+
+	// Non-GA (stub) command namespaces. Visible in dev builds so contributors
+	// keep the full surface; hidden in release builds (releaseBuild=true via
+	// -ldflags) until each reaches GA. Hidden affects only --help and shell
+	// completion — the commands still run if invoked explicitly.
+	hideNonGA := isReleaseBuild()
+	for _, sub := range nonGACommands() {
+		sub.Hidden = hideNonGA
+		rootCmd.AddCommand(sub)
+	}
 	rootCmd.InitDefaultCompletionCmd()
 	for _, sub := range rootCmd.Commands() {
 		if sub.Name() == "completion" {
@@ -119,6 +124,21 @@ func init() {
 	}
 	if err := rootCmd.RegisterFlagCompletionFunc(cmdutil.FlagTheme, completeThemeFlag); err != nil {
 		panic(err)
+	}
+}
+
+// nonGACommands constructs the command namespaces that are not yet GA. They
+// are registered in every build but hidden from --help and completion in
+// release builds (see isReleaseBuild). As each namespace reaches GA, move its
+// constructor up to the GA block in init().
+func nonGACommands() []*cobra.Command {
+	return []*cobra.Command{
+		cmdbuild.NewCmd(),
+		cmdapp.NewCmd(),
+		newStackCmd(),
+		newPurrCmd(),
+		cmdstep.NewCmd(),
+		cmdyml.NewCmd(),
 	}
 }
 

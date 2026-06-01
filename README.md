@@ -4,6 +4,12 @@ A CLI tool to manage all Bitrise platform resources — CI, RM, RDE, and more �
 
 ## Commands
 
+> **Note:** Some namespaces below are still in development and not yet GA.
+> In shipped (released) binaries they're hidden from `--help` and completion —
+> present and runnable, but undocumented until they reach GA. Builds from
+> source (`go build` / `make build`) show the full surface. Run
+> `bitrise-cli --help` to see what your build exposes.
+
 ### `auth` — Manage the Bitrise access token
 
 | Command | Description |

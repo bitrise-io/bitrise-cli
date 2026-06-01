@@ -164,6 +164,16 @@ go build -ldflags "-s -w \
 When ldflags aren't set, `runtime/debug.ReadBuildInfo()` fills in
 `vcs.revision` and `vcs.time` so `bitrise-cli version` still has commit info.
 
+`cmd.releaseBuild` is a third ldflag-injected `var`. Set it truthy
+(`-X github.com/bitrise-io/bitrise-cli/cmd.releaseBuild=true`) to hide the
+non-GA command namespaces from `--help` and shell completion; plain
+`go build` leaves it empty so dev builds show the full surface. The CI
+release workflow (`bitrise.yml` → `build`) sets it; locally use
+`make build RELEASE=true` to reproduce the shipped surface. The gated set is
+`nonGACommands()` in `cmd/root.go` — to GA a namespace, move its constructor
+up to the GA block in `init()`. Hiding affects discovery only; gated
+commands still run if invoked explicitly.
+
 ## Known nits
 
 - Cobra auto-binds `-v` to `--version`. The patterns guide reserves `-v` for
