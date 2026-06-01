@@ -11,16 +11,23 @@ import (
 
 // Environment variables that override config-file values.
 const (
-	EnvToken      = "BITRISE_TOKEN"
-	EnvAppSlug    = "BITRISE_APP_SLUG"
-	EnvOutput     = "BITRISE_OUTPUT"
-	EnvAPIBaseURL = "BITRISE_API_BASE_URL"
-	EnvWebBaseURL = "BITRISE_WEB_BASE_URL"
-	EnvTheme      = "BITRISE_CLI_THEME"
+	EnvToken         = "BITRISE_TOKEN"
+	EnvAppSlug       = "BITRISE_APP_SLUG"
+	EnvWorkspaceID   = "BITRISE_WORKSPACE_ID"
+	EnvOutput        = "BITRISE_OUTPUT"
+	EnvAPIBaseURL    = "BITRISE_API_BASE_URL"
+	EnvRDEAPIBaseURL = "BITRISE_RDE_API_BASE_URL"
+	EnvWebBaseURL    = "BITRISE_WEB_BASE_URL"
+	EnvTheme         = "BITRISE_CLI_THEME"
 )
 
 // DefaultAPIBaseURL is the production Bitrise API base URL.
 const DefaultAPIBaseURL = "https://api.bitrise.io/v0.1"
+
+// DefaultRDEAPIBaseURL is the production Bitrise Remote Dev Environments
+// API base URL. Endpoints under this host follow the swagger published at
+// https://api.bitrise.io/rde/api-docs/swagger.json.
+const DefaultRDEAPIBaseURL = "https://api.bitrise.io/rde"
 
 // DefaultWebBaseURL is the production Bitrise web app base URL.
 // Used by `user create` and `auth login --email` to drive the website's
@@ -40,13 +47,15 @@ const DefaultWebBaseURL = "https://app.bitrise.io"
 //
 // Token resolution: env > auth.yaml.
 type Resolved struct {
-	Output     output.Format
-	AppSlug    string
-	OrgSlug    string
-	Token      string
-	APIBaseURL string
-	WebBaseURL string
-	Theme      style.Theme
+	Output        output.Format
+	AppSlug       string
+	OrgSlug       string
+	WorkspaceID   string
+	Token         string
+	APIBaseURL    string
+	RDEAPIBaseURL string
+	WebBaseURL    string
+	Theme         style.Theme
 }
 
 // Resolve merges global config, per-directory config, the auth file, and
@@ -78,7 +87,12 @@ func Resolve(globalCfg, dirCfg Config, authData auth.Auth, flagOutput, flagTheme
 
 	r.AppSlug = firstNonEmpty(os.Getenv(EnvAppSlug), dirCfg.AppSlug, globalCfg.AppSlug)
 	r.OrgSlug = firstNonEmpty(dirCfg.OrgSlug, globalCfg.OrgSlug)
+	// WorkspaceID resolution: BITRISE_WORKSPACE_ID env, then fall back to the
+	// existing default_organization_slug — per the plan, the RDE workspaceId
+	// is the workspace/org slug we already store.
+	r.WorkspaceID = firstNonEmpty(os.Getenv(EnvWorkspaceID), r.OrgSlug)
 	r.APIBaseURL = firstNonEmpty(os.Getenv(EnvAPIBaseURL), dirCfg.APIBaseURL, globalCfg.APIBaseURL, DefaultAPIBaseURL)
+	r.RDEAPIBaseURL = firstNonEmpty(os.Getenv(EnvRDEAPIBaseURL), dirCfg.RDEAPIBaseURL, globalCfg.RDEAPIBaseURL, DefaultRDEAPIBaseURL)
 	r.WebBaseURL = firstNonEmpty(os.Getenv(EnvWebBaseURL), dirCfg.WebBaseURL, globalCfg.WebBaseURL, DefaultWebBaseURL)
 	r.Token = firstNonEmpty(os.Getenv(EnvToken), authData.Token)
 

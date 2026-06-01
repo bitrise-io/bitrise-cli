@@ -76,11 +76,13 @@ func TestGetSetUnset(t *testing.T) {
 
 	// Set + Get round-trip on every known key.
 	values := map[string]string{
-		KeyOutput:     "json",
-		KeyAppSlug:    "stub-slug",
-		KeyOrgSlug:    "acme",
-		KeyAPIBaseURL: "https://api.example.com",
-		KeyTheme:      "light",
+		KeyOutput:        "json",
+		KeyAppSlug:       "stub-slug",
+		KeyOrgSlug:       "acme",
+		KeyAPIBaseURL:    "https://api.example.com",
+		KeyRDEAPIBaseURL: "https://api.example.com/rde",
+		KeyWebBaseURL:    "https://app.example.com",
+		KeyTheme:         "light",
 	}
 	for k, v := range values {
 		if err := c.Set(k, v); err != nil {

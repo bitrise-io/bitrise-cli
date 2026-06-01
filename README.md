@@ -50,6 +50,42 @@ A CLI tool to manage all Bitrise platform resources — CI, RM, RDE, and more �
 | `build abort BUILD_SLUG --abort-with-success` | Abort and mark the build as successful |
 | `build yml BUILD_SLUG` | Print the bitrise.yml a specific build ran with (shortcut for `yml get --build`) |
 
+### `rde` — Manage Remote Dev Environments (sessions, templates, …)
+
+Workspace resolution (highest to lowest precedence): `--workspace SLUG` → `BITRISE_WORKSPACE_ID` → `default_organization_slug` config key. Saved inputs are user-scoped and do not require a workspace.
+
+Anywhere a `SESSION_ID` or `TEMPLATE_ID` is accepted you can pass the resource's name instead — it's resolved to an ID for you. Names aren't unique, so if more than one resource matches the command errors and lists the candidate IDs to choose from.
+
+| Command | Description |
+|---|---|
+| `rde session list` | List RDE sessions in the workspace |
+| `rde session view SESSION_ID` | Show details of a single session (`--watch` to poll until Ctrl-C) |
+| `rde session create NAME --template ID_OR_NAME` | Create a session from a template (`--input k=v`, `--secret-input k=v`, `--saved-input k=ID`, `--feature-flag F`, `--cluster C`, `--ai-prompt P`, `--auto-terminate-minutes N`, `--map-saved-inputs`, `--wait`) |
+| `rde session update SESSION_ID` | Update a session's `--name`, `--description`, or `--auto-terminate-minutes` |
+| `rde session restore SESSION_ID` | Restore a terminated session (re-provisions its VM from the persistent disk) |
+| `rde session terminate SESSION_ID` | Terminate a running session (preserves it for later restart; `--wait` blocks until terminated/failed so `terminate --wait && delete` is reliable) |
+| `rde session delete SESSION_ID` | Permanently delete a session |
+| `rde session delete-terminated` | Delete every terminated session in the workspace (`--yes` to skip the prompt) |
+| `rde session diff SESSION_ID` | Compare a session's template snapshot with the current template |
+| `rde session notifications SESSION_ID` | List notifications from a session (`--since RFC3339`, `--before`, `--limit`, `--order asc\|desc`) |
+| `rde session exec SESSION_ID -- CMD…` | Run a bash command on the session over SSH; returns `{exit_code, stdout, stderr}` in JSON mode |
+| `rde session upload SESSION_ID LOCAL REMOTE_FOLDER` | tar.gz LOCAL and extract it on the session at REMOTE_FOLDER |
+| `rde session download SESSION_ID REMOTE LOCAL` | Download REMOTE from the session into LOCAL (`--only-contents` for directories) |
+| `rde session vnc SESSION_ID` | Print the VNC connection URL (human: single `vnc://user:pass@host:port` line; JSON: `{address, username, password, url}`) |
+| `rde session open-vnc SESSION_ID` | Hand the VNC URL to the OS-default viewer (Screen Sharing on macOS, `xdg-open` on Linux, `cmd /c start` on Windows); password never hits stdout |
+| `rde template list` | List templates in the workspace |
+| `rde template view TEMPLATE_ID` | Show details of a single template |
+| `rde template create --file FILE` | Create a template from a JSON spec file (or `--file -` for stdin) |
+| `rde template update TEMPLATE_ID --file FILE` | Update a template from a JSON spec file (round-trip with `template view -o json`) |
+| `rde template delete TEMPLATE_ID` | Delete a template (existing sessions keep working from their snapshot) |
+| `rde saved-input list` | List saved inputs (user-scoped) |
+| `rde saved-input view ID` | Show details of a single saved input |
+| `rde saved-input create --key K --value V` | Create a saved input (`--secret`; `--value-stdin` reads the value from stdin, or it prompts when neither flag is given) |
+| `rde saved-input update ID` | Update a saved input's `--value` (or `--value-stdin`) and/or `--secret` flag |
+| `rde saved-input delete ID` | Delete a saved input |
+| `rde image list` | List machine images available to the workspace |
+| `rde machine-type list --image NAME` | List machine types compatible with the given image; the CLUSTER column is shown only when a machine type is offered by multiple clusters for that image (use that name as `--cluster` on `session create`) |
+
 ### `config` — Manage CLI configuration (defaults persisted to a YAML file)
 
 | Command | Description |
@@ -60,7 +96,7 @@ A CLI tool to manage all Bitrise platform resources — CI, RM, RDE, and more �
 | `config set KEY VALUE` | Set a config key and save the file |
 | `config unset KEY` | Remove a config key and save the file |
 
-Recognized keys: `output`, `app_slug`, `default_organization_slug`, `api_base_url`, `web_base_url`, `theme`.
+Recognized keys: `output`, `app_slug`, `default_organization_slug`, `api_base_url`, `rde_api_base_url`, `web_base_url`, `theme`.
 
 ### `yml` — Get, update, or validate the bitrise.yml stored on Bitrise
 

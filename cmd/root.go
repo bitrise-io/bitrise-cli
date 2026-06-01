@@ -10,10 +10,12 @@ import (
 
 	"github.com/spf13/cobra"
 
+	rdeapi "github.com/bitrise-io/bitrise-cli/bitriseapi/rde"
 	cmdapp "github.com/bitrise-io/bitrise-cli/cmd/app"
 	cmdbuild "github.com/bitrise-io/bitrise-cli/cmd/build"
 	"github.com/bitrise-io/bitrise-cli/cmd/cmdutil"
 	cmdconfig "github.com/bitrise-io/bitrise-cli/cmd/config"
+	cmdrde "github.com/bitrise-io/bitrise-cli/cmd/rde"
 	cmdstep "github.com/bitrise-io/bitrise-cli/cmd/step"
 	cmduser "github.com/bitrise-io/bitrise-cli/cmd/user"
 	cmdyml "github.com/bitrise-io/bitrise-cli/cmd/yml"
@@ -56,8 +58,9 @@ Configuration (precedence: flag > env > per-dir > global > built-in default):
   Global file:   $XDG_CONFIG_HOME/bitrise/config.yaml (or ~/.config/bitrise/config.yaml)
   Per-dir file:  .bitrise-cli.yml in the current directory or any ancestor
   Manage with:   bitrise-cli config set <key> <value>   (run "bitrise-cli config" for details)
-  Env overrides: BITRISE_TOKEN, BITRISE_APP_SLUG, BITRISE_OUTPUT,
-                 BITRISE_API_BASE_URL, BITRISE_WEB_BASE_URL, BITRISE_CLI_THEME
+  Env overrides: BITRISE_TOKEN, BITRISE_APP_SLUG, BITRISE_WORKSPACE_ID,
+                 BITRISE_OUTPUT, BITRISE_API_BASE_URL, BITRISE_RDE_API_BASE_URL,
+                 BITRISE_WEB_BASE_URL, BITRISE_CLI_THEME
 
 Color theme:
   --theme auto    detect terminal background via OSC 11 (default)
@@ -82,6 +85,11 @@ func Execute() {
 }
 
 func init() {
+	// Tag every RDE request with the CLI's version so the backend can
+	// attribute traffic. version is ldflag-injected in CI builds and
+	// defaults to "dev" for plain `go build`.
+	rdeapi.UserAgent = "bitrise-cli/" + version
+
 	rootCmd.PersistentFlags().StringP(cmdutil.FlagOutput, "o", "", `output format: human|json (default "human")`)
 	rootCmd.PersistentFlags().BoolVarP(&quiet, cmdutil.FlagQuiet, "q", false, "suppress non-error diagnostic messages")
 	rootCmd.PersistentFlags().BoolVar(&noColor, "no-color", false, "disable ANSI colors (NO_COLOR env is also honored)")
@@ -98,6 +106,7 @@ func init() {
 	rootCmd.AddCommand(newPurrCmd())
 	rootCmd.AddCommand(cmdstep.NewCmd())
 	rootCmd.AddCommand(cmdyml.NewCmd())
+	rootCmd.AddCommand(cmdrde.NewCmd())
 	rootCmd.InitDefaultCompletionCmd()
 	for _, sub := range rootCmd.Commands() {
 		if sub.Name() == "completion" {
