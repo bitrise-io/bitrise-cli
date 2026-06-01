@@ -63,7 +63,7 @@ func TestCreateCmd_HappyPath_PersistsAppSlug(t *testing.T) {
 	}))
 	c.SetArgs([]string{
 		"--repo-url", "https://github.com/acme/widget.git",
-		"--organization", "acme",
+		"--workspace", "acme",
 		"--branch", "main",
 		"--title", "Widget",
 	})
@@ -161,7 +161,7 @@ func TestCreateCmd_JSONOutput(t *testing.T) {
 	}))
 	c.SetArgs([]string{
 		"--repo-url", "https://github.com/a/b.git",
-		"--organization", "acme",
+		"--workspace", "acme",
 		"--branch", "main",
 	})
 

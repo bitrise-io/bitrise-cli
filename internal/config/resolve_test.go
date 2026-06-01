@@ -45,7 +45,7 @@ func TestResolve_DefaultsWhenNothingSet(t *testing.T) {
 func TestResolve_WorkspaceIDFallsBackToOrgSlug(t *testing.T) {
 	clearEnv(t)
 
-	// With no env var, WorkspaceID falls back to default_organization_slug.
+	// With no env var, WorkspaceID falls back to default_workspace_slug.
 	r, err := Resolve(Config{OrgSlug: "acme"}, Config{}, auth.Auth{}, "", "")
 	if err != nil {
 		t.Fatal(err)

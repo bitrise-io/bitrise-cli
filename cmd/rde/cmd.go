@@ -24,11 +24,11 @@ and the machine catalog (images, machine types).
 Workspace resolution (highest to lowest precedence):
   --workspace SLUG          flag on the rde command
   BITRISE_WORKSPACE_ID      environment variable
-  default_organization_slug saved with 'bitrise-cli config set'
+  default_workspace_slug    saved with 'bitrise-cli config set'
 
 Saved inputs are user-scoped — they do not require --workspace.`,
 	}
-	c.PersistentFlags().String(cmdutil.FlagWorkspace, "", "workspace slug (or set BITRISE_WORKSPACE_ID; defaults to default_organization_slug)")
+	c.PersistentFlags().String(cmdutil.FlagWorkspace, "", "workspace slug (or set BITRISE_WORKSPACE_ID; defaults to default_workspace_slug)")
 
 	c.AddCommand(
 		rdesession.NewCmd(),
