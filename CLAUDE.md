@@ -179,9 +179,11 @@ When ldflags aren't set, `runtime/debug.ReadBuildInfo()` fills in
 
 ## README command list
 
-`README.md` contains a full command reference table. **Keep it in sync**:
-whenever a command is added, renamed, or removed, update the corresponding
-row (or section) in the README as part of the same change.
+The command overview in `README.md` (between the `commands-overview`
+markers) and the per-command pages in `docs/cli/` are **generated** by
+`tools/gendocs` — never edit them by hand. After any change to a command,
+flag, or help text, run `make docs` and commit the result; CI runs
+`make docs-check` and fails on drift.
 
 ## When in doubt
 

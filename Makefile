@@ -33,9 +33,9 @@ docs:
 	go run ./tools/gendocs
 
 docs-check: docs
-	@status=$$(git status --porcelain docs/cli); \
+	@status=$$(git status --porcelain docs/cli README.md); \
 	if [ -n "$$status" ]; then \
-		echo "docs/cli is out of date — run 'make docs' and commit the result:"; \
+		echo "Generated CLI docs are out of date — run 'make docs' and commit the result:"; \
 		echo "$$status"; \
 		exit 1; \
 	fi
