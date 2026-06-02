@@ -82,7 +82,7 @@ func updateReadme(root *cobra.Command) error {
 	if updated == s {
 		return nil
 	}
-	return os.WriteFile(readmePath, []byte(updated), 0o600)
+	return os.WriteFile(readmePath, []byte(updated), 0o600) // #nosec G703 -- readmePath is a package const, not user input
 }
 
 // renderOverview renders one section per top-level command group (a table of
