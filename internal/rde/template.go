@@ -380,8 +380,8 @@ func templateFromAPI(w rdeapi.Template) Template {
 	for _, v := range w.TemplateVariables {
 		// Mask secret values at the CLI boundary: passing them through
 		// would leak the value into stdout, shell history, and log files.
-		// Because the CLI never opts into include_secrets on template reads
-		// (RDE-268), the backend already omits these values — this masking
+		// Because the CLI never opts into include_secrets on template reads,
+		// the backend already omits these values — this masking
 		// is the belt-and-suspenders second line of defense.
 		val := v.Value
 		if v.IsSecret {

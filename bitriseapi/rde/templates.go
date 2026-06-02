@@ -32,7 +32,7 @@ type Template struct {
 // TemplateVariable is a baked-in template variable.
 //
 // Secret values (IsSecret=true) are only returned by the backend when a
-// request opts in with include_secrets=true (RDE-268). The CLI intentionally
+// request opts in with include_secrets=true. The CLI intentionally
 // never sets that flag on template reads — it has no use for the cleartext
 // (see ListTemplates / GetTemplate) and the internal/rde mapper masks any
 // secret value before the CLI hands templates to renderers. So `Value` is
@@ -151,7 +151,7 @@ type UpdateTemplateRequest struct {
 // ListTemplates returns every template visible in the workspace.
 // Endpoint: GET /v1/workspaces/{workspaceId}/templates.
 //
-// Deliberately does not pass include_secrets (RDE-268): the only consumers —
+// Deliberately does not pass include_secrets: the only consumers —
 // the `template list` table and ResolveTemplateID's name→ID lookup — read
 // metadata only, never secret variable values. Add the query param here (and
 // thread it through internal/rde) only if a caller genuinely needs cleartext
@@ -170,7 +170,7 @@ func (c *Client) ListTemplates(ctx context.Context, workspaceID string) ([]Templ
 // GetTemplate returns a single template by ID.
 // Endpoint: GET /v1/workspaces/{workspaceId}/templates/{templateId}.
 //
-// Deliberately does not pass include_secrets (RDE-268): its only consumer,
+// Deliberately does not pass include_secrets: its only consumer,
 // `template view`, prints each secret variable's key with a "(secret)" label
 // but never its value, so the cleartext is unwanted (and would leak into
 // stdout / JSON output / shell history). See the note on ListTemplates.
