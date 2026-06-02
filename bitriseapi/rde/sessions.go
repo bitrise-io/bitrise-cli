@@ -55,6 +55,15 @@ type SessionTemplateSnapshot struct {
 }
 
 // SnapshotInput is a session-input value captured at session creation.
+//
+// Secret values (IsSecret=true) are only returned by GetSession/ListSessions
+// when a request opts in with include_secrets=true (RDE-269). The CLI
+// intentionally never sets that flag — its only consumer (`session view`)
+// prints "(hidden)" for secret inputs and renders the value of non-secret
+// ones only — and the internal/rde mapper (snapshotFromAPI) masks any secret
+// value before the CLI hands the snapshot to renderers. So `Value` is empty
+// for secret inputs, and the mapper masks it again as defense-in-depth in
+// case the backend default ever changes.
 type SnapshotInput struct {
 	Key            string `json:"key"`
 	Value          string `json:"value,omitempty"`
@@ -198,6 +207,11 @@ func (c *Client) CompareSessionTemplate(ctx context.Context, workspaceID, sessio
 
 // ListSessions returns every session in the workspace for the caller.
 // Endpoint: GET /v1/workspaces/{workspaceId}/sessions.
+//
+// Deliberately does not pass include_secrets (RDE-269): its consumers — the
+// `session list` table and ResolveSessionID's name→ID lookup — read session
+// metadata only, never the snapshot's secret session-input values. See the
+// note on GetSession.
 func (c *Client) ListSessions(ctx context.Context, workspaceID string) ([]Session, error) {
 	if workspaceID == "" {
 		return nil, fmt.Errorf("workspace ID is required")
@@ -211,6 +225,15 @@ func (c *Client) ListSessions(ctx context.Context, workspaceID string) ([]Sessio
 
 // GetSession returns a single session by ID.
 // Endpoint: GET /v1/workspaces/{workspaceId}/sessions/{sessionId}.
+//
+// Deliberately does not pass include_secrets (RDE-269): the snapshot's secret
+// session-input values are never consumed — `session view` prints "(hidden)"
+// for them, and the SSH/VNC dial paths (Execute, GetSessionVNC) read only the
+// session-level ssh/vnc credentials, not snapshot inputs. Requesting cleartext
+// here would only leak into stdout / --output json / shell history. Add the
+// query param (and thread it through internal/rde) only if a caller genuinely
+// needs the cleartext, which would also mean revisiting snapshotFromAPI's
+// masking. Mirrors GetTemplate.
 func (c *Client) GetSession(ctx context.Context, workspaceID, sessionID string) (Session, error) {
 	if workspaceID == "" {
 		return Session{}, fmt.Errorf("workspace ID is required")

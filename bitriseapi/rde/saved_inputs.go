@@ -8,9 +8,15 @@ import (
 )
 
 // SavedInput is a user-scoped credential/value reusable across sessions.
-// The backend returns `Value` in cleartext even when IsSecret=true (and
-// echoes the just-submitted value back on create/update); the internal/rde
-// mapper masks secret values before any renderer sees them.
+//
+// Secret values (IsSecret=true) are only returned by the read endpoints
+// (ListSavedInputs / GetSavedInput) when a request opts in with
+// include_secrets=true (RDE-269). The CLI intentionally never sets that flag
+// — it has no use for the cleartext (see the comment on ListSavedInputs) and
+// the internal/rde mapper masks any secret value before the CLI hands saved
+// inputs to renderers. So `Value` is empty for secret inputs on reads, and
+// the mapper masks it again as defense-in-depth in case the backend default
+// ever changes (create/update may still echo the just-submitted value back).
 type SavedInput struct {
 	ID        string `json:"id"`
 	Key       string `json:"key"`
@@ -48,6 +54,14 @@ type savedInputResp struct {
 
 // ListSavedInputs returns every saved input for the caller.
 // Endpoint: GET /v1/saved-inputs.
+//
+// Deliberately does not pass include_secrets (RDE-269): its only consumer,
+// the `saved-input list` table, prints "(hidden)" for secret inputs and only
+// renders the value of non-secret ones, so the cleartext is unwanted (and
+// would leak into --output json, shell history, and log files). Add the query
+// param here (and thread it through internal/rde) only if a caller genuinely
+// needs cleartext secrets, which would also mean revisiting the masking in
+// savedInputFromAPI. Mirrors ListTemplates.
 func (c *Client) ListSavedInputs(ctx context.Context) ([]SavedInput, error) {
 	var resp listSavedInputsResp
 	if err := c.getJSON(ctx, userPath("/saved-inputs"), &resp); err != nil {
@@ -58,6 +72,11 @@ func (c *Client) ListSavedInputs(ctx context.Context) ([]SavedInput, error) {
 
 // GetSavedInput returns a saved input by ID.
 // Endpoint: GET /v1/saved-inputs/{savedInputId}.
+//
+// Deliberately does not pass include_secrets (RDE-269): its only consumer,
+// `saved-input view`, prints "(hidden)" for a secret input and only renders
+// the value of a non-secret one, so the cleartext is unwanted. See the note
+// on ListSavedInputs.
 func (c *Client) GetSavedInput(ctx context.Context, id string) (SavedInput, error) {
 	if id == "" {
 		return SavedInput{}, fmt.Errorf("saved input ID is required")
