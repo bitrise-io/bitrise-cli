@@ -80,6 +80,14 @@ workflows:
                 make lint
 
       - script@1:
+          title: Check generated CLI docs
+          inputs:
+            - content: |
+                #!/usr/bin/env bash
+                set -xeuo pipefail
+                make docs-check
+
+      - script@1:
           title: Run tests
           inputs:
             - content: |
