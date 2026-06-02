@@ -1,0 +1,77 @@
+# GoReleaser configuration — the single source of truth for release binaries.
+#
+# Triggered by the `release` workflow in bitrise.yml on semver tag pushes
+# (vX.Y.Z). Locally:
+#
+#   make release-check      validate this file
+#   make release-snapshot   build all platforms into dist/ without publishing
+#
+# GoReleaser is pinned in the Makefile and run via `go run`, like golangci-lint.
+version: 2
+
+project_name: bitrise-cli
+
+builds:
+  - env:
+      - CGO_ENABLED=0
+    goos: [linux, darwin, windows]
+    goarch: [amd64, arm64]
+    ignore:
+      # No known Windows-on-ARM audience; add it back when someone asks.
+      - goos: windows
+        goarch: arm64
+    flags: [-trimpath]
+    # Keep in sync with the Makefile's LDFLAGS (dev builds).
+    # TODO: once the release-gating ldflag (cmd.releaseBuild) lands on main,
+    # inject `-X github.com/bitrise-io/bitrise-cli/cmd.releaseBuild=true` here
+    # so shipped binaries hide the non-GA command namespaces.
+    ldflags:
+      - -s -w
+      - -X github.com/bitrise-io/bitrise-cli/cmd.version={{ .Version }}
+      - -X github.com/bitrise-io/bitrise-cli/cmd.commit={{ .FullCommit }}
+    # Reproducible builds: stamp the commit time, not the build time.
+    mod_timestamp: "{{ .CommitTimestamp }}"
+
+archives:
+  # tar.gz (zip on Windows) rather than bare binaries: archives preserve the
+  # executable bit and slot straight into a Homebrew tap later. Bare binaries
+  # only pay off once there's a curl-install script that chmods for you.
+  - name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+
+checksum:
+  name_template: checksums.txt
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-next"
+
+changelog:
+  # Commits in this repo aren't Conventional Commits, so prefix-filtering is
+  # useless here. GitHub's native release-notes generation works off merged
+  # PR titles instead, which is what our history is made of.
+  use: github-native
+
+release:
+  # Draft so a human reviews the generated notes before anything goes live.
+  # Publishing is one click in the GitHub UI.
+  draft: true
+  # Re-running the release for the same tag replaces the draft's artifacts
+  # instead of failing, so a flaky CI run can simply be retried.
+  mode: replace
+  footer: |
+    ### Install
+
+    Download the archive for your platform, extract it, and put `bitrise-cli`
+    on your `PATH`.
+
+    **macOS note:** binaries are not notarized yet. If your browser quarantined
+    the download, clear it with:
+
+    ```
+    xattr -dr com.apple.quarantine ./bitrise-cli
+    ```
+
+    (Terminal downloads via `curl` are not quarantined and run as-is.)

@@ -168,6 +168,24 @@ go build -ldflags "-s -w \
 When ldflags aren't set, `runtime/debug.ReadBuildInfo()` fills in
 `vcs.revision` and `vcs.time` so `bitrise-cli version` still has commit info.
 
+## Releasing
+
+Releases are tag-triggered: push a semver tag (`vX.Y.Z`) and the `release`
+workflow in `bitrise.yml` runs GoReleaser, which cross-compiles every
+supported platform and publishes a **draft** GitHub release (archives +
+`checksums.txt`). A human reviews the generated notes and clicks publish.
+
+- `.goreleaser.yaml` is the single source of truth for release builds
+  (platform matrix, ldflags). Keep its ldflags in sync with the Makefile's
+  dev-build `LDFLAGS`.
+- `make release-check` validates the config; `make release-snapshot` builds
+  all platforms into `dist/` without tagging or publishing. The `snapshot`
+  workflow in `bitrise.yml` does the same on CI for ad-hoc binaries.
+- GoReleaser is version-pinned in the `Makefile` and run via `go run`, like
+  golangci-lint.
+- The CI release needs a `GITHUB_TOKEN` secret with `contents:write`
+  (configured on the Bitrise app, not in the repo).
+
 ## Known nits
 
 - Cobra auto-binds `-v` to `--version`. The patterns guide reserves `-v` for
