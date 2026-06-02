@@ -84,6 +84,12 @@ func Execute() {
 	}
 }
 
+// Root returns the fully wired root command. It exists for tools/gendocs,
+// which renders the command tree into the markdown reference in docs/cli.
+func Root() *cobra.Command {
+	return rootCmd
+}
+
 func init() {
 	// Tag every RDE request with the CLI's version so the backend can
 	// attribute traffic. version is ldflag-injected in CI builds and

@@ -4,6 +4,11 @@ A CLI tool to manage all Bitrise platform resources — CI, RM, RDE, and more �
 
 ## Commands
 
+The tables below are a hand-curated overview. The complete generated reference
+— every command, flag, and example, straight from the command definitions —
+lives in [docs/cli](docs/cli/bitrise-cli.md) and is kept in sync by CI
+(`make docs` regenerates it).
+
 ### `auth` — Manage the Bitrise access token
 
 | Command | Description |

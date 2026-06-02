@@ -6,7 +6,7 @@ LDFLAGS := -s -w -X $(MODULE)/cmd.version=$(VERSION) -X $(MODULE)/cmd.commit=$(C
 
 GOLANGCI_LINT := go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2
 
-.PHONY: build fmt vet lint lint-fix test tidy clean
+.PHONY: build fmt vet lint lint-fix test tidy docs docs-check clean
 
 build:
 	go build -ldflags "$(LDFLAGS)" -o ./$(BINARY) .
@@ -28,6 +28,17 @@ test:
 
 tidy:
 	go mod tidy && git diff --exit-code go.mod go.sum
+
+docs:
+	go run ./tools/gendocs
+
+docs-check: docs
+	@status=$$(git status --porcelain docs/cli); \
+	if [ -n "$$status" ]; then \
+		echo "docs/cli is out of date — run 'make docs' and commit the result:"; \
+		echo "$$status"; \
+		exit 1; \
+	fi
 
 clean:
 	rm -f ./$(BINARY)

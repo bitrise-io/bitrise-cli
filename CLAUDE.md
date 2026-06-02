@@ -119,6 +119,10 @@ Prefer the `make` targets — they're the source of truth and also what CI runs:
 - `make lint` — runs golangci-lint via `go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@<pinned-version>`. Version is pinned in the `Makefile`; no separate install step needed. The compiled binary is cached in `GOCACHE`, so subsequent runs are fast.
 - `make lint-fix` — same as `make lint` but applies auto-fixes (`--fix`).
 - `make test` — `go test -race -count=1 -timeout=5m ./...`
+- `make docs` — regenerate `docs/cli/` (markdown reference, one file per
+  command, rendered from the cobra command tree via `tools/gendocs`).
+  **Run this whenever a command, flag, or help text changes** — CI runs
+  `make docs-check` and fails if the committed files drift.
 - Run the full quality gate via `bitrise run test`
 - When adding tests, put them in the same package as the file under test
 - `go.mod` is at module path `github.com/bitrise-io/bitrise-cli`
