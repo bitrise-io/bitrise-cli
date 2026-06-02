@@ -57,7 +57,7 @@ type SessionTemplateSnapshot struct {
 // SnapshotInput is a session-input value captured at session creation.
 //
 // Secret values (IsSecret=true) are only returned by GetSession/ListSessions
-// when a request opts in with include_secrets=true (RDE-269). The CLI
+// when a request opts in with include_secrets=true. The CLI
 // intentionally never sets that flag — its only consumer (`session view`)
 // prints "(hidden)" for secret inputs and renders the value of non-secret
 // ones only — and the internal/rde mapper (snapshotFromAPI) masks any secret
@@ -208,7 +208,7 @@ func (c *Client) CompareSessionTemplate(ctx context.Context, workspaceID, sessio
 // ListSessions returns every session in the workspace for the caller.
 // Endpoint: GET /v1/workspaces/{workspaceId}/sessions.
 //
-// Deliberately does not pass include_secrets (RDE-269): its consumers — the
+// Deliberately does not pass include_secrets: its consumers — the
 // `session list` table and ResolveSessionID's name→ID lookup — read session
 // metadata only, never the snapshot's secret session-input values. See the
 // note on GetSession.
@@ -226,7 +226,7 @@ func (c *Client) ListSessions(ctx context.Context, workspaceID string) ([]Sessio
 // GetSession returns a single session by ID.
 // Endpoint: GET /v1/workspaces/{workspaceId}/sessions/{sessionId}.
 //
-// Deliberately does not pass include_secrets (RDE-269): the snapshot's secret
+// Deliberately does not pass include_secrets: the snapshot's secret
 // session-input values are never consumed — `session view` prints "(hidden)"
 // for them, and the SSH/VNC dial paths (Execute, GetSessionVNC) read only the
 // session-level ssh/vnc credentials, not snapshot inputs. Requesting cleartext

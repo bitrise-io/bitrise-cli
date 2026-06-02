@@ -9,7 +9,7 @@ import (
 
 // SavedInput is the CLI-facing saved-input record. `Value` is masked by
 // savedInputFromAPI when IsSecret=true — the backend omits secret values on
-// reads unless include_secrets=true is requested (RDE-269), which the CLI
+// reads unless include_secrets=true is requested, which the CLI
 // never does, and the CLI blanks any value the backend does return before any
 // renderer sees it.
 type SavedInput struct {
@@ -107,8 +107,8 @@ func savedInputFromAPI(w rdeapi.SavedInput) SavedInput {
 	// Mask secret values at the CLI boundary: passing them through would
 	// leak the value into --output json, shell history, and log files. Keep
 	// the key + is_secret marker so callers can still see what was set.
-	// Because the CLI never opts into include_secrets on the read endpoints
-	// (RDE-269), the backend already omits these values on List/Get — this
+	// Because the CLI never opts into include_secrets on the read endpoints,
+	// the backend already omits these values on List/Get — this
 	// masking is the belt-and-suspenders second line of defense (and also
 	// covers the value create/update may echo back). Mirrors templateFromAPI
 	// / snapshotFromAPI.

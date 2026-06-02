@@ -527,8 +527,8 @@ func snapshotFromAPI(w rdeapi.SessionTemplateSnapshot) SessionTemplateSnapshot {
 		// Mask secret values at the CLI boundary: passing them through would
 		// leak the value into stdout, shell history, and log files. Keep the
 		// key + is_secret marker so callers can still see what was set.
-		// Because the CLI never opts into include_secrets on session reads
-		// (RDE-269), the backend already omits these values — this masking is
+		// Because the CLI never opts into include_secrets on session reads,
+		// the backend already omits these values — this masking is
 		// the belt-and-suspenders second line of defense in case the backend
 		// default ever changes.
 		val := i.Value

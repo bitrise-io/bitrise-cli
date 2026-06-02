@@ -11,7 +11,7 @@ import (
 //
 // Secret values (IsSecret=true) are only returned by the read endpoints
 // (ListSavedInputs / GetSavedInput) when a request opts in with
-// include_secrets=true (RDE-269). The CLI intentionally never sets that flag
+// include_secrets=true. The CLI intentionally never sets that flag
 // — it has no use for the cleartext (see the comment on ListSavedInputs) and
 // the internal/rde mapper masks any secret value before the CLI hands saved
 // inputs to renderers. So `Value` is empty for secret inputs on reads, and
@@ -55,7 +55,7 @@ type savedInputResp struct {
 // ListSavedInputs returns every saved input for the caller.
 // Endpoint: GET /v1/saved-inputs.
 //
-// Deliberately does not pass include_secrets (RDE-269): its only consumer,
+// Deliberately does not pass include_secrets: its only consumer,
 // the `saved-input list` table, prints "(hidden)" for secret inputs and only
 // renders the value of non-secret ones, so the cleartext is unwanted (and
 // would leak into --output json, shell history, and log files). Add the query
@@ -73,7 +73,7 @@ func (c *Client) ListSavedInputs(ctx context.Context) ([]SavedInput, error) {
 // GetSavedInput returns a saved input by ID.
 // Endpoint: GET /v1/saved-inputs/{savedInputId}.
 //
-// Deliberately does not pass include_secrets (RDE-269): its only consumer,
+// Deliberately does not pass include_secrets: its only consumer,
 // `saved-input view`, prints "(hidden)" for a secret input and only renders
 // the value of a non-secret one, so the cleartext is unwanted. See the note
 // on ListSavedInputs.
