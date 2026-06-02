@@ -169,8 +169,8 @@ func TestCreate_AutoDetectOrg_NoneFails(t *testing.T) {
 	})
 	svc := NewService(api.client())
 	_, err := svc.Create(context.Background(), CreateOptions{RepoURL: "https://github.com/a/b.git"})
-	if err == nil || !strings.Contains(err.Error(), "no organizations") {
-		t.Fatalf("expected no-orgs error, got %v", err)
+	if err == nil || !strings.Contains(err.Error(), "no workspaces") {
+		t.Fatalf("expected no-workspaces error, got %v", err)
 	}
 }
 
@@ -181,8 +181,8 @@ func TestCreate_AutoDetectOrg_MultipleFails(t *testing.T) {
 	})
 	svc := NewService(api.client())
 	_, err := svc.Create(context.Background(), CreateOptions{RepoURL: "https://github.com/a/b.git"})
-	if err == nil || !strings.Contains(err.Error(), "multiple organizations") {
-		t.Fatalf("expected multiple-orgs error, got %v", err)
+	if err == nil || !strings.Contains(err.Error(), "multiple workspaces") {
+		t.Fatalf("expected multiple-workspaces error, got %v", err)
 	}
 }
 

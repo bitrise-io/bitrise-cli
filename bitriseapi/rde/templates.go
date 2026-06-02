@@ -29,9 +29,15 @@ type Template struct {
 	UpdatedAt         string             `json:"updatedAt,omitempty"`
 }
 
-// TemplateVariable is a baked-in template variable. The backend currently
-// returns `Value` in cleartext even when IsSecret=true; the internal/rde
-// mapper masks secret values before the CLI hands them to renderers.
+// TemplateVariable is a baked-in template variable.
+//
+// Secret values (IsSecret=true) are only returned by the backend when a
+// request opts in with include_secrets=true. The CLI intentionally
+// never sets that flag on template reads — it has no use for the cleartext
+// (see ListTemplates / GetTemplate) and the internal/rde mapper masks any
+// secret value before the CLI hands templates to renderers. So `Value` is
+// empty for secret variables, and the mapper masks it again as
+// defense-in-depth in case the backend default ever changes.
 type TemplateVariable struct {
 	ID             string `json:"id,omitempty"`
 	Key            string `json:"key"`
@@ -144,6 +150,12 @@ type UpdateTemplateRequest struct {
 
 // ListTemplates returns every template visible in the workspace.
 // Endpoint: GET /v1/workspaces/{workspaceId}/templates.
+//
+// Deliberately does not pass include_secrets: the only consumers —
+// the `template list` table and ResolveTemplateID's name→ID lookup — read
+// metadata only, never secret variable values. Add the query param here (and
+// thread it through internal/rde) only if a caller genuinely needs cleartext
+// secrets, which would also mean revisiting the masking in templateFromAPI.
 func (c *Client) ListTemplates(ctx context.Context, workspaceID string) ([]Template, error) {
 	if workspaceID == "" {
 		return nil, fmt.Errorf("workspace ID is required")
@@ -157,6 +169,11 @@ func (c *Client) ListTemplates(ctx context.Context, workspaceID string) ([]Templ
 
 // GetTemplate returns a single template by ID.
 // Endpoint: GET /v1/workspaces/{workspaceId}/templates/{templateId}.
+//
+// Deliberately does not pass include_secrets: its only consumer,
+// `template view`, prints each secret variable's key with a "(secret)" label
+// but never its value, so the cleartext is unwanted (and would leak into
+// stdout / JSON output / shell history). See the note on ListTemplates.
 func (c *Client) GetTemplate(ctx context.Context, workspaceID, templateID string) (Template, error) {
 	if workspaceID == "" {
 		return Template{}, fmt.Errorf("workspace ID is required")
