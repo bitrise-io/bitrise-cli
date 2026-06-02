@@ -213,14 +213,26 @@ func configIDForProjectType(projectType string) string {
 		return "default-cordova-config"
 	case "fastlane":
 		return "default-fastlane-ios-config"
+	case "flutter":
+		return "flutter-config-test-ios-android-web-0"
 	case "ionic":
 		return "default-ionic-config"
 	case "ios":
 		return "default-ios-config"
+	case "java":
+		return "default-java-gradle-config"
+	case "kotlin-multiplatform":
+		return "default-kotlin-multiplatform-config"
 	case "macos":
 		return "default-macos-config"
+	case "node-js":
+		return "default-node-js-npm-config"
+	case "python":
+		return "default-python-pip-config"
 	case "react-native":
 		return "default-react-native-config"
+	case "ruby":
+		return "default-ruby-config"
 	default:
 		return "other-config"
 	}
