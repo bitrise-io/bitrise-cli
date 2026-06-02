@@ -84,7 +84,7 @@ func TestCreate_JSONOutputProducesParseableUserRecord(t *testing.T) {
 	c.SetOut(stdoutBuf)
 	c.SetErr(stderrBuf)
 	c.SetIn(strings.NewReader("supersecret\n"))
-	c.SetArgs([]string{"--email", "a@b.io", "--username", "alice", "--password-stdin"})
+	c.SetArgs([]string{"--email", "a@b.io", "--username", "alice", "--first-name", "A", "--last-name", "L", "--password-stdin"})
 	ctx := config.WithResolved(context.Background(), config.Resolved{
 		WebBaseURL: srv.URL,
 		Output:     "json",
@@ -108,7 +108,7 @@ func TestCreate_ServerErrorSurfacesFieldDetails(t *testing.T) {
 	defer srv.Close()
 
 	_, _, err := runCreate(t,
-		[]string{"--email", "a@b.io", "--username", "alice", "--password-stdin"},
+		[]string{"--email", "a@b.io", "--username", "alice", "--first-name", "A", "--last-name", "L", "--password-stdin"},
 		"supersecret\n",
 		srv.URL,
 	)
@@ -122,11 +122,22 @@ func TestCreate_ServerErrorSurfacesFieldDetails(t *testing.T) {
 
 func TestCreate_RequiresPassword(t *testing.T) {
 	_, _, err := runCreate(t,
-		[]string{"--email", "a@b.io", "--username", "alice", "--password-stdin"},
+		[]string{"--email", "a@b.io", "--username", "alice", "--first-name", "A", "--last-name", "L", "--password-stdin"},
 		"\n",
 		"http://unused.invalid",
 	)
 	if err == nil || !strings.Contains(err.Error(), "password is empty") {
 		t.Fatalf("expected password-empty error, got %v", err)
+	}
+}
+
+func TestCreate_RequiresNameFlags(t *testing.T) {
+	_, _, err := runCreate(t,
+		[]string{"--email", "a@b.io", "--username", "alice", "--password-stdin"},
+		"supersecret\n",
+		"http://unused.invalid",
+	)
+	if err == nil || !strings.Contains(err.Error(), "first-name") || !strings.Contains(err.Error(), "last-name") {
+		t.Fatalf("expected required first-name/last-name error, got %v", err)
 	}
 }

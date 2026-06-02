@@ -2,6 +2,44 @@
 
 A CLI tool to manage all Bitrise platform resources — CI, RM, RDE, and more — from your terminal.
 
+## Installation
+
+### `go install`
+
+```sh
+go install github.com/bitrise-io/bitrise-cli@latest
+```
+
+This installs the `bitrise-cli` binary into `$(go env GOPATH)/bin` (make sure
+that directory is on your `PATH`).
+
+### From source
+
+```sh
+git clone https://github.com/bitrise-io/bitrise-cli.git
+cd bitrise-cli
+make build       # produces ./bitrise-cli at the repo root
+```
+
+### Binary name and the `br` alias
+
+The shipped binary is named `bitrise-cli`. If you'd like a shorter command,
+add a shell alias yourself — e.g. `alias br='bitrise-cli'`. Note that `br` is
+**not** shipped as the binary name: it collides with [broot](https://dystroy.org/broot/),
+which installs a `br` shell function, so the alias is left to your discretion.
+
+### Authentication
+
+Once installed, save a Bitrise Personal Access Token:
+
+```sh
+bitrise-cli auth login            # prompts for a token
+echo "$BITRISE_TOKEN" | bitrise-cli auth login --with-token   # non-interactive
+```
+
+The token can also be supplied per-invocation via the `BITRISE_TOKEN`
+environment variable. See `bitrise-cli auth --help` for details.
+
 ## Commands
 
 This overview is generated from the command definitions — regenerate with
@@ -136,3 +174,7 @@ Tab-completion is available for all commands, subcommands, flags, and known flag
 | zsh | `source <(bitrise-cli completion zsh)` | add to `~/.zshrc` |
 | fish | `bitrise-cli completion fish \| source` | `bitrise-cli completion fish > ~/.config/fish/completions/bitrise-cli.fish` |
 | PowerShell | `bitrise-cli completion powershell \| Out-String \| Invoke-Expression` | add to `$PROFILE` |
+
+## License
+
+Released under the [MIT License](LICENSE).

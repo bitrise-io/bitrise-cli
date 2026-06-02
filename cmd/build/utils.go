@@ -121,19 +121,23 @@ func runWatch(cmd *cobra.Command, svc *internalbuild.Service, b internalbuild.Bu
 	}
 
 	if format == output.JSON {
-		return output.Render(cmd.OutOrStdout(), format, finalBuild, renderBuildText)
+		if err := output.Render(cmd.OutOrStdout(), format, finalBuild, renderBuildText); err != nil {
+			return err
+		}
+	} else {
+		footerEW := cmdutil.NewErrWriter(stderr)
+		footerEW.F("\n%s\n", watchDivider)
+		footerEW.F("Build #%d finished: %s%s\n", finalBuild.BuildNumber, finalBuild.Status, buildElapsed(finalBuild))
+		if url := buildDetailURL(cmd, b); url != "" {
+			footerEW.F("→ %s\n", url)
+		}
+		if footerEW.Err != nil {
+			return footerEW.Err
+		}
 	}
 
-	footerEW := cmdutil.NewErrWriter(stderr)
-	footerEW.F("\n%s\n", watchDivider)
-	footerEW.F("Build #%d finished: %s%s\n", finalBuild.BuildNumber, finalBuild.Status, buildElapsed(finalBuild))
-	if url := buildDetailURL(cmd, b); url != "" {
-		footerEW.F("→ %s\n", url)
-	}
-	if footerEW.Err != nil {
-		return footerEW.Err
-	}
-
+	// The exit code reflects the build outcome in every mode, including
+	// --output json: stdout already carries the build record above.
 	if finalBuild.Status != "success" && finalBuild.Status != "aborted-with-success" {
 		cmdutil.SilenceRootErrors(cmd)
 		return fmt.Errorf("build %s", finalBuild.Status)

@@ -150,15 +150,18 @@ Optional flags:
 				return err
 			}
 			if format == output.JSON {
-				return output.Render(cmd.OutOrStdout(), format, finalBuild, renderBuildText)
-			}
-			if !cmdutil.IsQuiet(cmd) {
+				if err := output.Render(cmd.OutOrStdout(), format, finalBuild, renderBuildText); err != nil {
+					return err
+				}
+			} else if !cmdutil.IsQuiet(cmd) {
 				footerEW := cmdutil.NewErrWriter(cmd.ErrOrStderr())
 				footerEW.F("Build #%d finished: %s%s\n", finalBuild.BuildNumber, finalBuild.Status, buildElapsed(finalBuild))
 				if footerEW.Err != nil {
 					return footerEW.Err
 				}
 			}
+			// The exit code reflects the build outcome in every mode, including
+			// --output json: stdout already carries the build record above.
 			if finalBuild.Status != "success" && finalBuild.Status != "aborted-with-success" {
 				cmdutil.SilenceRootErrors(cmd)
 				return fmt.Errorf("build %s", finalBuild.Status)

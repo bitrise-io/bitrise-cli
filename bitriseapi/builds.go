@@ -296,7 +296,7 @@ func (c *Client) streamRawLog(ctx context.Context, rawURL string, w io.Writer) e
 	if err != nil {
 		return fmt.Errorf("build log URL request: %w", err)
 	}
-	resp, err := c.httpClient.Do(req) //nolint:gosec // URL comes from the API's expiring_raw_log_url field, not user input
+	resp, err := c.streamHTTPClient().Do(req) //nolint:gosec // URL comes from the API's expiring_raw_log_url field, not user input
 	if err != nil {
 		return fmt.Errorf("fetch raw log: %w", err)
 	}
