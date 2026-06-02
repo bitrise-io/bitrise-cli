@@ -8,8 +8,10 @@ import (
 )
 
 // SavedInput is the CLI-facing saved-input record. `Value` is masked by
-// savedInputFromAPI when IsSecret=true — the backend returns it in
-// cleartext, so the CLI blanks it before any renderer sees it.
+// savedInputFromAPI when IsSecret=true — the backend omits secret values on
+// reads unless include_secrets=true is requested, which the CLI
+// never does, and the CLI blanks any value the backend does return before any
+// renderer sees it.
 type SavedInput struct {
 	ID        string     `json:"id"`
 	Key       string     `json:"key"`
@@ -102,12 +104,14 @@ func (s *Service) DeleteSavedInput(ctx context.Context, id string) error {
 }
 
 func savedInputFromAPI(w rdeapi.SavedInput) SavedInput {
-	// Mask secret values at the CLI boundary. The backend returns them in
-	// cleartext (and echoes the just-submitted value back on create/update),
-	// so passing them through would leak the value into --output json,
-	// shell history, and log files. Keep the key + is_secret marker so
-	// callers can still see what was set. Mirrors templateFromAPI /
-	// snapshotFromAPI.
+	// Mask secret values at the CLI boundary: passing them through would
+	// leak the value into --output json, shell history, and log files. Keep
+	// the key + is_secret marker so callers can still see what was set.
+	// Because the CLI never opts into include_secrets on the read endpoints,
+	// the backend already omits these values on List/Get — this
+	// masking is the belt-and-suspenders second line of defense (and also
+	// covers the value create/update may echo back). Mirrors templateFromAPI
+	// / snapshotFromAPI.
 	val := w.Value
 	if w.IsSecret {
 		val = ""
