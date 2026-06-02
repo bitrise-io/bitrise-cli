@@ -437,7 +437,7 @@ func (s *Service) WaitForCompletion(ctx context.Context, appSlug, buildSlug stri
 		return Build{}, fmt.Errorf("build slug is required")
 	}
 	if interval <= 0 {
-		interval = 5 * time.Second
+		interval = 3 * time.Second
 	}
 	for {
 		b, err := s.View(ctx, appSlug, buildSlug)

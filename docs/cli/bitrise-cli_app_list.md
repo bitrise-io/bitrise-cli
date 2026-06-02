@@ -7,7 +7,7 @@ List apps the authenticated user can access
 List all apps (projects) the authenticated user can access.
 
 Filters:
-  --title TITLE              filter apps whose title contains the given string (case-insensitive)
+  --title TITLE              filter apps by title
   --project-type TYPE        e.g. ios, android
   --sort-by FIELD            ordering accepted by the API (e.g. created_at, last_build_at)
 
@@ -41,7 +41,7 @@ bitrise-cli app list [flags]
       --limit int             max items per page (server default if 0)
       --project-type string   filter by project type (ios, android, ...)
       --sort-by string        ordering accepted by the API (e.g. created_at, last_build_at)
-      --title string          filter apps whose title contains the given string (case-insensitive)
+      --title string          filter apps by title
 ```
 
 ### Options inherited from parent commands

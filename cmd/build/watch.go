@@ -1,6 +1,7 @@
 package build
 
 import (
+	"io"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -27,10 +28,13 @@ Required flags:
 Argument:
   BUILD_SLUG         the unique slug of the build
 
-Note:
-  --output is ignored — logs are always streamed as raw text.`,
+Output:
+  human (default)  logs stream as raw text; a header/footer frame them on stderr.
+  json             logs stream to stderr and the final build record is written
+                   to stdout, so 'build watch ... -o json' is pipeable.`,
 		Example: `  bitrise-cli build watch --app my-app-slug <build-slug>
-  bitrise-cli build watch --app my-app-slug <build-slug> --interval 5s`,
+  bitrise-cli build watch --app my-app-slug <build-slug> --interval 5s
+  bitrise-cli build watch --app my-app-slug <build-slug> --output json`,
 		Args: cmdutil.RequireArgs("BUILD_SLUG"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			appSlug, err := cmdutil.ResolveAppSlug(cmd)
@@ -49,7 +53,14 @@ Note:
 			if err != nil {
 				return err
 			}
-			return runWatch(cmd, svc, b, interval, cmd.OutOrStdout(), output.Human)
+			// Match `build trigger --watch`: in JSON mode logs go to stderr so
+			// stdout carries only the final build record.
+			format := cmdutil.ResolveFormat(cmd)
+			logWriter := io.Writer(cmd.OutOrStdout())
+			if format == output.JSON {
+				logWriter = cmd.ErrOrStderr()
+			}
+			return runWatch(cmd, svc, b, interval, logWriter, format)
 		},
 	}
 

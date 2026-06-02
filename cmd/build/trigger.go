@@ -141,10 +141,7 @@ Optional flags:
 			}
 			finalBuild, err := svc.WaitForCompletion(cmd.Context(), b.AppSlug, b.Slug, interval)
 			if errors.Is(err, context.Canceled) {
-				detachEW := cmdutil.NewErrWriter(cmd.ErrOrStderr())
-				detachEW.F("\nDetached — build is still running.\n")
-				detachEW.F("Use 'bitrise-cli build watch %s' to resume.\n", b.Slug)
-				return detachEW.Err
+				return writeDetachNotice(cmd.ErrOrStderr(), "build watch "+b.Slug)
 			}
 			if err != nil {
 				return err

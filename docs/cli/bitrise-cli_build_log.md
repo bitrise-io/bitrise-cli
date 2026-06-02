@@ -15,7 +15,9 @@ Argument:
 Flags:
   --wait             wait for the build to finish before printing the log;
                      useful when the build is still in-progress. Ctrl-C
-                     detaches without affecting the running build.
+                     detaches without affecting the running build. Exit status
+                     reflects log retrieval, not the build outcome — use
+                     'build watch' to gate on build success/failure.
   --interval DURATION  polling interval when --wait is active (default 3s)
 
 Note:

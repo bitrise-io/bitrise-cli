@@ -32,7 +32,9 @@ Argument:
 Flags:
   --wait             wait for the build to finish before printing the log;
                      useful when the build is still in-progress. Ctrl-C
-                     detaches without affecting the running build.
+                     detaches without affecting the running build. Exit status
+                     reflects log retrieval, not the build outcome — use
+                     'build watch' to gate on build success/failure.
   --interval DURATION  polling interval when --wait is active (default 3s)
 
 Note:
@@ -62,22 +64,21 @@ Note:
 					return err
 				}
 				if b.Status == "in-progress" {
-					buildURL := b.BuildURL
-					if buildURL == "" {
-						buildURL = fmt.Sprintf("%s/app/%s/build/%s", cmdutil.ResolveWebBaseURL(cmd), appSlug, buildSlug)
-					}
-					headerEW := cmdutil.NewErrWriter(cmd.ErrOrStderr())
-					headerEW.F("Waiting for build #%d to finish\n→ %s\n", b.BuildNumber, buildURL)
-					if headerEW.Err != nil {
-						return headerEW.Err
+					if !cmdutil.IsQuiet(cmd) {
+						buildURL := b.BuildURL
+						if buildURL == "" {
+							buildURL = fmt.Sprintf("%s/app/%s/build/%s", cmdutil.ResolveWebBaseURL(cmd), appSlug, buildSlug)
+						}
+						headerEW := cmdutil.NewErrWriter(cmd.ErrOrStderr())
+						headerEW.F("Waiting for build #%d to finish\n→ %s\n", b.BuildNumber, buildURL)
+						if headerEW.Err != nil {
+							return headerEW.Err
+						}
 					}
 
 					if _, err := svc.WaitForCompletion(cmd.Context(), appSlug, buildSlug, interval); err != nil {
 						if errors.Is(err, context.Canceled) {
-							detachEW := cmdutil.NewErrWriter(cmd.ErrOrStderr())
-							detachEW.F("\nDetached — build is still running.\n")
-							detachEW.F("Use 'bitrise-cli build log --wait %s' to resume.\n", buildSlug)
-							return detachEW.Err
+							return writeDetachNotice(cmd.ErrOrStderr(), "build log --wait "+buildSlug)
 						}
 						return err
 					}
