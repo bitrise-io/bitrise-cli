@@ -64,14 +64,12 @@ release:
   footer: |
     ### Install
 
-    Download the archive for your platform, extract it, and put `bitrise-cli`
-    on your `PATH`.
-
-    **macOS note:** binaries are not notarized yet. If your browser quarantined
-    the download, clear it with:
-
-    ```
-    xattr -dr com.apple.quarantine ./bitrise-cli
+    ```sh
+    OS=$(uname -s | tr '[:upper:]' '[:lower:]')
+    ARCH=$(uname -m); case "$ARCH" in x86_64) ARCH=amd64 ;; aarch64) ARCH=arm64 ;; esac
+    curl -fsSL "https://github.com/bitrise-io/bitrise-cli/releases/download/{{ .Tag }}/{{ .ProjectName }}_{{ .Version }}_${OS}_${ARCH}.tar.gz" | tar -xz bitrise-cli
+    install -m 0755 bitrise-cli /usr/local/bin/   # or anywhere on your PATH
     ```
 
-    (Terminal downloads via `curl` are not quarantined and run as-is.)
+    Or download the archive for your platform from the assets below, extract
+    it, and put `bitrise-cli` on your `PATH`.
