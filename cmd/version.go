@@ -18,30 +18,37 @@ import (
 //
 //	go build -ldflags "-X github.com/bitrise-io/bitrise-cli/cmd.version=1.2.3 \
 //	                  -X github.com/bitrise-io/bitrise-cli/cmd.commit=$SHA"
+//
+// buildNumber is the CI build number that produced the binary (empty for
+// dev builds). The release pipeline injects it from $BITRISE_BUILD_NUMBER so
+// a published binary can be traced back to the exact build that made it.
 var (
-	version = "dev"
-	commit  = ""
+	version     = "dev"
+	commit      = ""
+	buildNumber = ""
 )
 
 // versionInfo is the JSON shape of `bitrise-cli version`.
 type versionInfo struct {
-	Version   string `json:"version"`
-	Commit    string `json:"commit,omitempty"`
-	BuildTime string `json:"build_time,omitempty"`
-	GoVersion string `json:"go_version"`
-	OS        string `json:"os"`
-	Arch      string `json:"arch"`
+	Version     string `json:"version"`
+	Commit      string `json:"commit,omitempty"`
+	BuildNumber string `json:"build_number,omitempty"`
+	BuildTime   string `json:"build_time,omitempty"`
+	GoVersion   string `json:"go_version"`
+	OS          string `json:"os"`
+	Arch        string `json:"arch"`
 }
 
 // readVersionInfo merges ldflag-injected values with what go embeds via
 // debug.ReadBuildInfo (vcs.revision, vcs.time) when ldflags weren't used.
 func readVersionInfo() versionInfo {
 	v := versionInfo{
-		Version:   version,
-		Commit:    commit,
-		GoVersion: runtime.Version(),
-		OS:        runtime.GOOS,
-		Arch:      runtime.GOARCH,
+		Version:     version,
+		Commit:      commit,
+		BuildNumber: buildNumber,
+		GoVersion:   runtime.Version(),
+		OS:          runtime.GOOS,
+		Arch:        runtime.GOARCH,
 	}
 	if info, ok := debug.ReadBuildInfo(); ok {
 		for _, s := range info.Settings {
@@ -95,6 +102,9 @@ func renderVersionHuman(w io.Writer, v versionInfo) error {
 	ew.F("%s %s\n", s.Bold.Render("bitrise-cli"), v.Version)
 	if v.Commit != "" {
 		ew.F("%s%s\n", lbl("Commit:"), s.Slug.Render(v.Commit))
+	}
+	if v.BuildNumber != "" {
+		ew.F("%s%s\n", lbl("Build:"), v.BuildNumber)
 	}
 	if v.BuildTime != "" {
 		ew.F("%s%s\n", lbl("Built:"), v.BuildTime)

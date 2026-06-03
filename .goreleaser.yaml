@@ -26,6 +26,9 @@ builds:
       - -s -w
       - -X github.com/bitrise-io/bitrise-cli/cmd.version={{ .Version }}
       - -X github.com/bitrise-io/bitrise-cli/cmd.commit={{ .FullCommit }}
+      # CI build number that produced the binary; `index .Env` yields "" when
+      # the var is unset (e.g. local `make release-snapshot`), so it's safe.
+      - -X github.com/bitrise-io/bitrise-cli/cmd.buildNumber={{ index .Env "BITRISE_BUILD_NUMBER" }}
     # Reproducible builds: stamp the commit time, not the build time.
     mod_timestamp: "{{ .CommitTimestamp }}"
 

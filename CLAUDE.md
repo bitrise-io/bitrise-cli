@@ -156,14 +156,20 @@ the return. The linter will reject it every time.
 
 ## Versioning hooks
 
-`cmd.version` and `cmd.commit` are package-level `var`s so CI can inject
-real values via `-ldflags`:
+`cmd.version`, `cmd.commit`, and `cmd.buildNumber` are package-level `var`s
+so CI can inject real values via `-ldflags`:
 
 ```
 go build -ldflags "-s -w \
                   -X github.com/bitrise-io/bitrise-cli/cmd.version=X.Y.Z \
-                  -X github.com/bitrise-io/bitrise-cli/cmd.commit=$GIT_SHA"
+                  -X github.com/bitrise-io/bitrise-cli/cmd.commit=$GIT_SHA \
+                  -X github.com/bitrise-io/bitrise-cli/cmd.buildNumber=$BUILD_NO"
 ```
+
+`buildNumber` is the CI build number (from `$BITRISE_BUILD_NUMBER`, injected
+by the release pipeline) so a published binary can be traced back to the
+build that produced it. It's empty for dev builds and omitted from `version`
+output when empty.
 
 When ldflags aren't set, `runtime/debug.ReadBuildInfo()` fills in
 `vcs.revision` and `vcs.time` so `bitrise-cli version` still has commit info.
