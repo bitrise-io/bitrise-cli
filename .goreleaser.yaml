@@ -22,9 +22,6 @@ builds:
         goarch: arm64
     flags: [-trimpath]
     # Keep in sync with the Makefile's LDFLAGS (dev builds).
-    # TODO: once the release-gating ldflag (cmd.releaseBuild) lands on main,
-    # inject `-X github.com/bitrise-io/bitrise-cli/cmd.releaseBuild=true` here
-    # so shipped binaries hide the non-GA command namespaces.
     ldflags:
       - -s -w
       - -X github.com/bitrise-io/bitrise-cli/cmd.version={{ .Version }}
