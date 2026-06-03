@@ -232,3 +232,101 @@ gitleaks detect --source . --log-opts="--all"
 trufflehog git file://. --results=verified,unverified,unknown
 # Then coordinate the force-push with the repo owners (NOT part of this review).
 ```
+
+---
+
+## Section E: Content & Reputation Review
+
+A second pass (added 2026-06-03) over the **same full scope** — all 8 branches,
+all 120 commits, all 623 unique blobs, and every commit message — checking for
+content that is not a credential but could be embarrassing, unprofessional, or
+expose internal IP if published. Method: curated word-list grep across every
+blob and every commit message (offensive language, code-smell markers,
+disparaging/sarcastic prose, competitor names), plus targeted searches for
+unreleased-feature signals, pricing/business metrics, internal
+architecture/links, and legal/compliance notes.
+
+**Headline:** No offensive language, no embarrassing comments, and no
+business/financial data anywhere. The only substantive findings are **internal
+architecture / IP disclosures** — none are secrets, but several reference an
+internal repo name, internal links, and an unreleased-feature design. Crucially,
+**the two highest-value disclosures live only on feature branches, not on
+`main`.** The single most effective mitigation is therefore to **publish only
+`main` and not push the working/feature branches to the public repo.**
+
+### E1. Offensive / inappropriate language
+
+| Commit SHA | Location | Finding | Severity |
+|------------|----------|---------|----------|
+| — | commit messages (all refs) | No profanity or slurs found | Info |
+| — | all 623 blobs | No profanity or slurs found | Info |
+
+**Result: clean.** A word-boundaried scan for common English curse words and
+racial/ethnic/identity slurs (redaction would look like `f***` — none to
+redact) returned zero matches in commit messages and in file content.
+
+### E2. Embarrassing comments
+
+| Commit SHA | Location | Finding | Severity |
+|------------|----------|---------|----------|
+| — | all blobs | No genuine `TODO`/`FIXME`/`HACK`/`XXX`/`WTF`/`KLUDGE` markers in any file | Info |
+| (commit msg) | squash-merge commit body | Prose bullet "Drop the release-gating **TODO** from goreleaser config" — refers to a pending *task*, not a literal code marker; no `TODO` token was ever added or removed in any diff | Info |
+| `2daf6e8` et al. | `cmd/purr_test.go` | `// Animation looks **ugly** if frames have different heights…` — legitimate technical comment about ASCII-animation rendering | Info (false positive) |
+| `0227b4f` et al. | `bitriseapi/builds.go` | `// BuildLogChunk is one **piece of** build log output.` — benign; matched the "piece of" pattern | Info (false positive) |
+| — | all refs | No disparaging remarks about customers, competitors, or colleagues; **no competitor product names** (CircleCI, Travis, Jenkins, GitLab CI, Buildkite, …) appear anywhere | Info |
+
+**Result: clean.** Nothing unprofessional or disparaging. The few matches were
+ordinary engineering prose.
+
+> Aside — `bitrise-cli purr` (`cmd/purr.go`) is a deliberate cat-mascot ASCII
+> animation easter-egg command. It is harmless and intentional, not an
+> embarrassing leftover.
+
+### E3. Intellectual property / sensitive business logic
+
+No pricing, revenue, churn, or other business-metric data was found. No
+legal/compliance notes hinting at suppressed issues (the only "liability" hit is
+standard MIT-license boilerplate in `LICENSE`). The findings below are
+internal-architecture / IP disclosures — **not secrets**, but worth a maintainer
+decision before publishing.
+
+| Commit SHA | Location | Finding | Severity |
+|------------|----------|---------|----------|
+| `2d7a0b5`, `d52a5a9` | `docs/oauth-login.md` — **branch `add-oauth-login-docs` only (not main)** | Internal OAuth/OIDC design doc. Exposes: an internal **Confluence** link (`atlassian.net/wiki/spaces/RD/pages/5026775055`, "ER-2774" security review); references to internal/likely-private repo PRs (`bitrise-mcp#62`, `bitrise-website#19554`); internal backend names (`bitrise-website` monolith, Ruby `OIDC::ExchangeOauthToken`, `TokenController`, `global_settings.yml`, `PAT_EXPIRY`); and detailed server-side token-exchange design incl. the `aud → description` client-allowlist mechanism. | **Medium** |
+| `9d02e7c` | `cmd/root.go`, `CLAUDE.md` — **branch `gate-non-ga-commands` only (not main)** | Reveals **unreleased / non-GA command namespaces** (`build`, `app`, `user`, `stack`, `purr`, `step`, `yml`) and documents that release builds only *hide* them from `--help`/completion — they "still run if invoked explicitly." Discloses unshipped roadmap surface. | Low |
+| `c81c76e` | `internal/app/create.go:205`, `internal/app/create_test.go:219` — **on `main`** | Code comment names the internal monolith repo and an internal config path: "Values come from **`bitrise-website/config/bitrise_ymls/custom_config.yml`**". | Low |
+| `19d381c` | `internal/user/service.go:172`, `service_test.go` — **on `main`** | Comment exposes server-side (Ruby) validation internals: "`registration_type` must be one of `%w[manual login]` (UserAuthToken model)… trips inclusion validation → 422." Reveals backend model/validation behavior. | Low |
+| `19d381c` | `internal/user/service.go:5,127,168,180` — **on `main`** | Hardcodes internal/undocumented backend endpoints (`POST /users/sign_in`, `POST /me/profile/security/user_auth_tokens`, `/me/profile/security`). Inherent to the CLI's operation (observable from traffic), so low sensitivity. | Info |
+| `f3ac930` | `CLAUDE.md:9` — **on `main`** | "(Bitrise maintainers: it lives in the team **Confluence** space.)" — generic mention of an internal patterns-guide doc; no URL. | Info |
+| `2d7a0b5` | `docs/cli/bitrise-cli_rde_template_create.md` — feature branch | Example feature flag `enable_beta_simulator` ("Boot the iOS beta simulator on session start") in RDE template docs — illustrative example data, not a real toggle. | Info |
+
+### E4. Recommendation (content review)
+
+The **secret-scan verdict in Section C is unchanged: no credentials → safe to
+publish from a leak standpoint.** This content pass adds governance guidance, it
+does not contradict Section C:
+
+1. **Publish `main` only; do not push the feature/working branches**
+   (`add-oauth-login-docs`, `gate-non-ga-commands`, `RDE-257-view-logs-feature`,
+   `claude/*`). This alone removes the only **Medium** finding (the OAuth design
+   doc with the Confluence/security-review link and internal PR refs) and the
+   non-GA roadmap exposure, with zero history rewriting. When open-sourcing,
+   pushing a single clean `main` to the new public remote is the norm anyway.
+2. **Maintainer decision on the `main` references to the internal monolith.**
+   The `bitrise-website` repo name (`internal/app/create.go`), the Ruby
+   `registration_type` validation note (`internal/user/service.go`), and the
+   `CLAUDE.md` Confluence mention are **Low/Info** — internal but not secret, and
+   common in OSS client code. If the team prefers to keep the monolith name and
+   server internals private, lightly reword those three comments before the
+   first public push (a normal edit on `main`, no history rewrite needed since
+   the public repo starts fresh from the published tip). If a squash-to-single-
+   initial-commit is chosen for the public repo, these comments are the only
+   content worth a quick editorial pass first.
+3. No action required for E1, E2, or the Info-level E3 rows.
+
+> Note: this report file (`docs/history-review.md`) itself contains pattern
+> words ("secret", "password", ".kubeconfig", "do not force-push", the internal
+> names quoted above) and will be flagged by re-runs of these scans. It lives on
+> the `BACKEND-565/history-review` branch and is an internal audit artifact — it
+> is **not** intended to ship in the public `main`, so it does not need scrubbing
+> and is not itself a finding.
