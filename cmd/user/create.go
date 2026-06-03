@@ -30,10 +30,10 @@ func newCreateCmd() *cobra.Command {
 Required flags:
   --email ADDRESS    the email address to register
   --username NAME    desired username (must be unique)
-
-Optional flags:
   --first-name N     first name on the account
   --last-name N      last name on the account
+
+Optional flags:
   --password-stdin   read the password from stdin instead of prompting
 
 Password input:
@@ -50,13 +50,19 @@ Email verification:
   accounts.`,
 		Example: `  bitrise-cli user create --email alice@example.com --username alice --first-name Alice --last-name L
   printf '%s' "$NEW_PASSWORD" | bitrise-cli user create \
-      --email alice@example.com --username alice --password-stdin --output json`,
+      --email alice@example.com --username alice --first-name Alice --last-name L --password-stdin --output json`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if email == "" {
 				return fmt.Errorf("--email is required")
 			}
 			if username == "" {
 				return fmt.Errorf("--username is required")
+			}
+			if firstName == "" {
+				return fmt.Errorf("--first-name is required")
+			}
+			if lastName == "" {
+				return fmt.Errorf("--last-name is required")
 			}
 			pw, err := cmdutil.ReadSecretInput(cmd.InOrStdin(), cmd.ErrOrStderr(), "Choose a password: ", passwordStdin)
 			if err != nil {
@@ -87,12 +93,14 @@ Email verification:
 
 	c.Flags().StringVar(&email, "email", "", "email address to register (required)")
 	c.Flags().StringVar(&username, "username", "", "desired username (required)")
-	c.Flags().StringVar(&firstName, "first-name", "", "first name on the account")
-	c.Flags().StringVar(&lastName, "last-name", "", "last name on the account")
+	c.Flags().StringVar(&firstName, "first-name", "", "first name on the account (required)")
+	c.Flags().StringVar(&lastName, "last-name", "", "last name on the account (required)")
 	c.Flags().BoolVar(&passwordStdin, "password-stdin", false, "read the password from stdin without prompting")
 
 	_ = c.MarkFlagRequired("email")
 	_ = c.MarkFlagRequired("username")
+	_ = c.MarkFlagRequired("first-name")
+	_ = c.MarkFlagRequired("last-name")
 
 	return c
 }

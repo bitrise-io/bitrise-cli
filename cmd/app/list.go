@@ -30,7 +30,7 @@ func newListCmd() *cobra.Command {
 		Long: `List all apps (projects) the authenticated user can access.
 
 Filters:
-  --title TITLE              filter apps whose title contains the given string (case-insensitive)
+  --title TITLE              filter apps by title
   --project-type TYPE        e.g. ios, android
   --sort-by FIELD            ordering accepted by the API (e.g. created_at, last_build_at)
 
@@ -120,7 +120,7 @@ In JSON mode (--output json), the next_cursor field holds the cursor value for s
 	c.Flags().StringVar(&cursor, "cursor", "", "pagination cursor from a previous response")
 	c.Flags().BoolVar(&fetchAll, "all", false, "fetch all pages automatically")
 	c.Flags().StringVar(&sortBy, "sort-by", "", "ordering accepted by the API (e.g. created_at, last_build_at)")
-	c.Flags().StringVar(&title, "title", "", "filter apps whose title contains the given string (case-insensitive)")
+	c.Flags().StringVar(&title, "title", "", "filter apps by title")
 	c.Flags().StringVar(&projectType, "project-type", "", "filter by project type (ios, android, ...)")
 
 	_ = c.RegisterFlagCompletionFunc("sort-by", func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {

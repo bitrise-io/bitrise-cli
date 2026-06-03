@@ -21,6 +21,16 @@ import (
 
 const watchDivider = "─────────────────────────────────────────────────────────"
 
+// writeDetachNotice writes the standard Ctrl-C detach message to w. resumeCmd
+// is the command (without the "bitrise-cli " prefix) the user can run to
+// resume. Shared by every wait/watch path so the wording stays consistent.
+func writeDetachNotice(w io.Writer, resumeCmd string) error {
+	ew := cmdutil.NewErrWriter(w)
+	ew.F("\nDetached — build is still running.\n")
+	ew.F("Use 'bitrise-cli %s' to resume.\n", resumeCmd)
+	return ew.Err
+}
+
 func renderBuildText(w io.Writer, b internalbuild.Build) error {
 	s := style.New(w)
 	ew := cmdutil.NewErrWriter(w)
@@ -101,39 +111,43 @@ func runWatch(cmd *cobra.Command, svc *internalbuild.Service, b internalbuild.Bu
 	}
 
 	stderr := cmd.ErrOrStderr()
+	quiet := cmdutil.IsQuiet(cmd)
 
-	headerEW := cmdutil.NewErrWriter(stderr)
-	headerEW.F("%s\n", buildWatchHeader(b))
-	headerEW.F("%s\n", watchDivider)
-	if headerEW.Err != nil {
-		return headerEW.Err
+	if !quiet {
+		headerEW := cmdutil.NewErrWriter(stderr)
+		headerEW.F("%s\n", buildWatchHeader(b))
+		headerEW.F("%s\n", watchDivider)
+		if headerEW.Err != nil {
+			return headerEW.Err
+		}
 	}
 
 	finalBuild, err := svc.Watch(cmd.Context(), b.AppSlug, b.Slug, logWriter, interval)
 	if errors.Is(err, context.Canceled) {
-		detachEW := cmdutil.NewErrWriter(stderr)
-		detachEW.F("\nDetached — build is still running.\n")
-		detachEW.F("Use 'bitrise-cli build watch %s' to resume streaming.\n", b.Slug)
-		return detachEW.Err
+		return writeDetachNotice(stderr, "build watch "+b.Slug)
 	}
 	if err != nil {
 		return err
 	}
 
 	if format == output.JSON {
-		return output.Render(cmd.OutOrStdout(), format, finalBuild, renderBuildText)
+		if err := output.Render(cmd.OutOrStdout(), format, finalBuild, renderBuildText); err != nil {
+			return err
+		}
+	} else if !quiet {
+		footerEW := cmdutil.NewErrWriter(stderr)
+		footerEW.F("\n%s\n", watchDivider)
+		footerEW.F("Build #%d finished: %s%s\n", finalBuild.BuildNumber, finalBuild.Status, buildElapsed(finalBuild))
+		if url := buildDetailURL(cmd, b); url != "" {
+			footerEW.F("→ %s\n", url)
+		}
+		if footerEW.Err != nil {
+			return footerEW.Err
+		}
 	}
 
-	footerEW := cmdutil.NewErrWriter(stderr)
-	footerEW.F("\n%s\n", watchDivider)
-	footerEW.F("Build #%d finished: %s%s\n", finalBuild.BuildNumber, finalBuild.Status, buildElapsed(finalBuild))
-	if url := buildDetailURL(cmd, b); url != "" {
-		footerEW.F("→ %s\n", url)
-	}
-	if footerEW.Err != nil {
-		return footerEW.Err
-	}
-
+	// The exit code reflects the build outcome in every mode, including
+	// --output json: stdout already carries the build record above.
 	if finalBuild.Status != "success" && finalBuild.Status != "aborted-with-success" {
 		cmdutil.SilenceRootErrors(cmd)
 		return fmt.Errorf("build %s", finalBuild.Status)
@@ -214,23 +228,22 @@ func runWatchTUI(cmd *cobra.Command, svc *internalbuild.Service, b internalbuild
 	// fm.finished is only true after watchDoneMsg arrived and was handled;
 	// fm.finalErr is context.Canceled when Watch itself observed the cancel.
 	if !fm.finished || errors.Is(fm.finalErr, context.Canceled) {
-		ew := cmdutil.NewErrWriter(stderr)
-		ew.F("Detached — build is still running.\n")
-		ew.F("Use 'bitrise-cli build watch %s' to resume streaming.\n", b.Slug)
-		return ew.Err
+		return writeDetachNotice(stderr, "build watch "+b.Slug)
 	}
 	if fm.finalErr != nil {
 		return fm.finalErr
 	}
 
 	final := fm.finalBuild
-	footerEW := cmdutil.NewErrWriter(stderr)
-	footerEW.F("Build #%d finished: %s%s\n", final.BuildNumber, final.Status, buildElapsed(final))
-	if url := buildDetailURL(cmd, b); url != "" {
-		footerEW.F("→ %s\n", url)
-	}
-	if footerEW.Err != nil {
-		return footerEW.Err
+	if !cmdutil.IsQuiet(cmd) {
+		footerEW := cmdutil.NewErrWriter(stderr)
+		footerEW.F("Build #%d finished: %s%s\n", final.BuildNumber, final.Status, buildElapsed(final))
+		if url := buildDetailURL(cmd, b); url != "" {
+			footerEW.F("→ %s\n", url)
+		}
+		if footerEW.Err != nil {
+			return footerEW.Err
+		}
 	}
 	if final.Status != "success" && final.Status != "aborted-with-success" {
 		cmdutil.SilenceRootErrors(cmd)

@@ -9,10 +9,10 @@ Create a new Bitrise account by email and password.
 Required flags:
   --email ADDRESS    the email address to register
   --username NAME    desired username (must be unique)
-
-Optional flags:
   --first-name N     first name on the account
   --last-name N      last name on the account
+
+Optional flags:
   --password-stdin   read the password from stdin instead of prompting
 
 Password input:
@@ -37,16 +37,16 @@ bitrise-cli user create [flags]
 ```
   bitrise-cli user create --email alice@example.com --username alice --first-name Alice --last-name L
   printf '%s' "$NEW_PASSWORD" | bitrise-cli user create \
-      --email alice@example.com --username alice --password-stdin --output json
+      --email alice@example.com --username alice --first-name Alice --last-name L --password-stdin --output json
 ```
 
 ### Options
 
 ```
       --email string        email address to register (required)
-      --first-name string   first name on the account
+      --first-name string   first name on the account (required)
   -h, --help                help for create
-      --last-name string    last name on the account
+      --last-name string    last name on the account (required)
       --password-stdin      read the password from stdin without prompting
       --username string     desired username (required)
 ```

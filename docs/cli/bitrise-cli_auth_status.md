@@ -9,7 +9,6 @@ Show whether an access token is configured and which source supplied it.
 Sources, in precedence order:
   env             BITRISE_TOKEN environment variable
   auth file       auth.yaml (set via 'bitrise-cli auth login')
-  legacy config   token field in config.yaml (set via 'config set token')
   none            no token configured
 
 ```

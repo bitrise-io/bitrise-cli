@@ -43,7 +43,7 @@ type AppsListOptions struct {
 	Next string
 	// Limit is the max items per page; the server default is 50.
 	Limit int
-	// Title filters by exact app title.
+	// Title filters apps by title.
 	Title string
 	// ProjectType filters by project type, e.g. "ios", "android".
 	ProjectType string

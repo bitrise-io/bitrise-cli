@@ -141,24 +141,24 @@ Optional flags:
 			}
 			finalBuild, err := svc.WaitForCompletion(cmd.Context(), b.AppSlug, b.Slug, interval)
 			if errors.Is(err, context.Canceled) {
-				detachEW := cmdutil.NewErrWriter(cmd.ErrOrStderr())
-				detachEW.F("\nDetached — build is still running.\n")
-				detachEW.F("Use 'bitrise-cli build watch %s' to resume.\n", b.Slug)
-				return detachEW.Err
+				return writeDetachNotice(cmd.ErrOrStderr(), "build watch "+b.Slug)
 			}
 			if err != nil {
 				return err
 			}
 			if format == output.JSON {
-				return output.Render(cmd.OutOrStdout(), format, finalBuild, renderBuildText)
-			}
-			if !cmdutil.IsQuiet(cmd) {
+				if err := output.Render(cmd.OutOrStdout(), format, finalBuild, renderBuildText); err != nil {
+					return err
+				}
+			} else if !cmdutil.IsQuiet(cmd) {
 				footerEW := cmdutil.NewErrWriter(cmd.ErrOrStderr())
 				footerEW.F("Build #%d finished: %s%s\n", finalBuild.BuildNumber, finalBuild.Status, buildElapsed(finalBuild))
 				if footerEW.Err != nil {
 					return footerEW.Err
 				}
 			}
+			// The exit code reflects the build outcome in every mode, including
+			// --output json: stdout already carries the build record above.
 			if finalBuild.Status != "success" && finalBuild.Status != "aborted-with-success" {
 				cmdutil.SilenceRootErrors(cmd)
 				return fmt.Errorf("build %s", finalBuild.Status)

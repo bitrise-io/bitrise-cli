@@ -37,3 +37,6 @@ go.work.sum
 
 # Claude
 .claude/
+
+# Internal scratch notes (not shipped)
+/tasks/

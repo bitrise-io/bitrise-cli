@@ -38,7 +38,6 @@ Auto-detection from the current git repo:
   --repo-url     git remote get-url origin
   --branch       git symbolic-ref --short HEAD (else "master")
   --title        last path segment of the repo URL (".git" stripped)
-  --provider     derived from the repo URL host (github.com → github, etc.)
 
 Workspace:
   --workspace is required if you belong to multiple workspaces.

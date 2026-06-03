@@ -15,8 +15,10 @@ Required flags:
 Argument:
   BUILD_SLUG         the unique slug of the build
 
-Note:
-  --output is ignored — logs are always streamed as raw text.
+Output:
+  human (default)  logs stream as raw text; a header/footer frame them on stderr.
+  json             logs stream to stderr and the final build record is written
+                   to stdout, so 'build watch ... -o json' is pipeable.
 
 ```
 bitrise-cli build watch BUILD_SLUG [flags]
@@ -27,6 +29,7 @@ bitrise-cli build watch BUILD_SLUG [flags]
 ```
   bitrise-cli build watch --app my-app-slug <build-slug>
   bitrise-cli build watch --app my-app-slug <build-slug> --interval 5s
+  bitrise-cli build watch --app my-app-slug <build-slug> --output json
 ```
 
 ### Options

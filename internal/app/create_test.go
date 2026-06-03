@@ -215,13 +215,32 @@ func TestResolveProvider_DefaultsToCustom(t *testing.T) {
 }
 
 func TestConfigIDForProjectType(t *testing.T) {
+	// Pins the full project-type → config_id mapping. The expected values are
+	// the server presets from bitrise-website's custom_config.yml (see the
+	// doc comment on configIDForProjectType); any change here should be a
+	// reviewed, intentional diff checked against that source.
 	cases := map[string]string{
-		"":             "other-config",
-		"other":        "other-config",
-		"android":      "default-android-config",
-		"ios":          "default-ios-config",
-		"react-native": "default-react-native-config",
-		"unknown":      "other-config",
+		"android":              "default-android-config",
+		"cordova":              "default-cordova-config",
+		"fastlane":             "default-fastlane-ios-config",
+		"flutter":              "flutter-config-test-ios-android-web-0",
+		"ionic":                "default-ionic-config",
+		"ios":                  "default-ios-config",
+		"java":                 "default-java-gradle-config",
+		"kotlin-multiplatform": "default-kotlin-multiplatform-config",
+		"macos":                "default-macos-config",
+		"node-js":              "default-node-js-npm-config",
+		"python":               "default-python-pip-config",
+		"react-native":         "default-react-native-config",
+		"ruby":                 "default-ruby-config",
+		// Fallbacks: empty, unmapped, and unknown values all yield the
+		// server's omitted-field default. "xamarin" is advertised by the
+		// --project-type completion list but has no preset, so it falls
+		// through here too — kept explicit so that gap stays visible.
+		"":        "other-config",
+		"other":   "other-config",
+		"xamarin": "other-config",
+		"unknown": "other-config",
 	}
 	for input, want := range cases {
 		if got := configIDForProjectType(input); got != want {

@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 	"time"
 )
@@ -280,7 +281,13 @@ func (c *Client) BuildLog(ctx context.Context, appSlug, buildSlug string, w io.W
 		return manifest, nil
 	}
 	// In-progress build with no archive yet: write the chunks we have.
-	for _, chunk := range manifest.LogChunks {
+	// Sort by position first — the API collects chunks from parallel
+	// producers and does not guarantee order even within a single manifest
+	// response (Service.Watch reorders for the same reason). Clone so the
+	// returned manifest keeps the server's original ordering.
+	chunks := slices.Clone(manifest.LogChunks)
+	slices.SortFunc(chunks, func(a, b BuildLogChunk) int { return a.Position - b.Position })
+	for _, chunk := range chunks {
 		if _, err := io.WriteString(w, chunk.Chunk); err != nil {
 			return manifest, fmt.Errorf("write log chunk: %w", err)
 		}
@@ -296,7 +303,7 @@ func (c *Client) streamRawLog(ctx context.Context, rawURL string, w io.Writer) e
 	if err != nil {
 		return fmt.Errorf("build log URL request: %w", err)
 	}
-	resp, err := c.httpClient.Do(req) //nolint:gosec // URL comes from the API's expiring_raw_log_url field, not user input
+	resp, err := c.streamHTTPClient().Do(req) //nolint:gosec // URL comes from the API's expiring_raw_log_url field, not user input
 	if err != nil {
 		return fmt.Errorf("fetch raw log: %w", err)
 	}
