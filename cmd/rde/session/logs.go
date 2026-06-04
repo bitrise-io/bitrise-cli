@@ -17,11 +17,15 @@ import (
 	internalrde "github.com/bitrise-io/bitrise-cli/internal/rde"
 )
 
+// followRetryInterval is how long --follow waits before retrying while the
+// stage hasn't produced any logs yet. A package var so tests can shorten it;
+// not exposed as a flag to keep the command surface small.
+var followRetryInterval = 3 * time.Second
+
 func newLogsCmd() *cobra.Command {
 	var (
-		stage         string
-		follow        bool
-		retryInterval time.Duration
+		stage  string
+		follow bool
 	)
 
 	c := &cobra.Command{
@@ -90,7 +94,7 @@ is rejected (the feed is plain text, not a single object).`,
 			}
 
 			if follow {
-				return runFollow(ctx, cmd, svc, workspaceID, sessionID, stage, retryInterval, emit)
+				return runFollow(ctx, cmd, svc, workspaceID, sessionID, stage, emit)
 			}
 			return runSnapshot(ctx, cmd, svc, workspaceID, sessionID, stage, emit)
 		},
@@ -98,7 +102,6 @@ is rejected (the feed is plain text, not a single object).`,
 
 	c.Flags().StringVar(&stage, "stage", "", "which logs to show: warmup or startup (required)")
 	c.Flags().BoolVarP(&follow, "follow", "f", false, "keep streaming until Ctrl-C, waiting for the stage to start if needed")
-	c.Flags().DurationVar(&retryInterval, "retry-interval", 3*time.Second, "poll interval while waiting for the stage to start (only with --follow)")
 	_ = c.MarkFlagRequired("stage")
 
 	_ = c.RegisterFlagCompletionFunc("stage", func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
@@ -128,14 +131,11 @@ func runSnapshot(ctx context.Context, cmd *cobra.Command, svc *internalrde.Servi
 }
 
 // runFollow streams the stage log live until Ctrl-C or EOF. If the stage
-// hasn't started producing logs yet (404), it waits retryInterval and retries
-// — the dashboard does the same. The retry is safe because a 404 only ever
-// comes back pre-stream (nothing has been printed yet), so it can't duplicate
-// already-streamed output.
-func runFollow(ctx context.Context, cmd *cobra.Command, svc *internalrde.Service, workspaceID, sessionID, stage string, retryInterval time.Duration, emit func(string) error) error {
-	if retryInterval <= 0 {
-		retryInterval = 3 * time.Second
-	}
+// hasn't started producing logs yet (404), it waits followRetryInterval and
+// retries — the dashboard does the same. The retry is safe because a 404 only
+// ever comes back pre-stream (nothing has been printed yet), so it can't
+// duplicate already-streamed output.
+func runFollow(ctx context.Context, cmd *cobra.Command, svc *internalrde.Service, workspaceID, sessionID, stage string, emit func(string) error) error {
 	if !cmdutil.IsQuiet(cmd) {
 		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Streaming %s logs for session %s — Ctrl-C to stop…\n", stage, sessionID)
 	}
@@ -148,7 +148,7 @@ func runFollow(ctx context.Context, cmd *cobra.Command, svc *internalrde.Service
 			select {
 			case <-ctx.Done():
 				return nil
-			case <-time.After(retryInterval):
+			case <-time.After(followRetryInterval):
 				continue
 			}
 		}

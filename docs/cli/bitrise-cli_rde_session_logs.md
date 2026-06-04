@@ -40,10 +40,9 @@ bitrise-cli rde session logs SESSION_ID --stage warmup|startup [flags]
 ### Options
 
 ```
-  -f, --follow                    keep streaming until Ctrl-C, waiting for the stage to start if needed
-  -h, --help                      help for logs
-      --retry-interval duration   poll interval while waiting for the stage to start (only with --follow) (default 3s)
-      --stage string              which logs to show: warmup or startup (required)
+  -f, --follow         keep streaming until Ctrl-C, waiting for the stage to start if needed
+  -h, --help           help for logs
+      --stage string   which logs to show: warmup or startup (required)
 ```
 
 ### Options inherited from parent commands

@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -91,8 +92,12 @@ func TestLogsCmd_FollowRetriesPast404ThenStreams(t *testing.T) {
 	}))
 	defer srv.Close()
 
+	old := followRetryInterval
+	followRetryInterval = time.Millisecond
+	defer func() { followRetryInterval = old }()
+
 	stdout, stderr, err := run(t, logsCmd(), srv.URL, "ws-1",
-		[]string{testSessionID, "--stage", "startup", "--follow", "--retry-interval", "1ms"}, output.Human)
+		[]string{testSessionID, "--stage", "startup", "--follow"}, output.Human)
 	if err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
