@@ -5,17 +5,20 @@ Print a session's warmup or startup logs
 ### Synopsis
 
 Print the warmup or startup script logs for a session — useful for debugging a
-session stuck provisioning or one that came up failed.
+session stuck provisioning or one that came up failed. The stream replays the
+whole stage log from the start on every connect.
 
-By default this prints the whole stage log so far and exits when the stage
-finishes (the log stream replays from the start every time you connect). Pass
---follow to keep streaming until you hit Ctrl-C, waiting for the stage to begin
-if it hasn't produced output yet.
+Note: the backend does not currently signal end-of-log, so the command keeps
+running — even after the script has finished — until you stop it with Ctrl-C.
+This applies to both modes; redirect or pipe stdout and Ctrl-C once output
+stops.
 
   --stage    which script's logs to show: warmup or startup (required). warmup
              runs once at session creation; startup runs on every session
              start/restart.
-  --follow   keep streaming live; wait for the stage to start if needed.
+  --follow   if the stage hasn't produced any logs yet, wait for it to start
+             rather than erroring. Without --follow the command errors right
+             away when logs aren't available yet.
 
 --output is ignored — logs stream as raw text. Pipe or redirect as needed;
 diagnostics go to stderr so a redirect captures only log text. --output json
