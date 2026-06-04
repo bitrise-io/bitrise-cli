@@ -80,6 +80,14 @@ workflows:
                 make lint
 
       - script@1:
+          title: Check generated CLI docs
+          inputs:
+            - content: |
+                #!/usr/bin/env bash
+                set -xeuo pipefail
+                make docs-check
+
+      - script@1:
           title: Run tests
           inputs:
             - content: |
@@ -102,13 +110,25 @@ workflows:
 
       - deploy-to-bitrise-io@2: {}
 
-  # ── Release build ─────────────────────────────────────────────────────────
-  # Run on the main branch or tags.
-  # Cross-compiles binaries for all supported platforms and uploads them.
-  build:
+  # ── Release ───────────────────────────────────────────────────────────────
+  # Triggered by semver tag pushes (vX.Y.Z). GoReleaser cross-compiles every
+  # supported platform (.goreleaser.yaml is the source of truth) and publishes
+  # a *draft* GitHub release with archives + checksums; a human reviews the
+  # generated notes and clicks publish.
+  release:
+    triggers:
+      tag:
+        - name: "v*.*.*"
+    envs:
+      # GoReleaser reads GITHUB_TOKEN to create the release; the token needs
+      # contents:write on this repo. Configure it as a secret on the app.
+      - GITHUB_TOKEN: $GIT_BOT_USER_ACCESS_TOKEN
     steps:
       - activate-ssh-key@4: {}
-      - git-clone@8: {}
+      - git-clone@8:
+          inputs:
+            # GoReleaser resolves the version from the checked-out tag.
+            - fetch_tags: "yes"
 
       - script@1:
           title: Set env vars for Go caching
@@ -126,45 +146,60 @@ workflows:
                 go-cache-{{ .Workflow }}-{{ .OS }}-{{ .Arch }}
 
       - script@1:
-          title: Cross-compile binaries
+          title: GoReleaser (build all platforms + draft GitHub release)
           inputs:
             - content: |
                 #!/usr/bin/env bash
                 set -xeuo pipefail
+                make release-ci
 
-                APP_NAME="bitrise-cli"
-                VERSION="${BITRISE_GIT_TAG:-$(git rev-parse --short HEAD)}"
-                LDFLAGS="-s -w -X github.com/bitrise-io/bitrise-cli/cmd.version=${VERSION}"
-                if [ -n "${BITRISE_BUILD_URL:-}" ]; then
-                  OUT_DIR="${BITRISE_DEPLOY_DIR}"
-                else
-                  OUT_DIR="${BITRISE_SOURCE_DIR}/.bin"
+      - save-cache@1:
+          inputs:
+            - key: go-cache-{{ .Workflow }}-{{ .OS }}-{{ .Arch }}-{{ checksum "go.sum" }}
+            - paths: |-
+                $GO_BUILD_CACHE_PATH
+                $GO_MOD_CACHE_PATH
+            - is_key_unique: 'true'
+
+  # ── Snapshot build (manual) ───────────────────────────────────────────────
+  # No triggers — start it from the Bitrise UI when you need ad-hoc binaries
+  # for every platform without tagging or publishing anything. Uses the same
+  # GoReleaser config as the real release; artifacts land on the build's
+  # Artifacts tab.
+  snapshot:
+    steps:
+      - activate-ssh-key@4: {}
+      - git-clone@8:
+          inputs:
+            - fetch_tags: "yes"
+
+      - script@1:
+          title: Set env vars for Go caching
+          inputs:
+            - content: |
+                #!/usr/bin/env bash
+                set -xeuo pipefail
+                envman add --key GO_BUILD_CACHE_PATH --value "$(go env GOCACHE)"
+                envman add --key GO_MOD_CACHE_PATH --value "$(go env GOMODCACHE)"
+
+      - restore-cache@3:
+          inputs:
+            - key: |
+                go-cache-{{ .Workflow }}-{{ .OS }}-{{ .Arch }}-{{ checksum "go.sum" }}
+                go-cache-{{ .Workflow }}-{{ .OS }}-{{ .Arch }}
+
+      - script@1:
+          title: GoReleaser snapshot (build all platforms, no publish)
+          inputs:
+            - content: |
+                #!/usr/bin/env bash
+                set -xeuo pipefail
+                make release-snapshot
+                # Stage the archives + checksums for the Artifacts tab.
+                if [ -n "${BITRISE_DEPLOY_DIR:-}" ]; then
+                  cp dist/*.tar.gz dist/*.zip dist/checksums.txt "$BITRISE_DEPLOY_DIR"/ 2>/dev/null || true
+                  ls -lh "$BITRISE_DEPLOY_DIR"
                 fi
-                mkdir -p "$OUT_DIR"
-
-                platforms=(
-                  "linux/amd64"
-                  "darwin/amd64"
-                  "darwin/arm64"
-                  "windows/amd64"
-                )
-
-                for platform in "${platforms[@]}"; do
-                  GOOS="${platform%/*}"
-                  GOARCH="${platform#*/}"
-                  out="${OUT_DIR}/${APP_NAME}-${VERSION}-${GOOS}-${GOARCH}"
-                  [ "$GOOS" = "windows" ] && out="${out}.exe"
-
-                  echo "Building ${GOOS}/${GOARCH}..."
-                  GOOS="$GOOS" GOARCH="$GOARCH" go build \
-                    -trimpath \
-                    -ldflags="$LDFLAGS" \
-                    -o "$out" \
-                    .
-                done
-
-                echo "Built binaries:"
-                ls -lh "$OUT_DIR"
 
       - save-cache@1:
           inputs:

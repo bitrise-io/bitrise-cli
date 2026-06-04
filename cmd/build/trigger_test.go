@@ -190,6 +190,46 @@ func TestTriggerCmd_Wait_FailedBuildReturnsError(t *testing.T) {
 	}
 }
 
+func TestTriggerCmd_Wait_FailedBuildJSONWritesRecordAndErrors(t *testing.T) {
+	// Regression: with --output json a failed build must still write the build
+	// record to stdout AND return a non-zero error so CI scripts can gate on it.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/apps/my-app/builds" && r.Method == http.MethodPost:
+			w.WriteHeader(http.StatusCreated)
+			_, _ = io.WriteString(w, `{"build_slug":"b-1","build_number":5}`)
+		case r.URL.Path == "/apps/my-app/builds/b-1":
+			_, _ = io.WriteString(w, `{"data":{"slug":"b-1","build_number":5,"status":2,"triggered_at":"2026-05-06T10:00:00Z"}}`)
+		}
+	}))
+	defer srv.Close()
+
+	c := newTriggerCmd()
+	c.SilenceUsage = true // production root sets this; detached test cmd must too
+	stdout := &bytes.Buffer{}
+	c.SetOut(stdout)
+	c.SetErr(io.Discard)
+	c.SetArgs([]string{"--workflow", "primary", "--wait", "--interval", "1ms"})
+	c.SetContext(config.WithResolved(context.Background(), config.Resolved{
+		APIBaseURL: srv.URL,
+		Token:      "tok",
+		Output:     output.JSON,
+		AppSlug:    "my-app",
+	}))
+
+	err := c.Execute()
+	if err == nil || !strings.Contains(err.Error(), "failed") {
+		t.Errorf("expected 'failed' error in JSON mode, got %v", err)
+	}
+	var rec map[string]any
+	if jerr := json.Unmarshal(stdout.Bytes(), &rec); jerr != nil {
+		t.Fatalf("stdout not valid JSON: %v\n%s", jerr, stdout.String())
+	}
+	if rec["slug"] != "b-1" {
+		t.Errorf("expected build record on stdout, got %v", rec)
+	}
+}
+
 func TestTriggerCmd_DefaultsBranchToMain(t *testing.T) {
 	var gotBranch string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

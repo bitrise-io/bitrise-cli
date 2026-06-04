@@ -66,11 +66,13 @@ func newPurrCmd() *cobra.Command {
 		Long: `Visit Purr Request — the rocket-powered cat that's always here to help you.
 
 The mascot animates with a swinging tail. The animation runs for --duration
-(default 8s) or until Ctrl-C; --once disables animation and prints a single
-frame. When stdout is not a terminal (piped output, log file) the command
-always prints once and exits regardless of --once.`,
+(default 8s) or until Ctrl-C, advancing one frame every --interval (default
+250ms); --once disables animation and prints a single frame. When stdout is
+not a terminal (piped output, log file) the command always prints once and
+exits regardless of --once.`,
 		Example: `  bitrise-cli purr
   bitrise-cli purr --duration 30s
+  bitrise-cli purr --interval 100ms
   bitrise-cli purr --once`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return runPurr(cmd.Context(), cmd.InOrStdin(), cmd.OutOrStdout(), once, duration, interval)

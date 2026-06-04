@@ -9,7 +9,13 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 )
+
+// defaultTimeout caps a single API request (connect through full body read).
+// It applies to every ordinary call; the long-lived log-streaming path opts
+// out via streamHTTPClient and relies on the caller's context instead.
+const defaultTimeout = 30 * time.Second
 
 // Client is an authenticated HTTP client for the Bitrise API.
 type Client struct {
@@ -31,7 +37,7 @@ func New(baseURL, token string, opts ...Option) *Client {
 	c := &Client{
 		baseURL:    baseURL,
 		token:      token,
-		httpClient: &http.Client{},
+		httpClient: &http.Client{Timeout: defaultTimeout},
 	}
 	for _, opt := range opts {
 		opt(c)
@@ -118,6 +124,19 @@ func (c *Client) newRequest(ctx context.Context, path string, params url.Values)
 	req.Header.Set("Authorization", "token "+c.token)
 	req.Header.Set("Accept", "application/json")
 	return req, nil
+}
+
+// streamHTTPClient returns a client for long-lived streaming downloads (e.g.
+// fetching a full build log). It shares the configured client's transport but
+// drops the overall request timeout: streaming a large log legitimately takes
+// longer than defaultTimeout, so cancellation is left to the caller's context.
+func (c *Client) streamHTTPClient() *http.Client {
+	return &http.Client{
+		Transport:     c.httpClient.Transport,
+		CheckRedirect: c.httpClient.CheckRedirect,
+		Jar:           c.httpClient.Jar,
+		// Timeout intentionally left zero — see doc comment.
+	}
 }
 
 func (c *Client) do(req *http.Request) ([]byte, error) {

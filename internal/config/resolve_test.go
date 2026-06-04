@@ -14,8 +14,10 @@ func clearEnv(t *testing.T) {
 	t.Helper()
 	t.Setenv(EnvOutput, "")
 	t.Setenv(EnvAppSlug, "")
+	t.Setenv(EnvWorkspaceID, "")
 	t.Setenv(EnvToken, "")
 	t.Setenv(EnvAPIBaseURL, "")
+	t.Setenv(EnvRDEAPIBaseURL, "")
 	t.Setenv(EnvWebBaseURL, "")
 	t.Setenv(EnvTheme, "")
 }
@@ -32,8 +34,55 @@ func TestResolve_DefaultsWhenNothingSet(t *testing.T) {
 	if r.APIBaseURL != DefaultAPIBaseURL {
 		t.Errorf("APIBaseURL = %q, want %q", r.APIBaseURL, DefaultAPIBaseURL)
 	}
+	if r.RDEAPIBaseURL != DefaultRDEAPIBaseURL {
+		t.Errorf("RDEAPIBaseURL = %q, want %q", r.RDEAPIBaseURL, DefaultRDEAPIBaseURL)
+	}
 	if r.Token != "" || r.AppSlug != "" {
 		t.Errorf("expected empty Token/AppSlug, got %+v", r)
+	}
+}
+
+func TestResolve_WorkspaceIDFallsBackToOrgSlug(t *testing.T) {
+	clearEnv(t)
+
+	// With no env var, WorkspaceID falls back to default_workspace_slug.
+	r, err := Resolve(Config{OrgSlug: "acme"}, Config{}, auth.Auth{}, "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.WorkspaceID != "acme" {
+		t.Errorf("WorkspaceID = %q, want acme (fallback to org slug)", r.WorkspaceID)
+	}
+
+	// BITRISE_WORKSPACE_ID wins over the org slug.
+	t.Setenv(EnvWorkspaceID, "ws-env")
+	r, err = Resolve(Config{OrgSlug: "acme"}, Config{}, auth.Auth{}, "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.WorkspaceID != "ws-env" {
+		t.Errorf("WorkspaceID = %q, want ws-env (env wins)", r.WorkspaceID)
+	}
+}
+
+func TestResolve_RDEAPIBaseURLPrecedence(t *testing.T) {
+	clearEnv(t)
+
+	r, err := Resolve(Config{RDEAPIBaseURL: "https://global.rde"}, Config{RDEAPIBaseURL: "https://dir.rde"}, auth.Auth{}, "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.RDEAPIBaseURL != "https://dir.rde" {
+		t.Errorf("RDEAPIBaseURL = %q, want dir value", r.RDEAPIBaseURL)
+	}
+
+	t.Setenv(EnvRDEAPIBaseURL, "https://env.rde")
+	r, err = Resolve(Config{RDEAPIBaseURL: "https://global.rde"}, Config{RDEAPIBaseURL: "https://dir.rde"}, auth.Auth{}, "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.RDEAPIBaseURL != "https://env.rde" {
+		t.Errorf("RDEAPIBaseURL = %q, want env value", r.RDEAPIBaseURL)
 	}
 }
 

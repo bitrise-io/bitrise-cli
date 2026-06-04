@@ -44,6 +44,34 @@ func TestLogCmd_StreamsLogChunks(t *testing.T) {
 	}
 }
 
+func TestLogCmd_OrdersOutOfPositionChunks(t *testing.T) {
+	// The API may return in-progress log chunks out of position order; the
+	// CLI must sort them so the log reads top-to-bottom.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, `{"is_archived":false,"log_chunks":[{"chunk":"two\n","position":1},{"chunk":"zero\n","position":0},{"chunk":"three\n","position":3},{"chunk":"one\n","position":2}]}`)
+	}))
+	defer srv.Close()
+
+	c := newLogCmd()
+	stdout := &bytes.Buffer{}
+	c.SetOut(stdout)
+	c.SetErr(io.Discard)
+	c.SetArgs([]string{"b-1"})
+	c.SetContext(config.WithResolved(context.Background(), config.Resolved{
+		APIBaseURL: srv.URL,
+		Token:      "tok",
+		Output:     output.Human,
+		AppSlug:    "my-app",
+	}))
+
+	if err := c.Execute(); err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if got, want := stdout.String(), "zero\ntwo\none\nthree\n"; got != want {
+		t.Errorf("chunks not ordered by position:\n got %q\nwant %q", got, want)
+	}
+}
+
 func TestLogCmd_WaitPolls_ThenPrintsLog(t *testing.T) {
 	// First View call returns in-progress; second returns success.
 	var viewCalls atomic.Int32

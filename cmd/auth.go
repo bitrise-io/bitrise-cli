@@ -18,10 +18,10 @@ import (
 
 // newAuthCmd returns the `bitrise-cli auth` parent command and its subcommands.
 //
-// The auth surface is the recommended way to set Bitrise credentials. The
-// older `config set token` flow continues to work for backward compatibility,
-// but `auth login` writes to a separate auth.yaml so credentials live apart
-// from preferences.
+// The auth surface is the way to set Bitrise credentials: `auth login` writes
+// the token to a separate auth.yaml so credentials live apart from preferences
+// in config.yaml. A token can also be supplied via the BITRISE_TOKEN env var,
+// which takes precedence over the saved file.
 func newAuthCmd() *cobra.Command {
 	c := &cobra.Command{
 		Use:   "auth",
@@ -86,6 +86,9 @@ echoed in any output (use 'auth status' to verify, 'auth logout' to clear).`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if emailLogin != "" {
 				return runEmailLogin(cmd, emailLogin, passwordStdin)
+			}
+			if passwordStdin {
+				return fmt.Errorf("--password-stdin requires --email (token login reads the token, not a password)")
 			}
 			return runTokenLogin(cmd, withToken)
 		},
@@ -189,7 +192,6 @@ func newAuthStatusCmd() *cobra.Command {
 Sources, in precedence order:
   env             BITRISE_TOKEN environment variable
   auth file       auth.yaml (set via 'bitrise-cli auth login')
-  legacy config   token field in config.yaml (set via 'config set token')
   none            no token configured`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			r := resolvedFromCmd(cmd)
@@ -219,12 +221,9 @@ func tokenSource(resolvedToken string) string {
 	if os.Getenv(config.EnvToken) != "" {
 		return "env (" + config.EnvToken + ")"
 	}
-	// We can't distinguish auth.yaml from legacy config.yaml from Resolved
-	// alone. Re-read auth.yaml; if it has a token, that's the source.
-	if a, err := auth.Load(); err == nil && a.Token != "" {
-		return "auth file"
-	}
-	return "legacy config (config.yaml)"
+	// A non-env token can only have come from auth.yaml — it's the sole
+	// persisted source (config.yaml holds no token).
+	return "auth file"
 }
 
 func renderAuthStatusHuman(w io.Writer, st authStatus) error {

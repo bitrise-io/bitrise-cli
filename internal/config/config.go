@@ -26,26 +26,28 @@ import (
 // Known config keys. These names are part of the user-facing CLI
 // contract — `bitrise-cli config set <key> <value>` references them directly.
 const (
-	KeyOutput     = "output"
-	KeyAppSlug    = "app_slug"
-	KeyOrgSlug    = "default_organization_slug"
-	KeyAPIBaseURL = "api_base_url"
-	KeyWebBaseURL = "web_base_url"
-	KeyTheme      = "theme"
+	KeyOutput        = "output"
+	KeyAppSlug       = "app_slug"
+	KeyOrgSlug       = "default_workspace_slug"
+	KeyAPIBaseURL    = "api_base_url"
+	KeyRDEAPIBaseURL = "rde_api_base_url"
+	KeyWebBaseURL    = "web_base_url"
+	KeyTheme         = "theme"
 )
 
 // Keys is the registered list of config keys, used for validation and help.
-var Keys = []string{KeyOutput, KeyAppSlug, KeyOrgSlug, KeyAPIBaseURL, KeyWebBaseURL, KeyTheme}
+var Keys = []string{KeyOutput, KeyAppSlug, KeyOrgSlug, KeyAPIBaseURL, KeyRDEAPIBaseURL, KeyWebBaseURL, KeyTheme}
 
 // Config is the on-disk shape. Fields use omitempty so unset values
 // don't appear in the saved YAML.
 type Config struct {
-	Output     string `yaml:"output,omitempty"`
-	AppSlug    string `yaml:"app_slug,omitempty"`
-	OrgSlug    string `yaml:"default_organization_slug,omitempty"`
-	APIBaseURL string `yaml:"api_base_url,omitempty"`
-	WebBaseURL string `yaml:"web_base_url,omitempty"`
-	Theme      string `yaml:"theme,omitempty"`
+	Output        string `yaml:"output,omitempty"`
+	AppSlug       string `yaml:"app_slug,omitempty"`
+	OrgSlug       string `yaml:"default_workspace_slug,omitempty"`
+	APIBaseURL    string `yaml:"api_base_url,omitempty"`
+	RDEAPIBaseURL string `yaml:"rde_api_base_url,omitempty"`
+	WebBaseURL    string `yaml:"web_base_url,omitempty"`
+	Theme         string `yaml:"theme,omitempty"`
 }
 
 // DirFileName is the file looked up in the working directory and its
@@ -169,6 +171,12 @@ func (c *Config) Validate() error {
 			return fmt.Errorf("field %q: not a valid URL: %s", KeyAPIBaseURL, c.APIBaseURL)
 		}
 	}
+	if c.RDEAPIBaseURL != "" {
+		u, err := url.Parse(c.RDEAPIBaseURL)
+		if err != nil || u.Scheme == "" || u.Host == "" {
+			return fmt.Errorf("field %q: not a valid URL: %s", KeyRDEAPIBaseURL, c.RDEAPIBaseURL)
+		}
+	}
 	if c.WebBaseURL != "" {
 		u, err := url.Parse(c.WebBaseURL)
 		if err != nil || u.Scheme == "" || u.Host == "" {
@@ -194,6 +202,8 @@ func (c *Config) Get(key string) (string, error) {
 		return c.OrgSlug, nil
 	case KeyAPIBaseURL:
 		return c.APIBaseURL, nil
+	case KeyRDEAPIBaseURL:
+		return c.RDEAPIBaseURL, nil
 	case KeyWebBaseURL:
 		return c.WebBaseURL, nil
 	case KeyTheme:
@@ -216,6 +226,8 @@ func (c *Config) Set(key, value string) error {
 		next.OrgSlug = value
 	case KeyAPIBaseURL:
 		next.APIBaseURL = value
+	case KeyRDEAPIBaseURL:
+		next.RDEAPIBaseURL = value
 	case KeyWebBaseURL:
 		next.WebBaseURL = value
 	case KeyTheme:

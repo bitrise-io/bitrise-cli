@@ -2,28 +2,28 @@
 
 ## REQUIRED READING — every session, before any change
 
-**All sessions must follow the Bitrise CLI Patterns Guide:**
-
-https://bitrise.atlassian.net/wiki/x/EoBwKQE
+**All sessions must follow the Bitrise CLI patterns guide** — the team's
+internal research doc on CLI conventions, cross-referenced against `gh`,
+`glab`, `bk`, `gcloud`, `aws`, `heroku`, [clig.dev](https://clig.dev/), and the
+[Heroku CLI Style Guide](https://devcenter.heroku.com/articles/cli-style-guide).
+(Bitrise maintainers: it lives in the team Confluence space.)
 
 That doc is the source of truth for CLI conventions: command structure,
 noun/verb naming, output formats, flag conventions, config precedence, help
 format, stdout/stderr discipline, exit codes. Re-read it before changing any
 user-facing surface (flags, command names, error messages, help text) or
 adding new commands. If a proposed change conflicts with the guide, raise
-the conflict — don't go around it.
-
-Project-scope (which P-priorities are in flight right now):
-https://bitrise.atlassian.net/wiki/spaces/~7120208440da8e0559401d8ca71c0dd078a47f/pages/4990697487/BR+Proj+Scope
+the conflict — don't go around it. The locked-in conventions below capture the
+guide's decisions that this codebase depends on; when the guide isn't handy,
+mirror what `gh` does — it's the closest-spirit reference CLI for our use case.
 
 ## What this is
 
-`bitrise-cli` is a new CLI for Bitrise platform resources (builds, apps,
-workflows). It is currently in **stub mode** — `cmd/` handlers go through
-service stubs in `internal/build` and `internal/app` that return canned
-data. The HTTP client in `bitriseapi/` exists (`Me()` works) but is not
-wired into any command yet. Don't add real API calls without confirming
-scope first.
+`bitrise-cli` is a CLI for Bitrise platform resources (builds, apps,
+workflows). `cmd/` handlers call into service types in `internal/build`,
+`internal/app`, etc., which in turn call the real Bitrise API through the
+HTTP client in `bitriseapi/`. The layering (below) is strict: keep HTTP and
+business logic out of `cmd/`.
 
 The canonical binary name is `bitrise-cli`. `br` is documented as an
 optional shell alias / symlink, NOT shipped as the binary name. The
@@ -35,17 +35,17 @@ do not rename the binary to `br` without a team decision.
 ```
 cmd/                 cobra presentation only: flag parsing, output formatting,
                      calling into services. NO business logic, NO HTTP.
-internal/build       service stubs for build operations
-internal/app         service stubs for app + workflow operations
+internal/build       service layer for build operations
+internal/app         service layer for app + workflow operations
 internal/auth        Auth file (auth.yaml): the access token only
 internal/config      Config + Path/Load/Save, LoadDir, Resolve, ctx helpers
 internal/output      Format + generic Render; Human and JSON formats
-bitriseapi/          HTTP client (existing). Not yet called from cmd handlers.
+bitriseapi/          HTTP client; called by the internal services.
 ```
 
 cmd handlers do exactly: parse flags → call service method → render result.
-When wiring real API calls, the cmd layer doesn't change — only the
-internal services gain a `*bitriseapi.Client`.
+The services hold a `*bitriseapi.Client` and own all HTTP/business logic, so
+new commands extend the services without touching the cmd layer's shape.
 
 ## Locked-in conventions (per the patterns guide)
 
@@ -90,12 +90,9 @@ These are listed in the patterns guide as standard features but are
 intentionally out of scope right now. Don't reopen the discussion as part
 of an unrelated change:
 
-- `--web` flag (open in dashboard) — needs real URLs first
 - `bitrise-cli api` raw HTTP wrapper
 - OAuth login flow (current `auth login` is token-paste only, no OAuth)
 - `--json fields` projection + `--jq` expression
-- Color support + `NO_COLOR`/`FORCE_COLOR`
-- `--watch` / `--wait` (build streaming)
 - `--dry-run` for mutating commands
 - Workspace concept (`workspace use`, `--workspace`)
 - Confirmation prompts on destructive ops (no destructive ops exist yet)
@@ -119,6 +116,10 @@ Prefer the `make` targets — they're the source of truth and also what CI runs:
 - `make lint` — runs golangci-lint via `go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@<pinned-version>`. Version is pinned in the `Makefile`; no separate install step needed. The compiled binary is cached in `GOCACHE`, so subsequent runs are fast.
 - `make lint-fix` — same as `make lint` but applies auto-fixes (`--fix`).
 - `make test` — `go test -race -count=1 -timeout=5m ./...`
+- `make docs` — regenerate `docs/cli/` (markdown reference, one file per
+  command, rendered from the cobra command tree via `tools/gendocs`).
+  **Run this whenever a command, flag, or help text changes** — CI runs
+  `make docs-check` and fails if the committed files drift.
 - Run the full quality gate via `bitrise run test`
 - When adding tests, put them in the same package as the file under test
 - `go.mod` is at module path `github.com/bitrise-io/bitrise-cli`
@@ -152,17 +153,41 @@ the return. The linter will reject it every time.
 
 ## Versioning hooks
 
-`cmd.version` and `cmd.commit` are package-level `var`s so CI can inject
-real values via `-ldflags`:
+`cmd.version`, `cmd.commit`, and `cmd.buildNumber` are package-level `var`s
+so CI can inject real values via `-ldflags`:
 
 ```
 go build -ldflags "-s -w \
                   -X github.com/bitrise-io/bitrise-cli/cmd.version=X.Y.Z \
-                  -X github.com/bitrise-io/bitrise-cli/cmd.commit=$GIT_SHA"
+                  -X github.com/bitrise-io/bitrise-cli/cmd.commit=$GIT_SHA \
+                  -X github.com/bitrise-io/bitrise-cli/cmd.buildNumber=$BUILD_NO"
 ```
+
+`buildNumber` is the CI build number (from `$BITRISE_BUILD_NUMBER`, injected
+by the release pipeline) so a published binary can be traced back to the
+build that produced it. It's empty for dev builds and omitted from `version`
+output when empty.
 
 When ldflags aren't set, `runtime/debug.ReadBuildInfo()` fills in
 `vcs.revision` and `vcs.time` so `bitrise-cli version` still has commit info.
+
+## Releasing
+
+Releases are tag-triggered: push a semver tag (`vX.Y.Z`) and the `release`
+workflow in `bitrise.yml` runs GoReleaser, which cross-compiles every
+supported platform and publishes a **draft** GitHub release (archives +
+`checksums.txt`). A human reviews the generated notes and clicks publish.
+
+- `.goreleaser.yaml` is the single source of truth for release builds
+  (platform matrix, ldflags). Keep its ldflags in sync with the Makefile's
+  dev-build `LDFLAGS`.
+- `make release-check` validates the config; `make release-snapshot` builds
+  all platforms into `dist/` without tagging or publishing. The `snapshot`
+  workflow in `bitrise.yml` does the same on CI for ad-hoc binaries.
+- GoReleaser is version-pinned in the `Makefile` and run via `go run`, like
+  golangci-lint.
+- The CI release needs a `GITHUB_TOKEN` secret with `contents:write`
+  (configured on the Bitrise app, not in the repo).
 
 ## Known nits
 
@@ -175,12 +200,14 @@ When ldflags aren't set, `runtime/debug.ReadBuildInfo()` fills in
 
 ## README command list
 
-`README.md` contains a full command reference table. **Keep it in sync**:
-whenever a command is added, renamed, or removed, update the corresponding
-row (or section) in the README as part of the same change.
+The command overview in `README.md` (between the `commands-overview`
+markers) and the per-command pages in `docs/cli/` are **generated** by
+`tools/gendocs` — never edit them by hand. After any change to a command,
+flag, or help text, run `make docs` and commit the result; CI runs
+`make docs-check` and fails on drift.
 
 ## When in doubt
 
-Open the patterns guide (https://bitrise.atlassian.net/wiki/x/EoBwKQE) and
-follow what it says. If the guide doesn't cover the case, mirror what `gh`
-does — that's the closest-spirit reference CLI for our use case.
+Follow the locked-in conventions above and the patterns guide they come from.
+If neither covers the case, mirror what `gh` does — that's the closest-spirit
+reference CLI for our use case.

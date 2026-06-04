@@ -38,13 +38,12 @@ Auto-detection from the current git repo:
   --repo-url     git remote get-url origin
   --branch       git symbolic-ref --short HEAD (else "master")
   --title        last path segment of the repo URL (".git" stripped)
-  --provider     derived from the repo URL host (github.com → github, etc.)
 
-Organization:
-  --organization is required if you belong to multiple workspaces.
+Workspace:
+  --workspace is required if you belong to multiple workspaces.
   Otherwise it falls back to:
-    1. default_organization_slug from config
-    2. auto-detect when your account has exactly one organization
+    1. default_workspace_slug from config
+    2. auto-detect when your account has exactly one workspace
 
 bitrise.yml handling:
   --bitrise-yml PATH   upload that file as the app's config
@@ -54,7 +53,7 @@ bitrise.yml handling:
 The new app's slug is saved as the global default app_slug, so subsequent
 commands (build trigger, build list, ...) target it without --app.`,
 		Example: `  bitrise-cli app create
-  bitrise-cli app create --repo-url https://github.com/me/proj --organization acme
+  bitrise-cli app create --repo-url https://github.com/me/proj --workspace acme
   bitrise-cli app create --bitrise-yml ./ci/bitrise.yml --stack osx-xcode-16.0.x
   bitrise-cli app create --output json`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -99,7 +98,7 @@ commands (build trigger, build list, ...) target it without --app.`,
 					ew.F("Detected branch from git: %s\n", resolvedBranch)
 				}
 				if orgFromConfig {
-					ew.F("Using organization from config: %s\n", resolvedOrg)
+					ew.F("Using workspace from config: %s\n", resolvedOrg)
 				}
 				switch yamlSource {
 				case yamlSourceFlag:
@@ -149,7 +148,7 @@ commands (build trigger, build list, ...) target it without --app.`,
 	c.Flags().StringVar(&branch, "branch", "", "default branch (default: 'git symbolic-ref --short HEAD', else 'master')")
 	c.Flags().StringVar(&title, "title", "", "app title (default: last path segment of repo URL)")
 	c.Flags().StringVar(&provider, "provider", "auto", "git provider: auto, github, gitlab, bitbucket, custom")
-	c.Flags().StringVar(&orgSlug, "organization", "", "organization (workspace) slug to own the app")
+	c.Flags().StringVar(&orgSlug, "workspace", "", "workspace slug to own the app")
 	c.Flags().StringVar(&stackID, "stack", "", fmt.Sprintf("build stack ID (default %q)", internalapp.DefaultStackID))
 	c.Flags().StringVar(&projectType, "project-type", "", fmt.Sprintf("project type for server-side preset (default %q)", internalapp.DefaultProjectType))
 	c.Flags().BoolVar(&public, "public", false, "create as a public app")
@@ -270,7 +269,7 @@ func renderCreateText(w io.Writer, r internalapp.CreateResult) error {
 	ew.F("%s%s\n", lbl("  Slug:"), s.Slug.Render(r.Slug))
 	ew.F("%s%s\n", lbl("  Repository:"), s.URL.Render(r.RepoURL))
 	ew.F("%s%s\n", lbl("  Default branch:"), r.DefaultBranch)
-	ew.F("%s%s\n", lbl("  Organization:"), r.OrgSlug)
+	ew.F("%s%s\n", lbl("  Workspace:"), r.OrgSlug)
 	ew.F("%s%s\n", lbl("  Stack:"), r.StackID)
 	ew.F("%s%s\n", lbl("  Project type:"), r.ProjectType)
 	ew.F("%s%s\n", lbl("  Build trigger token:"), s.Slug.Render(r.BuildTriggerToken))
