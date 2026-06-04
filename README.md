@@ -113,6 +113,7 @@ details) under [docs/cli](docs/cli/bitrise-cli.md).
 | [`rde session download`](docs/cli/bitrise-cli_rde_session_download.md) | Download a file or directory from a session |
 | [`rde session exec`](docs/cli/bitrise-cli_rde_session_exec.md) | Run a bash command on a session over SSH |
 | [`rde session list`](docs/cli/bitrise-cli_rde_session_list.md) | List RDE sessions in the workspace |
+| [`rde session logs`](docs/cli/bitrise-cli_rde_session_logs.md) | Print a session's warmup or startup logs |
 | [`rde session notifications`](docs/cli/bitrise-cli_rde_session_notifications.md) | List notifications emitted by a session |
 | [`rde session open-vnc`](docs/cli/bitrise-cli_rde_session_open-vnc.md) | Open a session's VNC endpoint in the OS-default viewer |
 | [`rde session restore`](docs/cli/bitrise-cli_rde_session_restore.md) | Restore a terminated session (re-provisions its VM from the persistent disk) |

@@ -164,27 +164,69 @@ func (c *Client) do(req *http.Request) ([]byte, error) {
 	}
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		var e errorBody
-		_ = json.Unmarshal(body, &e)
-		apiErr := &APIError{StatusCode: resp.StatusCode, Message: e.Message}
-		for _, d := range e.Details {
-			for _, v := range d.FieldViolations {
-				switch {
-				case v.Description != "":
-					apiErr.Violations = append(apiErr.Violations, v.Description)
-				case v.Field != "":
-					apiErr.Violations = append(apiErr.Violations, v.Field)
-				}
-			}
-		}
-		// Fall back to the raw body only when neither a message nor any
-		// field violation gave us something human-readable.
-		if e.Message == "" && len(apiErr.Violations) == 0 {
-			apiErr.Body = strings.TrimSpace(string(body))
-		}
-		return nil, apiErr
+		return nil, parseAPIError(resp.StatusCode, body)
 	}
 	return body, nil
+}
+
+// parseAPIError turns a non-2xx (statusCode, body) into an *APIError. Shared
+// by do() and doStream() so the buffering and streaming paths surface errors
+// identically.
+func parseAPIError(statusCode int, body []byte) *APIError {
+	var e errorBody
+	_ = json.Unmarshal(body, &e)
+	apiErr := &APIError{
+		StatusCode: statusCode,
+		Message:    e.Message,
+		Violations: violationsFromDetails(e.Details),
+	}
+	// Fall back to the raw body only when neither a message nor any field
+	// violation gave us something human-readable.
+	if e.Message == "" && len(apiErr.Violations) == 0 {
+		apiErr.Body = strings.TrimSpace(string(body))
+	}
+	return apiErr
+}
+
+// violationsFromDetails pulls the human-readable field-violation strings out
+// of a gRPC status' details array (preferring the description, falling back to
+// the field name). Shared by HTTP-level and mid-stream error rendering.
+func violationsFromDetails(details []errorDetail) []string {
+	var out []string
+	for _, d := range details {
+		for _, v := range d.FieldViolations {
+			switch {
+			case v.Description != "":
+				out = append(out, v.Description)
+			case v.Field != "":
+				out = append(out, v.Field)
+			}
+		}
+	}
+	return out
+}
+
+// doStream executes req and, on a 2xx response, returns the live *http.Response
+// without buffering the body — the caller owns it and MUST close resp.Body.
+// Used by streaming endpoints (e.g. session logs) where do()'s ReadAll would
+// defeat the point. Non-2xx responses are drained, closed, and returned as an
+// *APIError, matching do().
+func (c *Client) doStream(req *http.Request) (*http.Response, error) {
+	req.Header.Set("Authorization", "Bearer "+c.token)
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("User-Agent", UserAgent)
+	req.Header.Set("X-Request-Source", RequestSource)
+
+	resp, err := c.httpClient.Do(req) //nolint:gosec // URL built from configured base + internal paths
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(resp.Body)
+		_ = resp.Body.Close()
+		return nil, parseAPIError(resp.StatusCode, body)
+	}
+	return resp, nil
 }
 
 // getJSON performs a GET against path and decodes the response into out.
