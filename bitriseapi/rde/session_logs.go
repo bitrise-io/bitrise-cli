@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 )
 
 // LogChunk is one frame of a session log stream. HeartbeatMessage frames
@@ -38,13 +39,21 @@ const maxLogLine = 1 << 20
 //
 // Endpoint: GET /v1/workspaces/{workspaceId}/sessions/{sessionId}/logs/{stage}
 // where stage is the numeric LogStage enum ("1"=warmup, "2"=main). The stream
-// replays the stage log from the start, then continues live until the stage
-// ends (EOF) or the connection drops. Heartbeat/empty frames are skipped.
+// replays the stage log from the start, then continues live. The backend never
+// sends EOF when the stage's script finishes — it holds the connection open
+// with minute-interval heartbeats — so callers control how long to listen:
 //
-// A mid-stream {"error":...} frame is surfaced as an error. A cancelled ctx
-// (e.g. Ctrl-C) is treated as a clean end of stream and returns nil. Pre-stream
-// failures come back as *APIError (e.g. 404 = "logs not available yet").
-func (c *Client) StreamSessionLogs(ctx context.Context, workspaceID, sessionID, stage string, fn func(LogChunk) error) error {
+//   - idleTimeout <= 0: stream until the connection actually closes or ctx is
+//     cancelled (Ctrl-C). Use for a live "follow".
+//   - idleTimeout  > 0: return cleanly once no new content has arrived for that
+//     long. The replayed backlog arrives in a burst, so this delivers the whole
+//     log-so-far and then exits ("print what's there, don't wait").
+//
+// Heartbeat/empty frames are skipped and do not count as content. A mid-stream
+// {"error":...} frame is surfaced as an error. A cancelled ctx is treated as a
+// clean end of stream and returns nil. Pre-stream failures come back as
+// *APIError (e.g. 404 = "logs not available yet").
+func (c *Client) StreamSessionLogs(ctx context.Context, workspaceID, sessionID, stage string, idleTimeout time.Duration, fn func(LogChunk) error) error {
 	if workspaceID == "" {
 		return fmt.Errorf("workspace ID is required")
 	}
@@ -63,36 +72,102 @@ func (c *Client) StreamSessionLogs(ctx context.Context, workspaceID, sessionID, 
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	scanner := bufio.NewScanner(resp.Body)
-	scanner.Buffer(make([]byte, 0, 64*1024), maxLogLine)
-	for scanner.Scan() {
-		line := scanner.Bytes()
-		if len(strings.TrimSpace(string(line))) == 0 {
-			continue
+	// frame is one parsed result off the wire: a content chunk, a terminal
+	// error, or done (the stream closed without error).
+	type frame struct {
+		chunk LogChunk
+		err   error
+		done  bool
+	}
+	frames := make(chan frame)
+	stop := make(chan struct{})
+	defer close(stop) // unblocks the reader goroutine when we return early
+
+	go func() {
+		scanner := bufio.NewScanner(resp.Body)
+		scanner.Buffer(make([]byte, 0, 64*1024), maxLogLine)
+		send := func(f frame) bool {
+			select {
+			case frames <- f:
+				return true
+			case <-stop:
+				return false
+			}
 		}
-		var frame logStreamLine
-		if err := json.Unmarshal(line, &frame); err != nil {
-			return fmt.Errorf("decode log frame: %w", err)
+		for scanner.Scan() {
+			line := scanner.Bytes()
+			if len(strings.TrimSpace(string(line))) == 0 {
+				continue
+			}
+			var ln logStreamLine
+			if jerr := json.Unmarshal(line, &ln); jerr != nil {
+				send(frame{err: fmt.Errorf("decode log frame: %w", jerr)})
+				return
+			}
+			if ln.Error != nil {
+				send(frame{err: streamFrameError(ln.Error)})
+				return
+			}
+			if ln.Result.HeartbeatMessage || ln.Result.LogContent == "" {
+				continue // heartbeats/empty frames are not content
+			}
+			if !send(frame{chunk: ln.Result}) {
+				return
+			}
 		}
-		if frame.Error != nil {
-			return streamFrameError(frame.Error)
+		if serr := scanner.Err(); serr != nil {
+			send(frame{err: serr})
+			return
 		}
-		if frame.Result.HeartbeatMessage || frame.Result.LogContent == "" {
-			continue
+		send(frame{done: true})
+	}()
+
+	// Idle timer: armed from the start and reset on every content chunk, so it
+	// fires once the replayed backlog has drained. Left nil (never fires) when
+	// idleTimeout <= 0.
+	var idleTimer *time.Timer
+	var idleC <-chan time.Time
+	if idleTimeout > 0 {
+		idleTimer = time.NewTimer(idleTimeout)
+		defer idleTimer.Stop()
+		idleC = idleTimer.C
+	}
+	resetIdle := func() {
+		if idleTimer == nil {
+			return
 		}
-		if err := fn(frame.Result); err != nil {
-			return err
+		if !idleTimer.Stop() {
+			select {
+			case <-idleTimer.C:
+			default:
+			}
+		}
+		idleTimer.Reset(idleTimeout)
+	}
+
+	for {
+		select {
+		case <-ctx.Done():
+			return nil // Ctrl-C / cancellation is a clean stop
+		case <-idleC:
+			return nil // no new content within idleTimeout — backlog drained
+		case f := <-frames:
+			switch {
+			case f.err != nil:
+				if ctx.Err() != nil {
+					return nil
+				}
+				return f.err
+			case f.done:
+				return nil
+			default:
+				if err := fn(f.chunk); err != nil {
+					return err
+				}
+				resetIdle()
+			}
 		}
 	}
-	if err := scanner.Err(); err != nil {
-		// A cancelled context surfaces as a read error on the body; treat it
-		// as a clean end of stream so Ctrl-C exits 0.
-		if ctx.Err() != nil {
-			return nil
-		}
-		return fmt.Errorf("read log stream: %w", err)
-	}
-	return nil
 }
 
 // streamFrameError renders a mid-stream {"error":...} frame as a plain error.

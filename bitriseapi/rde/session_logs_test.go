@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 // streamingServer serves the given newline-delimited frames on the logs
@@ -48,7 +49,7 @@ func TestStreamSessionLogs_DeliversChunksAndSkipsHeartbeats(t *testing.T) {
 	c, gotPath := streamingServer(t, frames, http.StatusOK, nil)
 
 	var got []string
-	err := c.StreamSessionLogs(context.Background(), "ws-1", "s1", "2", func(chunk LogChunk) error {
+	err := c.StreamSessionLogs(context.Background(), "ws-1", "s1", "2", 0, func(chunk LogChunk) error {
 		got = append(got, chunk.LogContent)
 		return nil
 	})
@@ -66,7 +67,7 @@ func TestStreamSessionLogs_DeliversChunksAndSkipsHeartbeats(t *testing.T) {
 func TestStreamSessionLogs_NotReady404(t *testing.T) {
 	c, _ := streamingServer(t, []string{`{"code":5,"message":"logs not available yet for this stage"}`}, http.StatusNotFound, nil)
 
-	err := c.StreamSessionLogs(context.Background(), "ws-1", "s1", "1", func(LogChunk) error { return nil })
+	err := c.StreamSessionLogs(context.Background(), "ws-1", "s1", "1", 0, func(LogChunk) error { return nil })
 	if err == nil {
 		t.Fatal("expected error on 404")
 	}
@@ -87,7 +88,7 @@ func TestStreamSessionLogs_MidStreamErrorFrame(t *testing.T) {
 	c, _ := streamingServer(t, frames, http.StatusOK, nil)
 
 	var got []string
-	err := c.StreamSessionLogs(context.Background(), "ws-1", "s1", "2", func(chunk LogChunk) error {
+	err := c.StreamSessionLogs(context.Background(), "ws-1", "s1", "2", 0, func(chunk LogChunk) error {
 		got = append(got, chunk.LogContent)
 		return nil
 	})
@@ -117,7 +118,7 @@ func TestStreamSessionLogs_CancelledContextIsCleanEOF(t *testing.T) {
 	defer cancel()
 
 	var got []string
-	err := c.StreamSessionLogs(ctx, "ws-1", "s1", "2", func(chunk LogChunk) error {
+	err := c.StreamSessionLogs(ctx, "ws-1", "s1", "2", 0, func(chunk LogChunk) error {
 		got = append(got, chunk.LogContent)
 		cancel() // simulate Ctrl-C right after the first chunk
 		return nil
@@ -130,13 +131,37 @@ func TestStreamSessionLogs_CancelledContextIsCleanEOF(t *testing.T) {
 	}
 }
 
+func TestStreamSessionLogs_IdleTimeoutStops(t *testing.T) {
+	// Server writes the backlog then holds the connection open with no EOF,
+	// like the real backend. With a positive idleTimeout the call must deliver
+	// the backlog and then return cleanly once the stream goes quiet.
+	block := make(chan struct{})
+	defer close(block)
+	c, _ := streamingServer(t, []string{
+		`{"result":{"logContent":"a"}}`,
+		`{"result":{"logContent":"b"}}`,
+	}, http.StatusOK, block)
+
+	var got []string
+	err := c.StreamSessionLogs(context.Background(), "ws-1", "s1", "2", 30*time.Millisecond, func(chunk LogChunk) error {
+		got = append(got, chunk.LogContent)
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("idle stop should return nil, got %v", err)
+	}
+	if len(got) != 2 || got[0] != "a" || got[1] != "b" {
+		t.Errorf("chunks = %q, want [a b] before idle stop", got)
+	}
+}
+
 func TestStreamSessionLogs_ValidationGuards(t *testing.T) {
 	c := New("http://unused", "tok")
 	ctx := context.Background()
-	if err := c.StreamSessionLogs(ctx, "", "s1", "2", func(LogChunk) error { return nil }); err == nil {
+	if err := c.StreamSessionLogs(ctx, "", "s1", "2", 0, func(LogChunk) error { return nil }); err == nil {
 		t.Error("expected error for empty workspace ID")
 	}
-	if err := c.StreamSessionLogs(ctx, "ws", "", "2", func(LogChunk) error { return nil }); err == nil {
+	if err := c.StreamSessionLogs(ctx, "ws", "", "2", 0, func(LogChunk) error { return nil }); err == nil {
 		t.Error("expected error for empty session ID")
 	}
 }

@@ -40,7 +40,7 @@ func TestStreamSessionLogs_ForwardsContentAndMapsStage(t *testing.T) {
 {"result":{"logContent":"b"}}`)
 
 	var got []string
-	err := rs.service().StreamSessionLogs(context.Background(), "ws-1", "s1", LogStageStartup, func(s string) error {
+	err := rs.service().StreamSessionLogs(context.Background(), "ws-1", "s1", LogStageStartup, 0, func(s string) error {
 		got = append(got, s)
 		return nil
 	})
@@ -58,7 +58,7 @@ func TestStreamSessionLogs_ForwardsContentAndMapsStage(t *testing.T) {
 
 func TestStreamSessionLogs_InvalidStageShortCircuits(t *testing.T) {
 	rs := newRecordingServer(t, ``)
-	err := rs.service().StreamSessionLogs(context.Background(), "ws-1", "s1", "bogus", func(string) error { return nil })
+	err := rs.service().StreamSessionLogs(context.Background(), "ws-1", "s1", "bogus", 0, func(string) error { return nil })
 	if err == nil {
 		t.Fatal("expected error for invalid stage")
 	}
@@ -68,7 +68,7 @@ func TestStreamSessionLogs_InvalidStageShortCircuits(t *testing.T) {
 }
 
 func TestStreamSessionLogs_NilClient(t *testing.T) {
-	if err := NewService(nil).StreamSessionLogs(context.Background(), "ws", "s", LogStageStartup, func(string) error { return nil }); err == nil {
+	if err := NewService(nil).StreamSessionLogs(context.Background(), "ws", "s", LogStageStartup, 0, func(string) error { return nil }); err == nil {
 		t.Error("expected error from nil client")
 	}
 }

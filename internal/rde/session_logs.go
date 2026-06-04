@@ -3,6 +3,7 @@ package rde
 import (
 	"context"
 	"fmt"
+	"time"
 
 	rdeapi "github.com/bitrise-io/bitrise-cli/bitriseapi/rde"
 )
@@ -34,14 +35,16 @@ func logStageToAPI(stage string) (string, error) {
 }
 
 // StreamSessionLogs streams one stage's log for a session, invoking fn for each
-// content chunk's text in order. stage is a friendly name (warmup/startup). The
-// stream replays the stage from the start, then follows live until the stage
-// ends (the underlying call returns nil at EOF) or ctx is cancelled.
+// content chunk's text in order. stage is a friendly name (warmup/startup).
+//
+// idleTimeout controls when to stop: 0 follows live until ctx is cancelled
+// (Ctrl-C); a positive value returns once no new content has arrived for that
+// long, which delivers the replayed log-so-far and then exits.
 //
 // A pre-stream "logs not ready" condition surfaces as a 404 *rdeapi.APIError,
 // which the cmd layer distinguishes to decide between a friendly exit and a
 // follow-mode retry.
-func (s *Service) StreamSessionLogs(ctx context.Context, workspaceID, sessionID, stage string, fn func(string) error) error {
+func (s *Service) StreamSessionLogs(ctx context.Context, workspaceID, sessionID, stage string, idleTimeout time.Duration, fn func(string) error) error {
 	if s.client == nil {
 		return errClient()
 	}
@@ -49,7 +52,7 @@ func (s *Service) StreamSessionLogs(ctx context.Context, workspaceID, sessionID,
 	if err != nil {
 		return err
 	}
-	return s.client.StreamSessionLogs(ctx, workspaceID, sessionID, apiStage, func(chunk rdeapi.LogChunk) error {
+	return s.client.StreamSessionLogs(ctx, workspaceID, sessionID, apiStage, idleTimeout, func(chunk rdeapi.LogChunk) error {
 		return fn(chunk.LogContent)
 	})
 }

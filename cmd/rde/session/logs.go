@@ -22,6 +22,13 @@ import (
 // not exposed as a flag to keep the command surface small.
 var followRetryInterval = 3 * time.Second
 
+// snapshotIdleTimeout is how long the default (non-follow) mode waits for new
+// content before deciding the replayed log has drained and exiting. The
+// backend never signals end-of-log, so this idle gap is how "print what's
+// there, then stop" terminates. A package var so tests can shorten it; not a
+// flag, to keep the command surface small.
+var snapshotIdleTimeout = 2 * time.Second
+
 func newLogsCmd() *cobra.Command {
 	var (
 		stage  string
@@ -32,20 +39,19 @@ func newLogsCmd() *cobra.Command {
 		Use:   "logs SESSION_ID --stage warmup|startup",
 		Short: "Print a session's warmup or startup logs",
 		Long: `Print the warmup or startup script logs for a session — useful for debugging a
-session stuck provisioning or one that came up failed. The stream replays the
-whole stage log from the start on every connect.
+session stuck provisioning or one that came up failed. The log replays from the
+start every time you connect.
 
-Note: the backend does not currently signal end-of-log, so the command keeps
-running — even after the script has finished — until you stop it with Ctrl-C.
-This applies to both modes; redirect or pipe stdout and Ctrl-C once output
-stops.
+By default this prints the log captured so far and exits, without waiting for
+more output. Pass --follow to keep streaming new output live until you stop it
+with Ctrl-C (the backend does not signal end-of-log, so --follow runs until
+interrupted).
 
   --stage    which script's logs to show: warmup or startup (required). warmup
              runs once at session creation; startup runs on every session
              start/restart.
-  --follow   if the stage hasn't produced any logs yet, wait for it to start
-             rather than erroring. Without --follow the command errors right
-             away when logs aren't available yet.
+  --follow   keep streaming new output until Ctrl-C, and wait for the stage to
+             start if it hasn't produced any logs yet (instead of erroring).
 
 --output is ignored — logs stream as raw text. Pipe or redirect as needed;
 diagnostics go to stderr so a redirect captures only log text. --output json
@@ -113,14 +119,14 @@ is rejected (the feed is plain text, not a single object).`,
 	return c
 }
 
-// runSnapshot streams the stage log once. It replays the whole stage log from
-// the start; the backend does not currently send EOF when the stage finishes,
-// so this returns only when the stream actually closes (session gone) or the
-// user hits Ctrl-C. A pre-stream 404 ("logs not available yet") is turned into
-// a friendly, actionable message and a non-zero exit rather than a raw API
-// error.
+// runSnapshot prints the stage log captured so far and exits, without waiting
+// for new output. The backend never sends EOF, so it relies on an idle gap
+// (snapshotIdleTimeout): the replayed backlog arrives in a burst, then the
+// stream goes quiet and the command returns. A pre-stream 404 ("logs not
+// available yet") is turned into a friendly, actionable message and a non-zero
+// exit rather than a raw API error.
 func runSnapshot(ctx context.Context, cmd *cobra.Command, svc *internalrde.Service, workspaceID, sessionID, stage string, emit func(string) error) error {
-	err := svc.StreamSessionLogs(ctx, workspaceID, sessionID, stage, emit)
+	err := svc.StreamSessionLogs(ctx, workspaceID, sessionID, stage, snapshotIdleTimeout, emit)
 	if isLogsNotReady(err) {
 		cmdutil.SilenceRootErrors(cmd)
 		_, _ = fmt.Fprintf(cmd.ErrOrStderr(),
@@ -130,17 +136,17 @@ func runSnapshot(ctx context.Context, cmd *cobra.Command, svc *internalrde.Servi
 	return err
 }
 
-// runFollow streams the stage log live until Ctrl-C or EOF. If the stage
-// hasn't started producing logs yet (404), it waits followRetryInterval and
-// retries — the dashboard does the same. The retry is safe because a 404 only
-// ever comes back pre-stream (nothing has been printed yet), so it can't
-// duplicate already-streamed output.
+// runFollow streams the stage log live until Ctrl-C. If the stage hasn't
+// started producing logs yet (404), it waits followRetryInterval and retries
+// — the dashboard does the same. The retry is safe because a 404 only ever
+// comes back pre-stream (nothing has been printed yet), so it can't duplicate
+// already-streamed output. idleTimeout is 0 here: follow never self-terminates.
 func runFollow(ctx context.Context, cmd *cobra.Command, svc *internalrde.Service, workspaceID, sessionID, stage string, emit func(string) error) error {
 	if !cmdutil.IsQuiet(cmd) {
 		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Streaming %s logs for session %s — Ctrl-C to stop…\n", stage, sessionID)
 	}
 	for {
-		err := svc.StreamSessionLogs(ctx, workspaceID, sessionID, stage, emit)
+		err := svc.StreamSessionLogs(ctx, workspaceID, sessionID, stage, 0, emit)
 		if err == nil {
 			return nil
 		}
