@@ -214,6 +214,45 @@ func TestLoadDir_FindsAncestorFile(t *testing.T) {
 	}
 }
 
+// A config file written by an older version uses the pre-rename key names
+// app_slug / default_workspace_slug. Those must still be read so users don't
+// lose their saved default app/workspace on upgrade.
+func TestLoadDir_ReadsLegacySlugKeys(t *testing.T) {
+	root := t.TempDir()
+	cfgPath := filepath.Join(root, DirFileName)
+	body := "app_slug: legacy-app\ndefault_workspace_slug: legacy-ws\n"
+	if err := os.WriteFile(cfgPath, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got, _, err := loadDirFrom(root)
+	if err != nil {
+		t.Fatalf("loadDirFrom: %v", err)
+	}
+	if got.AppSlug != "legacy-app" {
+		t.Errorf("AppSlug = %q, want %q (legacy app_slug key)", got.AppSlug, "legacy-app")
+	}
+	if got.OrgSlug != "legacy-ws" {
+		t.Errorf("OrgSlug = %q, want %q (legacy default_workspace_slug key)", got.OrgSlug, "legacy-ws")
+	}
+}
+
+// When both the current and legacy keys are present, the current key wins.
+func TestLoadDir_CurrentKeyWinsOverLegacy(t *testing.T) {
+	root := t.TempDir()
+	cfgPath := filepath.Join(root, DirFileName)
+	body := "app_id: new-app\napp_slug: legacy-app\n"
+	if err := os.WriteFile(cfgPath, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got, _, err := loadDirFrom(root)
+	if err != nil {
+		t.Fatalf("loadDirFrom: %v", err)
+	}
+	if got.AppSlug != "new-app" {
+		t.Errorf("AppSlug = %q, want %q (app_id should win over app_slug)", got.AppSlug, "new-app")
+	}
+}
+
 func TestLoadDir_NoFileReturnsZero(t *testing.T) {
 	got, found, err := loadDirFrom(t.TempDir())
 	if err != nil {

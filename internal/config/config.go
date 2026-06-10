@@ -50,6 +50,37 @@ type Config struct {
 	Theme         string `yaml:"theme,omitempty"`
 }
 
+// UnmarshalYAML reads a Config, accepting the legacy key names `app_slug` and
+// `default_workspace_slug` as fallbacks for the current `app_id` and
+// `default_workspace_id`. This keeps config files written by older versions
+// readable (so a saved default app/workspace isn't silently lost on upgrade);
+// the next Save rewrites the file with the current key names. The current key
+// wins if a file somehow carries both.
+func (c *Config) UnmarshalYAML(value *yaml.Node) error {
+	var raw struct {
+		Output               string `yaml:"output"`
+		AppID                string `yaml:"app_id"`
+		AppSlugLegacy        string `yaml:"app_slug"`
+		DefaultWorkspaceID   string `yaml:"default_workspace_id"`
+		DefaultWorkspaceSlug string `yaml:"default_workspace_slug"`
+		APIBaseURL           string `yaml:"api_base_url"`
+		RDEAPIBaseURL        string `yaml:"rde_api_base_url"`
+		WebBaseURL           string `yaml:"web_base_url"`
+		Theme                string `yaml:"theme"`
+	}
+	if err := value.Decode(&raw); err != nil {
+		return err
+	}
+	c.Output = raw.Output
+	c.AppSlug = firstNonEmpty(raw.AppID, raw.AppSlugLegacy)
+	c.OrgSlug = firstNonEmpty(raw.DefaultWorkspaceID, raw.DefaultWorkspaceSlug)
+	c.APIBaseURL = raw.APIBaseURL
+	c.RDEAPIBaseURL = raw.RDEAPIBaseURL
+	c.WebBaseURL = raw.WebBaseURL
+	c.Theme = raw.Theme
+	return nil
+}
+
 // DirFileName is the file looked up in the working directory and its
 // ancestors to provide per-project config. Per the patterns guide, this is
 // the third-highest-precedence layer (above the global file, below env vars
