@@ -14,6 +14,7 @@ func clearEnv(t *testing.T) {
 	t.Helper()
 	t.Setenv(EnvOutput, "")
 	t.Setenv(EnvAppSlug, "")
+	t.Setenv(EnvAppSlugLegacy, "")
 	t.Setenv(EnvWorkspaceID, "")
 	t.Setenv(EnvToken, "")
 	t.Setenv(EnvAPIBaseURL, "")
@@ -150,6 +151,26 @@ func TestResolve_AppSlugPrecedence(t *testing.T) {
 	r, _ = Resolve(Config{AppSlug: "global"}, Config{AppSlug: "dir"}, auth.Auth{}, "", "")
 	if r.AppSlug != "env" {
 		t.Errorf("env-wins: %q", r.AppSlug)
+	}
+}
+
+// The pre-rename BITRISE_APP_SLUG env var is still honored as a fallback so
+// existing shells/CI keep working; the current BITRISE_APP_ID wins over it.
+func TestResolve_LegacyAppSlugEnvFallback(t *testing.T) {
+	clearEnv(t)
+
+	// Legacy env var beats config files (env > config).
+	t.Setenv(EnvAppSlugLegacy, "legacy-env")
+	r, _ := Resolve(Config{AppSlug: "global"}, Config{}, auth.Auth{}, "", "")
+	if r.AppSlug != "legacy-env" {
+		t.Errorf("legacy-env fallback: AppSlug = %q, want legacy-env", r.AppSlug)
+	}
+
+	// Current env var wins when both are set.
+	t.Setenv(EnvAppSlug, "new-env")
+	r, _ = Resolve(Config{AppSlug: "global"}, Config{}, auth.Auth{}, "", "")
+	if r.AppSlug != "new-env" {
+		t.Errorf("new env wins over legacy: AppSlug = %q, want new-env", r.AppSlug)
 	}
 }
 
