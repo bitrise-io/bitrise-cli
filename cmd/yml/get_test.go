@@ -97,7 +97,7 @@ func TestGetCmd_JSONOutput(t *testing.T) {
 	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
 		t.Fatalf("invalid JSON: %v\n%s", err, stdout.String())
 	}
-	if got["app_slug"] != "my-app" {
+	if got["app_id"] != "my-app" {
 		t.Errorf("unexpected JSON: %v", got)
 	}
 	if _, ok := got["content"]; !ok {

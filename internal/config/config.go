@@ -27,8 +27,8 @@ import (
 // contract — `bitrise-cli config set <key> <value>` references them directly.
 const (
 	KeyOutput        = "output"
-	KeyAppSlug       = "app_slug"
-	KeyOrgSlug       = "default_workspace_slug"
+	KeyAppSlug       = "app_id"
+	KeyOrgSlug       = "default_workspace_id"
 	KeyAPIBaseURL    = "api_base_url"
 	KeyRDEAPIBaseURL = "rde_api_base_url"
 	KeyWebBaseURL    = "web_base_url"
@@ -42,8 +42,8 @@ var Keys = []string{KeyOutput, KeyAppSlug, KeyOrgSlug, KeyAPIBaseURL, KeyRDEAPIB
 // don't appear in the saved YAML.
 type Config struct {
 	Output        string `yaml:"output,omitempty"`
-	AppSlug       string `yaml:"app_slug,omitempty"`
-	OrgSlug       string `yaml:"default_workspace_slug,omitempty"`
+	AppSlug       string `yaml:"app_id,omitempty"`
+	OrgSlug       string `yaml:"default_workspace_id,omitempty"`
 	APIBaseURL    string `yaml:"api_base_url,omitempty"`
 	RDEAPIBaseURL string `yaml:"rde_api_base_url,omitempty"`
 	WebBaseURL    string `yaml:"web_base_url,omitempty"`

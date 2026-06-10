@@ -8,9 +8,9 @@ Validate a bitrise.yml against the Bitrise API.
 
 Reads from --file if provided, otherwise reads from stdin.
 
-When --app is provided (or BITRISE_APP_SLUG is set), validation uses
+When --app is provided (or BITRISE_APP_ID is set), validation uses
 app-specific settings (available stacks, machine types, license pools).
-Without an app slug, only the schema is validated.
+Without an app ID, only the schema is validated.
 
 Exit codes:
   0   valid (no errors; warnings do not affect the exit code)
@@ -24,7 +24,7 @@ bitrise-cli yml validate [flags]
 
 ```
   bitrise-cli yml validate --file bitrise.yml
-  bitrise-cli yml validate --file bitrise.yml --app my-app-slug
+  bitrise-cli yml validate --file bitrise.yml --app my-app-id
   cat bitrise.yml | bitrise-cli yml validate
   bitrise-cli yml validate --file bitrise.yml --output json
 ```
@@ -39,7 +39,7 @@ bitrise-cli yml validate [flags]
 ### Options inherited from parent commands
 
 ```
-      --app string      app slug (also accepted as --project; or set BITRISE_APP_SLUG)
+      --app string      app ID (also accepted as --project; or set BITRISE_APP_ID)
       --no-color        disable ANSI colors (NO_COLOR env is also honored)
   -o, --output string   output format: human|json (default "human")
   -q, --quiet           suppress non-error diagnostic messages

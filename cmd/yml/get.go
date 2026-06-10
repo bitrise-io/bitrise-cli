@@ -23,14 +23,14 @@ When --build is provided, prints the bitrise.yml that a specific build ran with
 instead of the app's current stored configuration.
 
 Required:
-  --app SLUG    app slug (or BITRISE_APP_SLUG env var)
+  --app ID      app ID (or BITRISE_APP_ID env var)
 
 Optional:
-  --build SLUG  print the yml used for this specific build`,
-		Example: `  bitrise-cli yml get --app my-app-slug
-  bitrise-cli yml get --app my-app-slug --build abc123
-  bitrise-cli yml get --app my-app-slug --output json
-  BITRISE_APP_SLUG=my-app-slug bitrise-cli yml get`,
+  --build ID    print the yml used for this specific build`,
+		Example: `  bitrise-cli yml get --app my-app-id
+  bitrise-cli yml get --app my-app-id --build abc123
+  bitrise-cli yml get --app my-app-id --output json
+  BITRISE_APP_ID=my-app-id bitrise-cli yml get`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			appSlug, err := cmdutil.ResolveAppSlug(cmd)
 			if err != nil {
@@ -51,7 +51,7 @@ Optional:
 		},
 	}
 
-	c.Flags().StringVar(&buildSlug, "build", "", "build slug to retrieve the yml for")
+	c.Flags().StringVar(&buildSlug, "build", "", "build ID to retrieve the yml for")
 	return c
 }
 

@@ -7,10 +7,10 @@ Print the build log
 Print the log output for a single build.
 
 Required flags:
-  --app SLUG         (or BITRISE_APP_SLUG env var)
+  --app ID           (or BITRISE_APP_ID env var)
 
 Argument:
-  BUILD_SLUG         the unique slug of the build
+  BUILD_ID           the unique ID of the build
 
 Flags:
   --wait             wait for the build to finish before printing the log;
@@ -25,16 +25,16 @@ Note:
   redirect to a file as needed.
 
 ```
-bitrise-cli build log BUILD_SLUG [flags]
+bitrise-cli build log BUILD_ID [flags]
 ```
 
 ### Examples
 
 ```
-  bitrise-cli build log --app my-app-slug <build-slug>
-  bitrise-cli build log --app my-app-slug <build-slug> --wait
-  bitrise-cli build log --app my-app-slug <build-slug> --wait --interval 10s
-  bitrise-cli build log --app my-app-slug <build-slug> > build.log
+  bitrise-cli build log --app my-app-id <build-id>
+  bitrise-cli build log --app my-app-id <build-id> --wait
+  bitrise-cli build log --app my-app-id <build-id> --wait --interval 10s
+  bitrise-cli build log --app my-app-id <build-id> > build.log
 ```
 
 ### Options
@@ -48,7 +48,7 @@ bitrise-cli build log BUILD_SLUG [flags]
 ### Options inherited from parent commands
 
 ```
-      --app string      app slug (also accepted as --project; or set BITRISE_APP_SLUG)
+      --app string      app ID (also accepted as --project; or set BITRISE_APP_ID)
       --no-color        disable ANSI colors (NO_COLOR env is also honored)
   -o, --output string   output format: human|json (default "human")
   -q, --quiet           suppress non-error diagnostic messages

@@ -26,7 +26,7 @@ bitrise-cli rde template list [flags]
   -o, --output string      output format: human|json (default "human")
   -q, --quiet              suppress non-error diagnostic messages
       --theme string       color theme: auto|dark|light|none (default "auto"; overrides terminal background detection)
-      --workspace string   workspace slug (or set BITRISE_WORKSPACE_ID; defaults to default_workspace_slug)
+      --workspace string   workspace ID (or set BITRISE_WORKSPACE_ID; defaults to default_workspace_id)
 ```
 
 ### SEE ALSO

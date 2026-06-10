@@ -13,17 +13,17 @@ import (
 
 func newYMLCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "yml BUILD_SLUG",
+		Use:   "yml BUILD_ID",
 		Short: "Print the bitrise.yml a specific build ran with",
 		Long: `Print the bitrise.yml configuration that a specific build ran with.
 
-This is a shortcut for 'bitrise-cli yml get --build BUILD_SLUG'.
+This is a shortcut for 'bitrise-cli yml get --build BUILD_ID'.
 
 Required:
-  --app SLUG    app slug (or BITRISE_APP_SLUG env var)`,
-		Example: `  bitrise-cli build yml abc123 --app my-app-slug
-  bitrise-cli build yml abc123 --app my-app-slug --output json`,
-		Args: cmdutil.RequireArgs("BUILD_SLUG"),
+  --app ID      app ID (or BITRISE_APP_ID env var)`,
+		Example: `  bitrise-cli build yml abc123 --app my-app-id
+  bitrise-cli build yml abc123 --app my-app-id --output json`,
+		Args: cmdutil.RequireArgs("BUILD_ID"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			appSlug, err := cmdutil.ResolveAppSlug(cmd)
 			if err != nil {

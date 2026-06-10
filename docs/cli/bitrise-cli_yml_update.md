@@ -12,7 +12,7 @@ Note: if the app is configured to read its bitrise.yml from the repository,
 this command succeeds but the change will not affect builds.
 
 Required:
-  --app SLUG    app slug (or BITRISE_APP_SLUG env var)
+  --app ID      app ID (or BITRISE_APP_ID env var)
 
 ```
 bitrise-cli yml update [flags]
@@ -21,9 +21,9 @@ bitrise-cli yml update [flags]
 ### Examples
 
 ```
-  bitrise-cli yml update --app my-app-slug --file bitrise.yml
-  cat bitrise.yml | bitrise-cli yml update --app my-app-slug
-  bitrise-cli yml update --app my-app-slug < bitrise.yml
+  bitrise-cli yml update --app my-app-id --file bitrise.yml
+  cat bitrise.yml | bitrise-cli yml update --app my-app-id
+  bitrise-cli yml update --app my-app-id < bitrise.yml
 ```
 
 ### Options
@@ -36,7 +36,7 @@ bitrise-cli yml update [flags]
 ### Options inherited from parent commands
 
 ```
-      --app string      app slug (also accepted as --project; or set BITRISE_APP_SLUG)
+      --app string      app ID (also accepted as --project; or set BITRISE_APP_ID)
       --no-color        disable ANSI colors (NO_COLOR env is also honored)
   -o, --output string   output format: human|json (default "human")
   -q, --quiet           suppress non-error diagnostic messages

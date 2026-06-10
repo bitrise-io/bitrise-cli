@@ -7,10 +7,10 @@ Abort a running or queued build
 Abort a running or queued build.
 
 Required arguments:
-  BUILD_SLUG         build slug to abort
+  BUILD_ID           build ID to abort
 
 Required flags:
-  --app SLUG         (or BITRISE_APP_SLUG env var)
+  --app ID           (or BITRISE_APP_ID env var)
 
 Optional flags:
   --reason STRING            reason for aborting (recorded in the build log)
@@ -19,16 +19,16 @@ Optional flags:
   --skip-notifications       skip sending build notifications
 
 ```
-bitrise-cli build abort BUILD_SLUG [flags]
+bitrise-cli build abort BUILD_ID [flags]
 ```
 
 ### Examples
 
 ```
-  bitrise-cli build abort BUILD_SLUG --app my-app-slug
-  bitrise-cli build abort BUILD_SLUG --app my-app-slug --reason "no longer needed"
-  bitrise-cli build abort BUILD_SLUG --app my-app-slug --abort-with-success
-  bitrise-cli build abort BUILD_SLUG --app my-app-slug --output json
+  bitrise-cli build abort BUILD_ID --app my-app-id
+  bitrise-cli build abort BUILD_ID --app my-app-id --reason "no longer needed"
+  bitrise-cli build abort BUILD_ID --app my-app-id --abort-with-success
+  bitrise-cli build abort BUILD_ID --app my-app-id --output json
 ```
 
 ### Options
@@ -44,7 +44,7 @@ bitrise-cli build abort BUILD_SLUG [flags]
 ### Options inherited from parent commands
 
 ```
-      --app string      app slug (also accepted as --project; or set BITRISE_APP_SLUG)
+      --app string      app ID (also accepted as --project; or set BITRISE_APP_ID)
       --no-color        disable ANSI colors (NO_COLOR env is also honored)
   -o, --output string   output format: human|json (default "human")
   -q, --quiet           suppress non-error diagnostic messages

@@ -7,7 +7,7 @@ Start a new build
 Start a new build on the given app.
 
 Required flags:
-  --app SLUG         (or BITRISE_APP_SLUG env var)
+  --app ID           (or BITRISE_APP_ID env var)
 
 Optional flags:
   --workflow ID          workflow ID (mutually exclusive with --pipeline); Bitrise
@@ -36,14 +36,14 @@ bitrise-cli build trigger [flags]
 ### Examples
 
 ```
-  bitrise-cli build trigger --app my-app-slug --workflow primary
-  bitrise-cli build trigger --app my-app-slug --workflow deploy --branch release/1.2 --output json
-  bitrise-cli build trigger --app my-app-slug --pipeline my-pipeline --branch main
-  bitrise-cli build trigger --app my-app-slug --workflow primary --tag v1.2.3
-  bitrise-cli build trigger --app my-app-slug --workflow primary --env '{"MY_VAR":"hello","OTHER":"world"}'
-  bitrise-cli build trigger --app my-app-slug --workflow primary --wait
-  bitrise-cli build trigger --app my-app-slug --workflow primary --watch
-  bitrise-cli build trigger --app my-app-slug --workflow primary --watch --output json
+  bitrise-cli build trigger --app my-app-id --workflow primary
+  bitrise-cli build trigger --app my-app-id --workflow deploy --branch release/1.2 --output json
+  bitrise-cli build trigger --app my-app-id --pipeline my-pipeline --branch main
+  bitrise-cli build trigger --app my-app-id --workflow primary --tag v1.2.3
+  bitrise-cli build trigger --app my-app-id --workflow primary --env '{"MY_VAR":"hello","OTHER":"world"}'
+  bitrise-cli build trigger --app my-app-id --workflow primary --wait
+  bitrise-cli build trigger --app my-app-id --workflow primary --watch
+  bitrise-cli build trigger --app my-app-id --workflow primary --watch --output json
 ```
 
 ### Options
@@ -68,7 +68,7 @@ bitrise-cli build trigger [flags]
 ### Options inherited from parent commands
 
 ```
-      --app string      app slug (also accepted as --project; or set BITRISE_APP_SLUG)
+      --app string      app ID (also accepted as --project; or set BITRISE_APP_ID)
       --no-color        disable ANSI colors (NO_COLOR env is also honored)
   -o, --output string   output format: human|json (default "human")
   -q, --quiet           suppress non-error diagnostic messages

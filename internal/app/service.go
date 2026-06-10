@@ -13,12 +13,12 @@ import (
 // App represents a registered Bitrise app (project), trimmed to the fields
 // the CLI surfaces. The full set of fields is on bitriseapi.App.
 type App struct {
-	Slug        string `json:"slug"`
+	Slug        string `json:"id"`
 	Title       string `json:"title"`
 	Provider    string `json:"provider"`
 	RepoURL     string `json:"repo_url"`
-	OwnerType   string `json:"owner_type,omitempty"`
-	OwnerSlug   string `json:"owner_slug,omitempty"`
+	OwnerType   string `json:"-"` // owner is always a workspace; kept only for the "workspace/<id>" human rendering
+	OwnerSlug   string `json:"workspace_id,omitempty"`
 	ProjectType string `json:"project_type,omitempty"`
 	IsDisabled  bool   `json:"is_disabled,omitempty"`
 }
@@ -97,7 +97,7 @@ func (s *Service) View(ctx context.Context, appSlug string) (App, error) {
 		return App{}, fmt.Errorf("API client not configured")
 	}
 	if appSlug == "" {
-		return App{}, fmt.Errorf("app slug is required")
+		return App{}, fmt.Errorf("app ID is required")
 	}
 	a, err := s.client.App(ctx, appSlug)
 	if err != nil {

@@ -140,7 +140,7 @@ func renderListText(w io.Writer, res internalapp.AppsResult, nextPageCmd func(st
 	}
 
 	s := style.New(w)
-	headers := []string{"TITLE", "PROVIDER", "PROJECT", "OWNER", "DISABLED", "SLUG"}
+	headers := []string{"TITLE", "PROVIDER", "PROJECT_TYPE", "WORKSPACE", "DISABLED", "ID"}
 	rows := make([][]string, 0, len(res.Items))
 	disabled := make([]bool, 0, len(res.Items))
 	for _, a := range res.Items {

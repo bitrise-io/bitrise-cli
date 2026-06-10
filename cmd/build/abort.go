@@ -21,15 +21,15 @@ func newAbortCmd() *cobra.Command {
 	)
 
 	c := &cobra.Command{
-		Use:   "abort BUILD_SLUG",
+		Use:   "abort BUILD_ID",
 		Short: "Abort a running or queued build",
 		Long: `Abort a running or queued build.
 
 Required arguments:
-  BUILD_SLUG         build slug to abort
+  BUILD_ID           build ID to abort
 
 Required flags:
-  --app SLUG         (or BITRISE_APP_SLUG env var)
+  --app ID           (or BITRISE_APP_ID env var)
 
 Optional flags:
   --reason STRING            reason for aborting (recorded in the build log)
@@ -37,10 +37,10 @@ Optional flags:
   --skip-git-status-report   skip sending a git status report
   --skip-notifications       skip sending build notifications`,
 		Args: cobra.ExactArgs(1),
-		Example: `  bitrise-cli build abort BUILD_SLUG --app my-app-slug
-  bitrise-cli build abort BUILD_SLUG --app my-app-slug --reason "no longer needed"
-  bitrise-cli build abort BUILD_SLUG --app my-app-slug --abort-with-success
-  bitrise-cli build abort BUILD_SLUG --app my-app-slug --output json`,
+		Example: `  bitrise-cli build abort BUILD_ID --app my-app-id
+  bitrise-cli build abort BUILD_ID --app my-app-id --reason "no longer needed"
+  bitrise-cli build abort BUILD_ID --app my-app-id --abort-with-success
+  bitrise-cli build abort BUILD_ID --app my-app-id --output json`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			buildSlug := args[0]
 			appSlug, err := cmdutil.ResolveAppSlug(cmd)

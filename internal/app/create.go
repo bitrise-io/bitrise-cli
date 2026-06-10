@@ -58,13 +58,13 @@ type CreateOptions struct {
 // CreateResult is what Service.Create returns once the app is registered
 // and finished. BitriseYMLUploaded is true when step 3 of the flow ran.
 type CreateResult struct {
-	Slug              string `json:"slug"`
+	Slug              string `json:"id"`
 	Title             string `json:"title"`
 	RepoURL           string `json:"repo_url"`
 	DefaultBranch     string `json:"default_branch"`
 	BuildTriggerToken string `json:"build_trigger_token"`
 
-	OrgSlug            string `json:"workspace_slug"`
+	OrgSlug            string `json:"workspace_id"`
 	StackID            string `json:"stack_id"`
 	ProjectType        string `json:"project_type"`
 	BitriseYMLUploaded bool   `json:"bitrise_yml_uploaded"`
@@ -180,7 +180,7 @@ func (s *Service) autoDetectOrg(ctx context.Context) (string, error) {
 			slugs = append(slugs, o.Slug)
 		}
 		sort.Strings(slugs)
-		return "", fmt.Errorf("multiple workspaces available — pass --workspace or run 'bitrise-cli config set default_workspace_slug <slug>'. Available: %s", strings.Join(slugs, ", "))
+		return "", fmt.Errorf("multiple workspaces available — pass --workspace or run 'bitrise-cli config set default_workspace_id <id>'. Available: %s", strings.Join(slugs, ", "))
 	}
 }
 

@@ -6,7 +6,7 @@ Remove a config key and save the file
 
 Remove a config key and save the file.
 
-Valid keys: output, app_slug, default_workspace_slug, api_base_url, rde_api_base_url, web_base_url, theme
+Valid keys: output, app_id, default_workspace_id, api_base_url, rde_api_base_url, web_base_url, theme
 
 ```
 bitrise-cli config unset KEY [flags]

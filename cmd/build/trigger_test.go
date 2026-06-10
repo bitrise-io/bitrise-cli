@@ -72,7 +72,7 @@ func TestTriggerCmd_JSONOutput(t *testing.T) {
 	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
 		t.Fatalf("invalid JSON: %v\n%s", err, stdout.String())
 	}
-	if got["slug"] != "new-1" || got["build_number"] != float64(100) {
+	if got["id"] != "new-1" || got["build_number"] != float64(100) {
 		t.Errorf("unexpected JSON: %v", got)
 	}
 }
@@ -225,7 +225,7 @@ func TestTriggerCmd_Wait_FailedBuildJSONWritesRecordAndErrors(t *testing.T) {
 	if jerr := json.Unmarshal(stdout.Bytes(), &rec); jerr != nil {
 		t.Fatalf("stdout not valid JSON: %v\n%s", jerr, stdout.String())
 	}
-	if rec["slug"] != "b-1" {
+	if rec["id"] != "b-1" {
 		t.Errorf("expected build record on stdout, got %v", rec)
 	}
 }

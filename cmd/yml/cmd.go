@@ -30,7 +30,7 @@ commands still work, but uploaded changes will not affect builds.`,
 			return cmd.Help()
 		},
 	}
-	c.PersistentFlags().String(cmdutil.FlagApp, "", "app slug (also accepted as --project; or set BITRISE_APP_SLUG)")
+	c.PersistentFlags().String(cmdutil.FlagApp, "", "app ID (also accepted as --project; or set BITRISE_APP_ID)")
 	c.SetGlobalNormalizationFunc(func(_ *pflag.FlagSet, name string) pflag.NormalizedName {
 		if name == "project" {
 			return pflag.NormalizedName(cmdutil.FlagApp)

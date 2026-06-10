@@ -24,7 +24,7 @@ Storage:
   Global file: YAML at $XDG_CONFIG_HOME/bitrise/config.yaml
                (falls back to ~/.config/bitrise/config.yaml).
   Per-dir:     .bitrise-cli.yml in the current directory or any ancestor.
-               Useful for per-project app_slug pinning.
+               Useful for per-project app_id pinning.
 
 Precedence at runtime:
   flag > env > per-directory file > global file > built-in default
@@ -72,8 +72,8 @@ func newPathCmd() *cobra.Command {
 // configList is the JSON shape of `bitrise-cli config list`.
 type configList struct {
 	Output     string `json:"output,omitempty"`
-	AppSlug    string `json:"app_slug,omitempty"`
-	OrgSlug    string `json:"default_workspace_slug,omitempty"`
+	AppSlug    string `json:"app_id,omitempty"`
+	OrgSlug    string `json:"default_workspace_id,omitempty"`
 	APIBaseURL string `json:"api_base_url,omitempty"`
 	WebBaseURL string `json:"web_base_url,omitempty"`
 	Theme      string `json:"theme,omitempty"`
@@ -177,7 +177,7 @@ If VALUE is "-", the value is read from stdin (trailing newline trimmed).`,
 			strings.Join(internalconfig.Keys, ", "),
 		),
 		Example: `  bitrise-cli config set output json
-  bitrise-cli config set app_slug 5db8b1d8-cae8-4cea-b943-ddc8f48e5e7c`,
+  bitrise-cli config set app_id 5db8b1d8-cae8-4cea-b943-ddc8f48e5e7c`,
 		Args: cmdutil.RequireArgs("KEY", "VALUE"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			key := args[0]

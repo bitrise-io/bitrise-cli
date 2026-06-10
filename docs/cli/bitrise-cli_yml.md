@@ -19,7 +19,7 @@ bitrise-cli yml [flags]
 ### Options
 
 ```
-      --app string   app slug (also accepted as --project; or set BITRISE_APP_SLUG)
+      --app string   app ID (also accepted as --project; or set BITRISE_APP_ID)
   -h, --help         help for yml
 ```
 

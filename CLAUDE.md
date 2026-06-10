@@ -62,8 +62,8 @@ new commands extend the services without touching the cmd layer's shape.
 - **Config precedence** (highest to lowest):
   1. CLI flag (`--output` folded in by `persistentPreRun`; per-command
      flags like `--app` are layered in the command handler itself)
-  2. Environment variables (`BITRISE_TOKEN`, `BITRISE_APP_SLUG`,
-     `BITRISE_OUTPUT`, `BITRISE_API_BASE_URL`)
+  2. Environment variables (`BITRISE_TOKEN`, `BITRISE_APP_ID`,
+     `BITRISE_WORKSPACE_ID`, `BITRISE_OUTPUT`, `BITRISE_API_BASE_URL`)
   3. Per-directory file: `.bitrise-cli.yml` in CWD or any ancestor
   4. Global file: `$XDG_CONFIG_HOME/bitrise/config.yaml`
      (falls back to `~/.config/bitrise/config.yaml`)
@@ -77,7 +77,28 @@ new commands extend the services without touching the cmd layer's shape.
   cancel) when added; `build rerun` for re-runs; `view` is the detail verb.
 - **Singular nouns**: `app`, `build`, `workflow` — never plural.
 - **`app` ↔ `project` aliases**: both the command (`bitrise-cli project ...`)
-  and the flag (`--project`) accept either form. `app` is canonical.
+  and the flag (`--project`) accept either form. `app` is canonical. A project
+  contains exactly one app and an app belongs to exactly one project; they
+  share a single name, so the alias is unambiguous.
+- **Identifier term: `ID`, never `slug`** (user-facing). Every user-visible
+  surface — help text, flag/arg metavars (`APP_ID`, `BUILD_ID`), output labels
+  (`ID:`) and table headers (`ID`), config keys (`app_id`,
+  `default_workspace_id`), env vars (`BITRISE_APP_ID`), and `--output json`
+  field names (`id`, `app_id`, `build_id`, `workspace_id`) — says **ID**. The
+  Bitrise API calls these `slug` on the wire; that term lives only in the
+  `bitriseapi/` layer and in internal Go identifiers (e.g. `AppSlug`,
+  `OrgSlug`) — it must never reach the user.
+- **Workspace, never `organization`/`org`/`owner`** (user-facing). The entity
+  that owns an app is a **workspace** everywhere a user sees it: the
+  `--workspace` flag, the `WORKSPACE` column, the `Workspace:` label.
+  "Organization"/"org" is obsolete. An app's owner is always a workspace
+  (user-owned apps are unsupported), so apps use "workspace", not "owner".
+  (`rde template`'s `Owner` column is the template *creator's email* — a
+  different concept — and keeps "Owner".)
+- **`PROJECT_TYPE`, not `PROJECT`**: the platform column/label (ios, android,
+  …) is "Project type" (`PROJECT_TYPE` as an ALL-CAPS table header,
+  `Project type:` as a key/value label) — never bare "Project", which would
+  collide with the app↔project alias.
 - **Stdin via `-`**: `bitrise-cli config set token -` reads from stdin so
   secrets stay out of shell history. Apply this pattern to any new
   secret-accepting command.

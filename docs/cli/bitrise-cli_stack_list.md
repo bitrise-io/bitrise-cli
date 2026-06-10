@@ -18,7 +18,7 @@ bitrise-cli stack list [flags]
 
 ```
   bitrise-cli stack list
-  bitrise-cli stack list --workspace my-workspace-slug
+  bitrise-cli stack list --workspace my-workspace-id
   bitrise-cli stack list --output json
 ```
 
@@ -26,7 +26,7 @@ bitrise-cli stack list [flags]
 
 ```
   -h, --help               help for list
-      --workspace string   workspace slug for workspace-specific stacks (including custom stacks)
+      --workspace string   workspace ID for workspace-specific stacks (including custom stacks)
 ```
 
 ### Options inherited from parent commands

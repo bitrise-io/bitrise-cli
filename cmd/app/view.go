@@ -16,20 +16,20 @@ func newViewCmd() *cobra.Command {
 	var web bool
 
 	c := &cobra.Command{
-		Use:   "view APP_SLUG",
+		Use:   "view APP_ID",
 		Short: "Show details of a single app",
-		Long: `Show details for a single app identified by its slug.
+		Long: `Show details for a single app identified by its ID.
 
 Argument:
-  APP_SLUG           the unique slug of the app (visible in app URLs);
-                     falls back to BITRISE_APP_SLUG when omitted
+  APP_ID             the unique ID of the app (visible in app URLs);
+                     falls back to BITRISE_APP_ID when omitted
 
 Flags:
   --web              open the app page in the browser instead of printing`,
 		Example: `  bitrise-cli app view stub-app-aaa
   bitrise-cli app view stub-app-aaa --output json
   bitrise-cli app view stub-app-aaa --web
-  BITRISE_APP_SLUG=stub-app-aaa bitrise-cli app view`,
+  BITRISE_APP_ID=stub-app-aaa bitrise-cli app view`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			appSlug, err := cmdutil.ResolveAppSlugArg(cmd, args)
@@ -78,14 +78,14 @@ func renderAppText(w io.Writer, a internalapp.App) error {
 		return s.Label.Render(fmt.Sprintf("%-16s", label))
 	}
 	ew.F("%s%s\n", lbl("Title:"), a.Title)
-	ew.F("%s%s\n", lbl("Slug:"), s.Slug.Render(a.Slug))
+	ew.F("%s%s\n", lbl("ID:"), s.Slug.Render(a.Slug))
 	ew.F("%s%s\n", lbl("Provider:"), a.Provider)
 	ew.F("%s%s\n", lbl("Repo URL:"), s.URL.Render(a.RepoURL))
 	if a.OwnerType != "" || a.OwnerSlug != "" {
-		ew.F("%s%s/%s\n", lbl("Owner:"), a.OwnerType, a.OwnerSlug)
+		ew.F("%s%s/%s\n", lbl("Workspace:"), a.OwnerType, a.OwnerSlug)
 	}
 	if a.ProjectType != "" {
-		ew.F("%s%s\n", lbl("Project Type:"), a.ProjectType)
+		ew.F("%s%s\n", lbl("Project type:"), a.ProjectType)
 	}
 	if a.IsDisabled {
 		ew.F("%s%s\n", lbl("Disabled:"), s.Dim.Render("yes"))

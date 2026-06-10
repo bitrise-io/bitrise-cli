@@ -117,7 +117,7 @@ func renderCreateHuman(w io.Writer, a internaluser.Account) error {
 		ew.F("%s%s\n", lbl("Username:"), a.Username)
 	}
 	if a.Slug != "" {
-		ew.F("%s%s\n", lbl("Slug:"), s.Slug.Render(a.Slug))
+		ew.F("%s%s\n", lbl("ID:"), s.Slug.Render(a.Slug))
 	}
 	if !a.Confirmed {
 		ew.Ln()

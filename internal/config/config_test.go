@@ -198,7 +198,7 @@ func TestLoadDir_FindsAncestorFile(t *testing.T) {
 		t.Fatal(err)
 	}
 	cfgPath := filepath.Join(root, "a", DirFileName)
-	if err := os.WriteFile(cfgPath, []byte("app_slug: project-app\n"), 0o644); err != nil { //nolint:gosec // test-only tempfile
+	if err := os.WriteFile(cfgPath, []byte("app_id: project-app\n"), 0o644); err != nil { //nolint:gosec // test-only tempfile
 		t.Fatal(err)
 	}
 

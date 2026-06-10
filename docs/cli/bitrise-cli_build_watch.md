@@ -10,10 +10,10 @@ reflecting the build outcome (0 = success, 1 = failed or aborted).
 Ctrl-C detaches the CLI without affecting the running build.
 
 Required flags:
-  --app SLUG         (or BITRISE_APP_SLUG env var)
+  --app ID           (or BITRISE_APP_ID env var)
 
 Argument:
-  BUILD_SLUG         the unique slug of the build
+  BUILD_ID           the unique ID of the build
 
 Output:
   human (default)  logs stream as raw text; a header/footer frame them on stderr.
@@ -21,15 +21,15 @@ Output:
                    to stdout, so 'build watch ... -o json' is pipeable.
 
 ```
-bitrise-cli build watch BUILD_SLUG [flags]
+bitrise-cli build watch BUILD_ID [flags]
 ```
 
 ### Examples
 
 ```
-  bitrise-cli build watch --app my-app-slug <build-slug>
-  bitrise-cli build watch --app my-app-slug <build-slug> --interval 5s
-  bitrise-cli build watch --app my-app-slug <build-slug> --output json
+  bitrise-cli build watch --app my-app-id <build-id>
+  bitrise-cli build watch --app my-app-id <build-id> --interval 5s
+  bitrise-cli build watch --app my-app-id <build-id> --output json
 ```
 
 ### Options
@@ -42,7 +42,7 @@ bitrise-cli build watch BUILD_SLUG [flags]
 ### Options inherited from parent commands
 
 ```
-      --app string      app slug (also accepted as --project; or set BITRISE_APP_SLUG)
+      --app string      app ID (also accepted as --project; or set BITRISE_APP_ID)
       --no-color        disable ANSI colors (NO_COLOR env is also honored)
   -o, --output string   output format: human|json (default "human")
   -q, --quiet           suppress non-error diagnostic messages

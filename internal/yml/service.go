@@ -13,8 +13,8 @@ import (
 
 // GetResult holds the retrieved bitrise.yml content.
 type GetResult struct {
-	AppSlug   string `json:"app_slug"`
-	BuildSlug string `json:"build_slug,omitempty"`
+	AppSlug   string `json:"app_id"`
+	BuildSlug string `json:"build_id,omitempty"`
 	Content   string `json:"content"`
 }
 
@@ -42,7 +42,7 @@ func (s *Service) Get(ctx context.Context, appSlug, buildSlug string) (GetResult
 		return GetResult{}, fmt.Errorf("API client not configured")
 	}
 	if appSlug == "" {
-		return GetResult{}, fmt.Errorf("app slug is required")
+		return GetResult{}, fmt.Errorf("app ID is required")
 	}
 	var (
 		content string
@@ -66,7 +66,7 @@ func (s *Service) Update(ctx context.Context, appSlug, rawYAML string) error {
 		return fmt.Errorf("API client not configured")
 	}
 	if appSlug == "" {
-		return fmt.Errorf("app slug is required")
+		return fmt.Errorf("app ID is required")
 	}
 	var parsed any
 	if err := yaml.Unmarshal([]byte(rawYAML), &parsed); err != nil {
