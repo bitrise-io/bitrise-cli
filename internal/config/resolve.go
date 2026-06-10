@@ -46,13 +46,11 @@ const DefaultWebBaseURL = "https://app.bitrise.io"
 const DefaultOIDCTokenEndpoint = "https://app.bitrise.io/oidc/token" //nolint:gosec // G101: public endpoint URL, not a credential
 
 // DefaultOAuthIssuer is the WorkOS AuthKit domain (issuer) the OAuth login
-// flow authorizes against; it hosts /oauth2/authorize and /oauth2/token.
-//
-// TODO(oauth): set this to Bitrise's real production WorkOS AuthKit domain
-// (the same EXTERNAL_OAUTH_ISSUER value the MCP server uses). Until then the
-// flow only works against an issuer supplied via BITRISE_OAUTH_ISSUER (e.g. a
-// test server or staging AuthKit domain). See the OAuth login plan / ER-2774.
-const DefaultOAuthIssuer = ""
+// flow authorizes against; it hosts /oauth2/authorize and /oauth2/token. This
+// is the same WorkOS environment the MCP server uses (its EXTERNAL_OAUTH_ISSUER)
+// — it's not a secret. Override with BITRISE_OAUTH_ISSUER to target a different
+// (e.g. staging) environment.
+const DefaultOAuthIssuer = "https://pleasing-being-57.authkit.app"
 
 // Resolved is the merged settings the cmd layer reads on every invocation.
 //

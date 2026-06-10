@@ -33,19 +33,19 @@ const (
 	// WorkOS fetches and validates the doc at authorize time (CIMD, no
 	// pre-registered client record). It is not a secret.
 	//
-	// TODO(oauth): set to the real hosted CIMD URL once it is stood up on a
-	// Bitrise-controlled domain. Until then, real end-to-end login is blocked
-	// at WorkOS/monolith (see ER-2774 / the OAuth login plan); tests inject
-	// their own Config and don't rely on this default.
-	DefaultClientID = ""
+	// The metadata document is served by the monolith (bitrise-website) at this
+	// exact URL; the value here must match the URL WorkOS fetches and the
+	// `client_id` declared inside the document. Real end-to-end login also needs
+	// the CLI resource indicator registered in WorkOS (see DefaultResource).
+	DefaultClientID = "https://app.bitrise.io/.well-known/oauth-client/cli"
 
 	// DefaultResource is the CLI's audience / resource indicator. Sent on the
-	// authorize request so WorkOS pins it into the JWT `aud`; it must match the
-	// resource indicator registered in the WorkOS dashboard and the monolith's
-	// aud→description map key (which tags CLI tokens as "CLI").
-	//
-	// TODO(oauth): set to the agreed value (e.g. https://cli.bitrise.io).
-	DefaultResource = ""
+	// authorize request so WorkOS pins it into the JWT `aud`. It must be
+	// registered as a Resource Indicator in the WorkOS dashboard (Prod +
+	// Staging) for WorkOS to honour it; the monolith already accepts any
+	// *.bitrise.io audience at /oidc/token. Mirrors the MCP server's
+	// https://mcp.bitrise.io.
+	DefaultResource = "https://cli.bitrise.io"
 )
 
 // defaultTimeout bounds each token HTTP call. defaultPATLifetime is the
