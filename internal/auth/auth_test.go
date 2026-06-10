@@ -6,6 +6,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestPath_HonorsXDG(t *testing.T) {
@@ -114,6 +115,67 @@ func TestLoad_InvalidYAML(t *testing.T) {
 	}
 	if _, err := Load(); err == nil {
 		t.Fatal("expected error on malformed YAML")
+	}
+}
+
+func TestSaveLoad_OAuthFields_RoundTrip(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	// UTC + second precision avoids monotonic-clock / location drift through YAML.
+	want := Auth{
+		Token:              "bitpat_x",
+		TokenExpiry:        time.Now().Add(time.Hour).UTC().Truncate(time.Second),
+		JWT:                "header.payload.sig",
+		JWTExpiry:          time.Now().Add(2 * time.Hour).UTC().Truncate(time.Second),
+		RefreshToken:       "refresh-1",
+		RefreshTokenExpiry: time.Now().Add(720 * time.Hour).UTC().Truncate(time.Second),
+	}
+	if err := Save(want); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	got, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if got.Token != want.Token || got.JWT != want.JWT || got.RefreshToken != want.RefreshToken {
+		t.Fatalf("string fields mismatch: got %+v", got)
+	}
+	if !got.TokenExpiry.Equal(want.TokenExpiry) || !got.JWTExpiry.Equal(want.JWTExpiry) || !got.RefreshTokenExpiry.Equal(want.RefreshTokenExpiry) {
+		t.Fatalf("expiry round-trip mismatch:\n got  %+v\n want %+v", got, want)
+	}
+	if !got.IsOAuthManaged() {
+		t.Fatal("token with a refresh token should be OAuth-managed")
+	}
+}
+
+func TestIsOAuthManaged(t *testing.T) {
+	if (Auth{Token: "x"}).IsOAuthManaged() {
+		t.Fatal("a manual token (no refresh token) should not be OAuth-managed")
+	}
+	if !(Auth{Token: "x", RefreshToken: "r"}).IsOAuthManaged() {
+		t.Fatal("a token with a refresh token should be OAuth-managed")
+	}
+}
+
+func TestLoad_BackwardCompat_TokenOnly(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	p := filepath.Join(dir, "bitrise", "auth.yaml")
+	if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	// An auth.yaml written before OAuth support: only `token`.
+	if err := os.WriteFile(p, []byte("token: bitpat_old\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if got.Token != "bitpat_old" {
+		t.Fatalf("token = %q, want bitpat_old", got.Token)
+	}
+	if got.IsOAuthManaged() {
+		t.Fatal("a token-only file should not be treated as OAuth-managed")
 	}
 }
 

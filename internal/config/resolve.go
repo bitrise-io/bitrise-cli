@@ -19,6 +19,12 @@ const (
 	EnvRDEAPIBaseURL = "BITRISE_RDE_API_BASE_URL"
 	EnvWebBaseURL    = "BITRISE_WEB_BASE_URL"
 	EnvTheme         = "BITRISE_CLI_THEME"
+	// EnvOAuthIssuer overrides the WorkOS AuthKit issuer (full URL) the OAuth
+	// login flow authorizes against; EnvOIDCTokenEndpoint overrides the
+	// monolith JWT→PAT exchange endpoint (full URL). Both exist only to point
+	// the flow at a non-prod environment — neither value is secret.
+	EnvOAuthIssuer       = "BITRISE_OAUTH_ISSUER"
+	EnvOIDCTokenEndpoint = "BITRISE_OIDC_TOKEN_ENDPOINT" //nolint:gosec // G101: env var name, not a credential
 )
 
 // DefaultAPIBaseURL is the production Bitrise API base URL.
@@ -33,6 +39,20 @@ const DefaultRDEAPIBaseURL = "https://api.bitrise.io/rde"
 // Used by `user create` and `auth login --email` to drive the website's
 // signup and sign-in JSON endpoints.
 const DefaultWebBaseURL = "https://app.bitrise.io"
+
+// DefaultOIDCTokenEndpoint is the production monolith endpoint that exchanges
+// a WorkOS-issued JWT for a Bitrise PAT (RFC 8693 token exchange), used by the
+// `auth login --oauth` flow and its background token refresh.
+const DefaultOIDCTokenEndpoint = "https://app.bitrise.io/oidc/token" //nolint:gosec // G101: public endpoint URL, not a credential
+
+// DefaultOAuthIssuer is the WorkOS AuthKit domain (issuer) the OAuth login
+// flow authorizes against; it hosts /oauth2/authorize and /oauth2/token.
+//
+// TODO(oauth): set this to Bitrise's real production WorkOS AuthKit domain
+// (the same EXTERNAL_OAUTH_ISSUER value the MCP server uses). Until then the
+// flow only works against an issuer supplied via BITRISE_OAUTH_ISSUER (e.g. a
+// test server or staging AuthKit domain). See the OAuth login plan / ER-2774.
+const DefaultOAuthIssuer = ""
 
 // Resolved is the merged settings the cmd layer reads on every invocation.
 //
@@ -55,7 +75,12 @@ type Resolved struct {
 	APIBaseURL    string
 	RDEAPIBaseURL string
 	WebBaseURL    string
-	Theme         style.Theme
+	// OAuthIssuer and OIDCTokenEndpoint configure the `auth login --oauth`
+	// flow and its background token refresh. OAuthIssuer may be empty when no
+	// default is compiled in and none is set via BITRISE_OAUTH_ISSUER.
+	OAuthIssuer       string
+	OIDCTokenEndpoint string
+	Theme             style.Theme
 }
 
 // Resolve merges global config, per-directory config, the auth file, and
@@ -94,6 +119,8 @@ func Resolve(globalCfg, dirCfg Config, authData auth.Auth, flagOutput, flagTheme
 	r.APIBaseURL = firstNonEmpty(os.Getenv(EnvAPIBaseURL), dirCfg.APIBaseURL, globalCfg.APIBaseURL, DefaultAPIBaseURL)
 	r.RDEAPIBaseURL = firstNonEmpty(os.Getenv(EnvRDEAPIBaseURL), dirCfg.RDEAPIBaseURL, globalCfg.RDEAPIBaseURL, DefaultRDEAPIBaseURL)
 	r.WebBaseURL = firstNonEmpty(os.Getenv(EnvWebBaseURL), dirCfg.WebBaseURL, globalCfg.WebBaseURL, DefaultWebBaseURL)
+	r.OAuthIssuer = firstNonEmpty(os.Getenv(EnvOAuthIssuer), DefaultOAuthIssuer)
+	r.OIDCTokenEndpoint = firstNonEmpty(os.Getenv(EnvOIDCTokenEndpoint), DefaultOIDCTokenEndpoint)
 	r.Token = firstNonEmpty(os.Getenv(EnvToken), authData.Token)
 
 	return r, nil

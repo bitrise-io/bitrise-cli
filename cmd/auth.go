@@ -4,12 +4,14 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"time"
 
 	"github.com/spf13/cobra"
 
 	"github.com/bitrise-io/bitrise-cli/cmd/cmdutil"
 	"github.com/bitrise-io/bitrise-cli/internal/auth"
 	"github.com/bitrise-io/bitrise-cli/internal/config"
+	"github.com/bitrise-io/bitrise-cli/internal/oauth"
 	"github.com/bitrise-io/bitrise-cli/internal/output"
 	"github.com/bitrise-io/bitrise-cli/internal/output/style"
 	internaluser "github.com/bitrise-io/bitrise-cli/internal/user"
@@ -51,13 +53,15 @@ func newAuthLoginCmd() *cobra.Command {
 		withToken     bool
 		emailLogin    string
 		passwordStdin bool
+		oauthLogin    bool
+		webLogin      bool
 	)
 	c := &cobra.Command{
 		Use:   "login",
 		Short: "Save a Bitrise access token",
 		Long: `Save a Bitrise access token for future commands to use.
 
-There are two modes:
+There are three modes:
 
   1. Token paste (default).
      Prompts for a Personal Access Token (or pipes one in with --with-token).
@@ -76,14 +80,29 @@ There are two modes:
          bitrise-cli auth login --email alice@example.com
          printf '%s' "$PW" | bitrise-cli auth login --email alice@example.com --password-stdin
 
+  3. Browser sign-in (--oauth).
+     Opens your browser to sign in to Bitrise, then exchanges the result for a
+     Personal Access Token and stores it. The CLI keeps the credential fresh in
+     the background, so you rarely need to sign in again:
+
+         bitrise-cli auth login --oauth
+
+     This requires the browser to run on the same machine as the CLI (the sign-in
+     is handed back over a loopback address). Signing in on a remote/headless
+     host over SSH is not yet supported — paste a token with --with-token there.
+
 Either way the resulting token is written to
 $XDG_CONFIG_HOME/bitrise/auth.yaml with 0600 permissions. The token is NOT
 echoed in any output (use 'auth status' to verify, 'auth logout' to clear).`,
 		Example: `  bitrise-cli auth login                                       # interactive token prompt
   echo "$BITRISE_TOKEN" | bitrise-cli auth login --with-token
+  bitrise-cli auth login --oauth                               # sign in via the browser
   bitrise-cli auth login --email alice@example.com             # interactive password prompt
   printf '%s' "$PW" | bitrise-cli auth login --email alice@example.com --password-stdin`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			if oauthLogin || webLogin {
+				return runOAuthLogin(cmd)
+			}
 			if emailLogin != "" {
 				return runEmailLogin(cmd, emailLogin, passwordStdin)
 			}
@@ -96,6 +115,17 @@ echoed in any output (use 'auth status' to verify, 'auth logout' to clear).`,
 	c.Flags().BoolVar(&withToken, "with-token", false, "read token from stdin without an interactive prompt")
 	c.Flags().StringVar(&emailLogin, "email", "", "sign in by email/password and mint a Personal Access Token")
 	c.Flags().BoolVar(&passwordStdin, "password-stdin", false, "with --email, read the password from stdin without prompting")
+	c.Flags().BoolVar(&oauthLogin, "oauth", false, "sign in via the browser (OAuth) and store a managed, auto-refreshing token")
+	// --web is a hidden alias for --oauth ("open in the browser").
+	c.Flags().BoolVar(&webLogin, cmdutil.FlagWeb, false, "alias for --oauth")
+	_ = c.Flags().MarkHidden(cmdutil.FlagWeb)
+	// The three login modes are mutually exclusive. --oauth and --web are
+	// aliases, so they're not exclusive with each other.
+	for _, mode := range []string{"oauth", cmdutil.FlagWeb} {
+		c.MarkFlagsMutuallyExclusive(mode, "with-token")
+		c.MarkFlagsMutuallyExclusive(mode, "email")
+		c.MarkFlagsMutuallyExclusive(mode, "password-stdin")
+	}
 	c.MarkFlagsMutuallyExclusive("with-token", "email")
 	c.MarkFlagsMutuallyExclusive("with-token", "password-stdin")
 	return c
@@ -155,6 +185,27 @@ func runEmailLogin(cmd *cobra.Command, email string, passwordStdin bool) error {
 	return nil
 }
 
+// runOAuthLogin drives the browser-based OAuth flow: it runs the authorization
+// dance via internal/oauth, exchanges the result for a Personal Access Token,
+// and persists the PAT plus the refresh material that keeps it fresh.
+func runOAuthLogin(cmd *cobra.Command) error {
+	r := resolvedFromCmd(cmd)
+	a, err := oauth.NewConfig(r.OAuthIssuer, r.OIDCTokenEndpoint).
+		Login(cmd.Context(), cmdutil.OpenBrowser, cmd.ErrOrStderr())
+	if err != nil {
+		return err
+	}
+	if err := auth.Save(a); err != nil {
+		return err
+	}
+	if !quiet {
+		if _, err := fmt.Fprintln(cmd.ErrOrStderr(), "Saved access token"); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func newAuthLogoutCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "logout",
@@ -180,7 +231,11 @@ type authStatus struct {
 	HasToken  bool   `json:"has_token"`
 	TokenType string `json:"token_type,omitempty"`
 	Source    string `json:"source"`
-	Path      string `json:"path"`
+	// TokenExpiry is set (RFC 3339) only for OAuth-managed tokens, whose
+	// expiry the CLI tracks for background refresh. No token material is
+	// ever included.
+	TokenExpiry string `json:"token_expiry,omitempty"`
+	Path        string `json:"path"`
 }
 
 func newAuthStatusCmd() *cobra.Command {
@@ -190,9 +245,10 @@ func newAuthStatusCmd() *cobra.Command {
 		Long: `Show whether an access token is configured and which source supplied it.
 
 Sources, in precedence order:
-  env             BITRISE_TOKEN environment variable
-  auth file       auth.yaml (set via 'bitrise-cli auth login')
-  none            no token configured`,
+  env                BITRISE_TOKEN environment variable
+  oauth (auth file)  auth.yaml, signed in via 'auth login --oauth' (auto-refreshed)
+  auth file          auth.yaml (set via 'bitrise-cli auth login')
+  none               no token configured`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			r := resolvedFromCmd(cmd)
 			p, err := auth.Path()
@@ -206,6 +262,17 @@ Sources, in precedence order:
 			}
 			if r.Token != "" {
 				s.TokenType = auth.TokenType(r.Token)
+				// When the token comes from the auth file (not env), surface
+				// OAuth-managed details: a clearer source label and the PAT
+				// expiry the CLI refreshes against. Token material is omitted.
+				if os.Getenv(config.EnvToken) == "" {
+					if a, err := auth.Load(); err == nil && a.IsOAuthManaged() {
+						s.Source = "oauth (auth file)"
+						if !a.TokenExpiry.IsZero() {
+							s.TokenExpiry = a.TokenExpiry.Format(time.RFC3339)
+						}
+					}
+				}
 			}
 			return output.Render(cmd.OutOrStdout(), resolveFormat(cmd), s, renderAuthStatusHuman)
 		},
@@ -242,6 +309,9 @@ func renderAuthStatusHuman(w io.Writer, st authStatus) error {
 	ew.F("%s%s\n", lbl("Token:"), s.Dim.Render("******** (set)"))
 	ew.F("%s%s\n", lbl("Type:"), st.TokenType)
 	ew.F("%s%s\n", lbl("Source:"), st.Source)
+	if st.TokenExpiry != "" {
+		ew.F("%s%s\n", lbl("Expires:"), st.TokenExpiry)
+	}
 	ew.F("%s%s\n", lbl("Path:"), s.Dim.Render(st.Path))
 	return ew.Err
 }

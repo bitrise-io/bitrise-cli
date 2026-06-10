@@ -30,11 +30,22 @@ which installs a `br` shell function, so the alias is left to your discretion.
 
 ### Authentication
 
-Once installed, save a Bitrise Personal Access Token:
+Once installed, sign in. The simplest way is through the browser:
+
+```sh
+bitrise-cli auth login --oauth    # sign in via the browser (auto-refreshed)
+```
+
+This stores a Personal Access Token and keeps it fresh in the background, so
+you rarely need to sign in again. (Browser sign-in needs the browser on the
+same machine as the CLI; on a remote/headless host, paste a token instead.)
+
+You can also save a token directly, or sign in with email/password:
 
 ```sh
 bitrise-cli auth login            # prompts for a token
 echo "$BITRISE_TOKEN" | bitrise-cli auth login --with-token   # non-interactive
+bitrise-cli auth login --email you@example.com                # email/password
 ```
 
 The token can also be supplied per-invocation via the `BITRISE_TOKEN`

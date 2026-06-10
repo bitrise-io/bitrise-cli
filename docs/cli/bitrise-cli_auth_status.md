@@ -7,9 +7,10 @@ Show whether an access token is configured and where it came from
 Show whether an access token is configured and which source supplied it.
 
 Sources, in precedence order:
-  env             BITRISE_TOKEN environment variable
-  auth file       auth.yaml (set via 'bitrise-cli auth login')
-  none            no token configured
+  env                BITRISE_TOKEN environment variable
+  oauth (auth file)  auth.yaml, signed in via 'auth login --oauth' (auto-refreshed)
+  auth file          auth.yaml (set via 'bitrise-cli auth login')
+  none               no token configured
 
 ```
 bitrise-cli auth status [flags]

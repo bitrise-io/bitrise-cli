@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/bitrise-io/bitrise-cli/internal/auth"
 	"github.com/bitrise-io/bitrise-cli/internal/config"
@@ -110,5 +111,59 @@ func TestAuthLogin_EmailMode_RejectsWithToken(t *testing.T) {
 	err := c.Execute()
 	if err == nil || !strings.Contains(err.Error(), "none of the others can be") {
 		t.Fatalf("expected mutually-exclusive error, got %v", err)
+	}
+}
+
+func TestAuthLogin_OAuthRejectsWithToken(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+
+	c := newAuthLoginCmd()
+	c.SetOut(io.Discard)
+	c.SetErr(io.Discard)
+	c.SetArgs([]string{"--oauth", "--with-token"})
+	c.SetContext(config.WithResolved(context.Background(), config.Resolved{Output: "human"}))
+
+	err := c.Execute()
+	if err == nil || !strings.Contains(err.Error(), "none of the others can be") {
+		t.Fatalf("expected --oauth/--with-token to be mutually exclusive, got %v", err)
+	}
+}
+
+func TestAuthStatus_OAuthManaged_ShowsSourceAndExpiryNoToken(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("BITRISE_TOKEN", "") // ensure the env path is not taken
+
+	expiry := time.Now().Add(45 * time.Minute)
+	fixture := auth.Auth{ //nolint:gosec // G101: test fixture token, not a real credential
+		Token:        "oauth-pat",
+		TokenExpiry:  expiry,
+		JWT:          "j",
+		JWTExpiry:    expiry,
+		RefreshToken: "r",
+	}
+	if err := auth.Save(fixture); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	c := newAuthStatusCmd()
+	out := &bytes.Buffer{}
+	c.SetOut(out)
+	c.SetErr(io.Discard)
+	c.SetArgs(nil)
+	resolved := config.Resolved{Token: "oauth-pat", Output: "human"} //nolint:gosec // G101: test fixture token, not a real credential
+	c.SetContext(config.WithResolved(context.Background(), resolved))
+
+	if err := c.Execute(); err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	s := out.String()
+	if !strings.Contains(s, "oauth (auth file)") {
+		t.Fatalf("expected oauth source label, got:\n%s", s)
+	}
+	if !strings.Contains(s, "Expires") {
+		t.Fatalf("expected an expiry line, got:\n%s", s)
+	}
+	if strings.Contains(s, "oauth-pat") {
+		t.Fatalf("token material must never be printed, got:\n%s", s)
 	}
 }

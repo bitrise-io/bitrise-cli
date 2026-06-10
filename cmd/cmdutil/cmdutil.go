@@ -16,6 +16,7 @@ import (
 	"github.com/bitrise-io/bitrise-cli/bitriseapi"
 	rdeapi "github.com/bitrise-io/bitrise-cli/bitriseapi/rde"
 	"github.com/bitrise-io/bitrise-cli/internal/config"
+	"github.com/bitrise-io/bitrise-cli/internal/oauth"
 	"github.com/bitrise-io/bitrise-cli/internal/output"
 )
 
@@ -107,14 +108,35 @@ func AddAppProjectAlias(c *cobra.Command) {
 // been resolved from any layer (env, auth.yaml, or legacy config).
 var ErrNoToken = errors.New("no Bitrise access token configured (run 'bitrise-cli auth login' or set BITRISE_TOKEN)")
 
+// liveToken resolves the access token to use for an API call, refreshing an
+// OAuth-managed token if it has expired. It is the single token-resolution
+// path for both API clients, so refresh happens for every API-bound command
+// but never in Resolve or persistentPreRunE (which also run for version,
+// config list, etc.).
+//
+// BITRISE_TOKEN, when set, is used verbatim and never refreshed — that's the
+// CI path. Otherwise the resolved token (from auth.yaml) is handed to the
+// OAuth refresh ladder, which is a no-op for a manually pasted/email token.
+func liveToken(cmd *cobra.Command) (string, error) {
+	if t := os.Getenv(config.EnvToken); t != "" {
+		return t, nil
+	}
+	r := config.FromContext(cmd.Context())
+	if r.Token == "" {
+		return "", ErrNoToken
+	}
+	return oauth.NewConfig(r.OAuthIssuer, r.OIDCTokenEndpoint).EnsureFreshPAT(cmd.Context(), r.Token)
+}
+
 // NewAPIClient builds a *bitriseapi.Client from the Resolved settings on
 // cmd.Context(). Returns ErrNoToken if no token is set anywhere.
 func NewAPIClient(cmd *cobra.Command) (*bitriseapi.Client, error) {
-	r := config.FromContext(cmd.Context())
-	if r.Token == "" {
-		return nil, ErrNoToken
+	tok, err := liveToken(cmd)
+	if err != nil {
+		return nil, err
 	}
-	return bitriseapi.New(r.APIBaseURL, r.Token), nil
+	r := config.FromContext(cmd.Context())
+	return bitriseapi.New(r.APIBaseURL, tok), nil
 }
 
 // NewRDEClient builds an *rdeapi.Client for the Remote Dev Environments API
@@ -122,11 +144,12 @@ func NewAPIClient(cmd *cobra.Command) (*bitriseapi.Client, error) {
 // token is set anywhere. The RDE service uses Bearer auth (vs the legacy
 // "token <PAT>" header on the main bitriseapi client).
 func NewRDEClient(cmd *cobra.Command) (*rdeapi.Client, error) {
-	r := config.FromContext(cmd.Context())
-	if r.Token == "" {
-		return nil, ErrNoToken
+	tok, err := liveToken(cmd)
+	if err != nil {
+		return nil, err
 	}
-	return rdeapi.New(r.RDEAPIBaseURL, r.Token), nil
+	r := config.FromContext(cmd.Context())
+	return rdeapi.New(r.RDEAPIBaseURL, tok), nil
 }
 
 // ErrWriter wraps an io.Writer and captures the first write error so callers
