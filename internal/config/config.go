@@ -57,6 +57,7 @@ type Config struct {
 // the next Save rewrites the file with the current key names. The current key
 // wins if a file somehow carries both.
 func (c *Config) UnmarshalYAML(value *yaml.Node) error {
+	// NOTE: new Config fields must be added here too (two places: the struct and the copy block below).
 	var raw struct {
 		Output               string `yaml:"output"`
 		AppID                string `yaml:"app_id"`
@@ -71,6 +72,7 @@ func (c *Config) UnmarshalYAML(value *yaml.Node) error {
 	if err := value.Decode(&raw); err != nil {
 		return err
 	}
+	// NOTE: new Config fields must be added here too (and to the raw struct above).
 	c.Output = raw.Output
 	c.AppID = firstNonEmpty(raw.AppID, raw.AppSlugLegacy)
 	c.DefaultWorkspaceID = firstNonEmpty(raw.DefaultWorkspaceID, raw.DefaultWorkspaceSlug)

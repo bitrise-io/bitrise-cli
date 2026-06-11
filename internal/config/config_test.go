@@ -149,6 +149,33 @@ func TestSaveLoad_RoundTrip(t *testing.T) {
 	}
 }
 
+// TestUnmarshalYAML_AllFieldsPreserved guards against a field being added to
+// Config without a matching entry in the raw struct and copy block inside
+// UnmarshalYAML. Every field must survive a Save→Load round-trip.
+func TestUnmarshalYAML_AllFieldsPreserved(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+
+	want := Config{
+		Output:             "json",
+		AppID:              "app-123",
+		DefaultWorkspaceID: "ws-456",
+		APIBaseURL:         "https://api.example.com",
+		RDEAPIBaseURL:      "https://rde.example.com",
+		WebBaseURL:         "https://web.example.com",
+		Theme:              "dark",
+	}
+	if err := Save(want); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	got, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if got != want {
+		t.Fatalf("not all fields survived round-trip:\n got  %+v\nwant %+v", got, want)
+	}
+}
+
 func TestLoad_MissingFileIsZeroValue(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	got, err := Load()
