@@ -11,12 +11,13 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/bitrise-io/bitrise-cli/cmd/cmdtest"
 	"github.com/bitrise-io/bitrise-cli/internal/config"
 	"github.com/bitrise-io/bitrise-cli/internal/output"
 )
 
 func TestTriggerCmd_HappyPath(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(cmdtest.AppPassthrough(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/apps/my-app/builds" || r.Method != http.MethodPost {
 			t.Errorf("unexpected: %s %s", r.Method, r.URL.Path)
 		}
@@ -47,7 +48,7 @@ func TestTriggerCmd_HappyPath(t *testing.T) {
 }
 
 func TestTriggerCmd_JSONOutput(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	srv := httptest.NewServer(cmdtest.AppPassthrough(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusCreated)
 		_, _ = io.WriteString(w, `{"build_slug":"new-1","build_number":100,"build_url":"https://app.bitrise.io/build/new-1","triggered_workflow":"primary"}`)
 	}))
@@ -78,7 +79,7 @@ func TestTriggerCmd_JSONOutput(t *testing.T) {
 }
 
 func TestTriggerCmd_InvalidEnvJSON(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	srv := httptest.NewServer(cmdtest.AppPassthrough(func(http.ResponseWriter, *http.Request) {}))
 	defer srv.Close()
 
 	c := newTriggerCmd()
@@ -99,7 +100,7 @@ func TestTriggerCmd_InvalidEnvJSON(t *testing.T) {
 }
 
 func TestTriggerCmd_WaitAndWatchMutuallyExclusive(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	srv := httptest.NewServer(cmdtest.AppPassthrough(func(http.ResponseWriter, *http.Request) {}))
 	defer srv.Close()
 
 	c := newTriggerCmd()
@@ -122,7 +123,7 @@ func TestTriggerCmd_WaitAndWatchMutuallyExclusive(t *testing.T) {
 func TestTriggerCmd_Wait_BlocksAndExits(t *testing.T) {
 	// Trigger returns a build; two View calls: first in-progress, then success.
 	var viewCalls atomic.Int32
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(cmdtest.AppPassthrough(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.URL.Path == "/apps/my-app/builds" && r.Method == http.MethodPost:
 			w.WriteHeader(http.StatusCreated)
@@ -162,7 +163,7 @@ func TestTriggerCmd_Wait_BlocksAndExits(t *testing.T) {
 }
 
 func TestTriggerCmd_Wait_FailedBuildReturnsError(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(cmdtest.AppPassthrough(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.URL.Path == "/apps/my-app/builds" && r.Method == http.MethodPost:
 			w.WriteHeader(http.StatusCreated)
@@ -193,7 +194,7 @@ func TestTriggerCmd_Wait_FailedBuildReturnsError(t *testing.T) {
 func TestTriggerCmd_Wait_FailedBuildJSONWritesRecordAndErrors(t *testing.T) {
 	// Regression: with --output json a failed build must still write the build
 	// record to stdout AND return a non-zero error so CI scripts can gate on it.
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(cmdtest.AppPassthrough(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.URL.Path == "/apps/my-app/builds" && r.Method == http.MethodPost:
 			w.WriteHeader(http.StatusCreated)
@@ -232,7 +233,7 @@ func TestTriggerCmd_Wait_FailedBuildJSONWritesRecordAndErrors(t *testing.T) {
 
 func TestTriggerCmd_DefaultsBranchToMain(t *testing.T) {
 	var gotBranch string
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(cmdtest.AppPassthrough(func(w http.ResponseWriter, r *http.Request) {
 		var body map[string]any
 		_ = json.NewDecoder(r.Body).Decode(&body)
 		if bp, ok := body["build_params"].(map[string]any); ok {

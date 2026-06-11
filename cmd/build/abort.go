@@ -43,16 +43,18 @@ Optional flags:
   bitrise-cli build abort BUILD_ID --app my-app-id --output json`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			buildSlug := args[0]
-			appSlug, err := cmdutil.ResolveAppSlug(cmd)
-			if err != nil {
-				return err
-			}
-			format := cmdutil.ResolveFormat(cmd)
 
 			client, err := cmdutil.NewAPIClient(cmd)
 			if err != nil {
 				return err
 			}
+			appSlug, err := cmdutil.ResolveAndLookupAppSlug(cmd, client)
+			if err != nil {
+				return err
+			}
+
+			format := cmdutil.ResolveFormat(cmd)
+
 			svc := internalbuild.NewService(client)
 			result, err := svc.Abort(cmd.Context(), internalbuild.AbortRequest{
 				AppSlug:             appSlug,

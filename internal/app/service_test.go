@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/bitrise-io/bitrise-cli/bitriseapi"
+	"github.com/bitrise-io/bitrise-cli/internal/resolve"
 )
 
 // fakeAPI returns an httptest server backing a real bitriseapi.Client. We
@@ -143,6 +144,60 @@ func TestService_View_HitsCorrectPath(t *testing.T) {
 	want := App{Slug: "my-app", Title: "App", Provider: "github", OwnerSlug: "acme"}
 	if got != want {
 		t.Errorf("got %+v, want %+v", got, want)
+	}
+}
+
+func TestService_ViewByNameOrSlug_NameMatch_SingleCall(t *testing.T) {
+	var paths []string
+	client := fakeAPI(t, func(w http.ResponseWriter, r *http.Request) {
+		paths = append(paths, r.URL.Path)
+		switch r.URL.Path {
+		case "/apps":
+			_, _ = w.Write([]byte(`{"data":[{"slug":"my-app","title":"My App","provider":"github","repo_url":"https://github.com/x/y","owner":{"slug":"acme","account_type":"Organization"}}],"paging":{}}`))
+		default:
+			http.NotFound(w, r)
+		}
+	})
+	svc := NewService(client)
+	r := resolve.New(client, nil)
+
+	got, err := svc.ViewByNameOrSlug(context.Background(), r, "My App")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got.Slug != "my-app" || got.Title != "My App" {
+		t.Errorf("unexpected app: %+v", got)
+	}
+	if len(paths) != 1 || paths[0] != "/apps" {
+		t.Errorf("expected exactly one GET /apps call, got %v", paths)
+	}
+}
+
+func TestService_ViewByNameOrSlug_SlugPassthrough_TwoCalls(t *testing.T) {
+	var paths []string
+	client := fakeAPI(t, func(w http.ResponseWriter, r *http.Request) {
+		paths = append(paths, r.URL.Path)
+		switch r.URL.Path {
+		case "/apps":
+			_, _ = w.Write([]byte(`{"data":[],"paging":{}}`))
+		case "/apps/my-app":
+			_, _ = w.Write([]byte(`{"data":{"slug":"my-app","title":"My App","provider":"github","owner":{"slug":"acme","account_type":"Organization"}}}`))
+		default:
+			http.NotFound(w, r)
+		}
+	})
+	svc := NewService(client)
+	r := resolve.New(client, nil)
+
+	got, err := svc.ViewByNameOrSlug(context.Background(), r, "my-app")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got.Slug != "my-app" {
+		t.Errorf("unexpected slug: %q", got.Slug)
+	}
+	if len(paths) != 2 {
+		t.Errorf("expected 2 API calls (resolve + view), got %v", paths)
 	}
 }
 

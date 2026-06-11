@@ -72,16 +72,16 @@ In JSON mode (--output json), the next_cursor field holds the cursor value for s
 				return fmt.Errorf("--all and --cursor cannot be used together")
 			}
 
-			appSlug, err := cmdutil.ResolveAppSlug(cmd)
-			if err != nil {
-				return err
-			}
-			format := cmdutil.ResolveFormat(cmd)
-
 			client, err := cmdutil.NewAPIClient(cmd)
 			if err != nil {
 				return err
 			}
+			appSlug, err := cmdutil.ResolveAndLookupAppSlug(cmd, client)
+			if err != nil {
+				return err
+			}
+
+			format := cmdutil.ResolveFormat(cmd)
 
 			var afterTime, beforeTime *time.Time
 			if after != "" {

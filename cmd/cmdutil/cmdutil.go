@@ -14,8 +14,10 @@ import (
 
 	"github.com/bitrise-io/bitrise-cli/bitriseapi"
 	rdeapi "github.com/bitrise-io/bitrise-cli/bitriseapi/rde"
+	"github.com/bitrise-io/bitrise-cli/internal/cache"
 	"github.com/bitrise-io/bitrise-cli/internal/config"
 	"github.com/bitrise-io/bitrise-cli/internal/output"
+	"github.com/bitrise-io/bitrise-cli/internal/resolve"
 )
 
 const (
@@ -89,6 +91,23 @@ func ResolveAppSlugArg(cmd *cobra.Command, args []string) (string, error) {
 func AppSlugRequiredErr(via string) error {
 	return fmt.Errorf("%s is required (or set %s, or run 'bitrise-cli config set %s <id>')",
 		via, config.EnvAppSlug, config.KeyAppID)
+}
+
+// NewResolver returns a Resolver wired to client and a fresh in-memory cache.
+func NewResolver(cmd *cobra.Command, client *bitriseapi.Client) *resolve.Resolver {
+	return resolve.New(client, cache.New())
+}
+
+// ResolveAndLookupAppSlug reads the app slug from --app / env / config (same
+// precedence as ResolveAppSlug), then resolves a display name to an app slug
+// via a targeted GET /apps?title=<value> query if the value doesn't match any
+// slug directly.
+func ResolveAndLookupAppSlug(cmd *cobra.Command, client *bitriseapi.Client) (string, error) {
+	raw, err := ResolveAppSlug(cmd)
+	if err != nil {
+		return "", err
+	}
+	return NewResolver(cmd, client).AppSlug(cmd.Context(), raw)
 }
 
 // ErrNoToken is returned by NewAPIClient when no Bitrise access token has

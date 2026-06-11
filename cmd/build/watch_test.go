@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"testing"
 
+	"github.com/bitrise-io/bitrise-cli/cmd/cmdtest"
 	"github.com/bitrise-io/bitrise-cli/internal/config"
 	"github.com/bitrise-io/bitrise-cli/internal/output"
 )
@@ -18,12 +19,12 @@ import (
 // archived branch (stream log, then return the final View) without polling.
 func watchStubServer(t *testing.T, status int) *httptest.Server {
 	t.Helper()
-	raw := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	raw := httptest.NewServer(cmdtest.AppPassthrough(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = io.WriteString(w, "ARCHIVED LOG LINE\n")
 	}))
 	t.Cleanup(raw.Close)
 
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(cmdtest.AppPassthrough(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/apps/my-app/builds/b-1/log":
 			_, _ = io.WriteString(w, `{"is_archived":true,"expiring_raw_log_url":"`+raw.URL+`"}`)

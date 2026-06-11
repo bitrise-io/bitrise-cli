@@ -10,12 +10,13 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/bitrise-io/bitrise-cli/cmd/cmdtest"
 	"github.com/bitrise-io/bitrise-cli/internal/config"
 	"github.com/bitrise-io/bitrise-cli/internal/output"
 )
 
 func TestLogCmd_StreamsLogChunks(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(cmdtest.AppPassthrough(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/apps/my-app/builds/b-1/log" {
 			t.Errorf("unexpected path: %s", r.URL.Path)
 		}
@@ -47,7 +48,7 @@ func TestLogCmd_StreamsLogChunks(t *testing.T) {
 func TestLogCmd_OrdersOutOfPositionChunks(t *testing.T) {
 	// The API may return in-progress log chunks out of position order; the
 	// CLI must sort them so the log reads top-to-bottom.
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	srv := httptest.NewServer(cmdtest.AppPassthrough(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = io.WriteString(w, `{"is_archived":false,"log_chunks":[{"chunk":"two\n","position":1},{"chunk":"zero\n","position":0},{"chunk":"three\n","position":3},{"chunk":"one\n","position":2}]}`)
 	}))
 	defer srv.Close()
@@ -75,7 +76,7 @@ func TestLogCmd_OrdersOutOfPositionChunks(t *testing.T) {
 func TestLogCmd_WaitPolls_ThenPrintsLog(t *testing.T) {
 	// First View call returns in-progress; second returns success.
 	var viewCalls atomic.Int32
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(cmdtest.AppPassthrough(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/apps/my-app/builds/b-1":
 			n := int(viewCalls.Add(1))
@@ -120,7 +121,7 @@ func TestLogCmd_WaitPolls_ThenPrintsLog(t *testing.T) {
 
 func TestLogCmd_WaitSkipsPolling_WhenAlreadyFinished(t *testing.T) {
 	var viewCalls atomic.Int32
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(cmdtest.AppPassthrough(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/apps/my-app/builds/b-1":
 			viewCalls.Add(1)
@@ -160,12 +161,12 @@ func TestLogCmd_WaitSkipsPolling_WhenAlreadyFinished(t *testing.T) {
 }
 
 func TestLogCmd_StreamsArchivedLog(t *testing.T) {
-	rawSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	rawSrv := httptest.NewServer(cmdtest.AppPassthrough(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = io.WriteString(w, "ARCHIVED LOG CONTENT\n")
 	}))
 	defer rawSrv.Close()
 
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	srv := httptest.NewServer(cmdtest.AppPassthrough(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = io.WriteString(w, `{"is_archived":true,"expiring_raw_log_url":"`+rawSrv.URL+`"}`)
 	}))
 	defer srv.Close()

@@ -32,38 +32,38 @@ Flags:
   BITRISE_APP_ID=stub-app-aaa bitrise-cli app view`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			appSlug, err := cmdutil.ResolveAppSlugArg(cmd, args)
+			client, err := cmdutil.NewAPIClient(cmd)
 			if err != nil {
 				return err
 			}
+			arg, err := cmdutil.ResolveAppSlugArg(cmd, args)
+			if err != nil {
+				return err
+			}
+			resolver := cmdutil.NewResolver(cmd, client)
 
 			if web {
-				url := fmt.Sprintf("%s/app/%s", cmdutil.ResolveWebBaseURL(cmd), appSlug)
+				slug, err := resolver.AppSlug(cmd.Context(), arg)
+				if err != nil {
+					return err
+				}
+				url := fmt.Sprintf("%s/app/%s", cmdutil.ResolveWebBaseURL(cmd), slug)
 				if err := cmdutil.OpenBrowser(url); err != nil {
 					return err
 				}
 				if !cmdutil.IsQuiet(cmd) {
 					_, err = fmt.Fprintf(cmd.ErrOrStderr(), "Opened %s\n", url)
-					if err != nil {
-						return err
-					}
+					return err
 				}
 				return nil
 			}
 
-			format := cmdutil.ResolveFormat(cmd)
-
-			client, err := cmdutil.NewAPIClient(cmd)
-			if err != nil {
-				return err
-			}
 			svc := internalapp.NewService(client)
-			a, err := svc.View(cmd.Context(), appSlug)
+			a, err := svc.ViewByNameOrSlug(cmd.Context(), resolver, arg)
 			if err != nil {
 				return err
 			}
-
-			return output.Render(cmd.OutOrStdout(), format, a, renderAppText)
+			return output.Render(cmd.OutOrStdout(), cmdutil.ResolveFormat(cmd), a, renderAppText)
 		},
 	}
 
