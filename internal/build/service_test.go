@@ -645,9 +645,8 @@ func TestService_Watch_FailsOnSecond404(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error on persistent 404")
 	}
-	var apiErr *bitriseapi.APIError
-	if !errors.As(err, &apiErr) || apiErr.StatusCode != http.StatusNotFound {
-		t.Errorf("expected 404 APIError, got %v", err)
+	if err.Error() != `build "b-1" not found` {
+		t.Errorf("unexpected error: %v", err)
 	}
 }
 
