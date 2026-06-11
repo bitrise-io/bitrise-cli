@@ -40,7 +40,7 @@ func TestValidate(t *testing.T) {
 		{"empty", Config{}, false},
 		{"valid output", Config{Output: "json"}, false},
 		{"valid url", Config{APIBaseURL: "https://api.example.com"}, false},
-		{"all set", Config{Output: "human", APIBaseURL: "https://x", AppSlug: "s", Theme: "dark"}, false},
+		{"all set", Config{Output: "human", APIBaseURL: "https://x", AppID: "s", Theme: "dark"}, false},
 		{"bad output", Config{Output: "yaml"}, true},
 		{"bad url no scheme", Config{APIBaseURL: "api.example.com"}, true},
 		{"bad url empty host", Config{APIBaseURL: "https://"}, true},
@@ -76,13 +76,13 @@ func TestGetSetUnset(t *testing.T) {
 
 	// Set + Get round-trip on every known key.
 	values := map[string]string{
-		KeyOutput:        "json",
-		KeyAppSlug:       "stub-slug",
-		KeyOrgSlug:       "acme",
-		KeyAPIBaseURL:    "https://api.example.com",
-		KeyRDEAPIBaseURL: "https://api.example.com/rde",
-		KeyWebBaseURL:    "https://app.example.com",
-		KeyTheme:         "light",
+		KeyOutput:             "json",
+		KeyAppID:              "stub-slug",
+		KeyDefaultWorkspaceID: "acme",
+		KeyAPIBaseURL:         "https://api.example.com",
+		KeyRDEAPIBaseURL:      "https://api.example.com/rde",
+		KeyWebBaseURL:         "https://app.example.com",
+		KeyTheme:              "light",
 	}
 	for k, v := range values {
 		if err := c.Set(k, v); err != nil {
@@ -107,10 +107,10 @@ func TestGetSetUnset(t *testing.T) {
 	}
 
 	// Unset clears the field.
-	if err := c.Unset(KeyAppSlug); err != nil {
+	if err := c.Unset(KeyAppID); err != nil {
 		t.Fatalf("Unset: %v", err)
 	}
-	if v, _ := c.Get(KeyAppSlug); v != "" {
+	if v, _ := c.Get(KeyAppID); v != "" {
 		t.Fatalf("after Unset, AppSlug = %q, want empty", v)
 	}
 }
@@ -121,7 +121,7 @@ func TestSaveLoad_RoundTrip(t *testing.T) {
 
 	want := Config{
 		Output:     "json",
-		AppSlug:    "my-app",
+		AppID:      "my-app",
 		APIBaseURL: "https://api.staging.example.com",
 	}
 	if err := Save(want); err != nil {
@@ -146,6 +146,33 @@ func TestSaveLoad_RoundTrip(t *testing.T) {
 		if info.Mode().Perm() != 0o600 {
 			t.Fatalf("file perm = %o, want 0600", info.Mode().Perm())
 		}
+	}
+}
+
+// TestUnmarshalYAML_AllFieldsPreserved guards against a field being added to
+// Config without a matching entry in the raw struct and copy block inside
+// UnmarshalYAML. Every field must survive a Save→Load round-trip.
+func TestUnmarshalYAML_AllFieldsPreserved(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+
+	want := Config{
+		Output:             "json",
+		AppID:              "app-123",
+		DefaultWorkspaceID: "ws-456",
+		APIBaseURL:         "https://api.example.com",
+		RDEAPIBaseURL:      "https://rde.example.com",
+		WebBaseURL:         "https://web.example.com",
+		Theme:              "dark",
+	}
+	if err := Save(want); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	got, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if got != want {
+		t.Fatalf("not all fields survived round-trip:\n got  %+v\nwant %+v", got, want)
 	}
 }
 
@@ -198,7 +225,7 @@ func TestLoadDir_FindsAncestorFile(t *testing.T) {
 		t.Fatal(err)
 	}
 	cfgPath := filepath.Join(root, "a", DirFileName)
-	if err := os.WriteFile(cfgPath, []byte("app_slug: project-app\n"), 0o644); err != nil { //nolint:gosec // test-only tempfile
+	if err := os.WriteFile(cfgPath, []byte("app_id: project-app\n"), 0o644); err != nil { //nolint:gosec // test-only tempfile
 		t.Fatal(err)
 	}
 
@@ -209,8 +236,47 @@ func TestLoadDir_FindsAncestorFile(t *testing.T) {
 	if found != cfgPath {
 		t.Fatalf("found path = %q, want %q", found, cfgPath)
 	}
-	if got.AppSlug != "project-app" {
-		t.Fatalf("AppSlug = %q, want %q", got.AppSlug, "project-app")
+	if got.AppID != "project-app" {
+		t.Fatalf("AppSlug = %q, want %q", got.AppID, "project-app")
+	}
+}
+
+// A config file written by an older version uses the pre-rename key names
+// app_slug / default_workspace_slug. Those must still be read so users don't
+// lose their saved default app/workspace on upgrade.
+func TestLoadDir_ReadsLegacySlugKeys(t *testing.T) {
+	root := t.TempDir()
+	cfgPath := filepath.Join(root, DirFileName)
+	body := "app_slug: legacy-app\ndefault_workspace_slug: legacy-ws\n"
+	if err := os.WriteFile(cfgPath, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got, _, err := loadDirFrom(root)
+	if err != nil {
+		t.Fatalf("loadDirFrom: %v", err)
+	}
+	if got.AppID != "legacy-app" {
+		t.Errorf("AppSlug = %q, want %q (legacy app_slug key)", got.AppID, "legacy-app")
+	}
+	if got.DefaultWorkspaceID != "legacy-ws" {
+		t.Errorf("OrgSlug = %q, want %q (legacy default_workspace_slug key)", got.DefaultWorkspaceID, "legacy-ws")
+	}
+}
+
+// When both the current and legacy keys are present, the current key wins.
+func TestLoadDir_CurrentKeyWinsOverLegacy(t *testing.T) {
+	root := t.TempDir()
+	cfgPath := filepath.Join(root, DirFileName)
+	body := "app_id: new-app\napp_slug: legacy-app\n"
+	if err := os.WriteFile(cfgPath, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got, _, err := loadDirFrom(root)
+	if err != nil {
+		t.Fatalf("loadDirFrom: %v", err)
+	}
+	if got.AppID != "new-app" {
+		t.Errorf("AppSlug = %q, want %q (app_id should win over app_slug)", got.AppID, "new-app")
 	}
 }
 

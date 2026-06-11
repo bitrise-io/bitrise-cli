@@ -14,22 +14,22 @@ func newViewCmd() *cobra.Command {
 	var web bool
 
 	c := &cobra.Command{
-		Use:   "view BUILD_SLUG",
+		Use:   "view BUILD_ID",
 		Short: "Show details of a single build",
-		Long: `Show details for a single build identified by its build slug.
+		Long: `Show details for a single build identified by its build ID.
 
 Required flags:
-  --app SLUG         (or BITRISE_APP_SLUG env var)
+  --app ID           (or BITRISE_APP_ID env var)
 
 Argument:
-  BUILD_SLUG         the unique slug of the build (visible in build URLs)
+  BUILD_ID           the unique ID of the build (visible in build URLs)
 
 Flags:
   --web              open the build page in the browser instead of printing`,
-		Example: `  bitrise-cli build view --app my-app-slug stub-build-aaa
-  bitrise-cli build view --app my-app-slug stub-build-aaa --output json
-  bitrise-cli build view --app my-app-slug stub-build-aaa --web`,
-		Args: cmdutil.RequireArgs("BUILD_SLUG"),
+		Example: `  bitrise-cli build view --app my-app-id stub-build-aaa
+  bitrise-cli build view --app my-app-id stub-build-aaa --output json
+  bitrise-cli build view --app my-app-id stub-build-aaa --web`,
+		Args: cmdutil.RequireArgs("BUILD_ID"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			appSlug, err := cmdutil.ResolveAppSlug(cmd)
 			if err != nil {

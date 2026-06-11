@@ -2,7 +2,6 @@ package build
 
 import (
 	"github.com/spf13/cobra"
-	"github.com/spf13/pflag"
 
 	"github.com/bitrise-io/bitrise-cli/cmd/cmdutil"
 )
@@ -14,13 +13,7 @@ func NewCmd() *cobra.Command {
 		Short: "Trigger, list, and inspect builds",
 		RunE:  cmdutil.DelegateToList,
 	}
-	c.PersistentFlags().String(cmdutil.FlagApp, "", "app slug (also accepted as --project; or set BITRISE_APP_SLUG)")
-	c.SetGlobalNormalizationFunc(func(_ *pflag.FlagSet, name string) pflag.NormalizedName {
-		if name == "project" {
-			return pflag.NormalizedName(cmdutil.FlagApp)
-		}
-		return pflag.NormalizedName(name)
-	})
+	c.PersistentFlags().String(cmdutil.FlagApp, "", "app ID (or set BITRISE_APP_ID)")
 	c.AddCommand(
 		newTriggerCmd(),
 		newListCmd(),

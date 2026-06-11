@@ -80,17 +80,17 @@ func TestCreateCmd_HappyPath_PersistsAppSlug(t *testing.T) {
 		}
 	}
 
-	// app_slug got saved to the temp XDG config.
+	// app_id got saved to the temp XDG config.
 	cfg, err := config.Load()
 	if err != nil {
 		t.Fatalf("config.Load: %v", err)
 	}
-	if cfg.AppSlug != "created-app" {
-		t.Errorf("config.AppSlug = %q, want created-app", cfg.AppSlug)
+	if cfg.AppID != "created-app" {
+		t.Errorf("config.AppSlug = %q, want created-app", cfg.AppID)
 	}
 
 	// stderr shows the persist message.
-	if !strings.Contains(stderr.String(), "Set app_slug=created-app") {
+	if !strings.Contains(stderr.String(), "Set app_id=created-app") {
 		t.Errorf("stderr missing persist log:\n%s", stderr.String())
 	}
 
@@ -172,7 +172,7 @@ func TestCreateCmd_JSONOutput(t *testing.T) {
 	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
 		t.Fatalf("invalid JSON on stdout: %v\n%s", err, stdout.String())
 	}
-	if got["slug"] != "json-app" || got["build_trigger_token"] != "jbt" {
+	if got["id"] != "json-app" || got["build_trigger_token"] != "jbt" {
 		t.Errorf("JSON = %v", got)
 	}
 }

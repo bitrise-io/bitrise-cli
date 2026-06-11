@@ -32,7 +32,7 @@ func newCreateCmd() *cobra.Command {
 	c := &cobra.Command{
 		Use:   "create",
 		Short: "Register a new app on Bitrise",
-		Long: `Register a new app (project) on Bitrise.
+		Long: `Register a new app on Bitrise.
 
 Auto-detection from the current git repo:
   --repo-url     git remote get-url origin
@@ -42,7 +42,7 @@ Auto-detection from the current git repo:
 Workspace:
   --workspace is required if you belong to multiple workspaces.
   Otherwise it falls back to:
-    1. default_workspace_slug from config
+    1. default_workspace_id from config
     2. auto-detect when your account has exactly one workspace
 
 bitrise.yml handling:
@@ -50,7 +50,7 @@ bitrise.yml handling:
   (no flag, ./bitrise.yml exists)   upload it
   (no flag, no file)   skip — server preset for --project-type takes effect
 
-The new app's slug is saved as the global default app_slug, so subsequent
+The new app's ID is saved as the global default app_id, so subsequent
 commands (build trigger, build list, ...) target it without --app.`,
 		Example: `  bitrise-cli app create
   bitrise-cli app create --repo-url https://github.com/me/proj --workspace acme
@@ -148,7 +148,7 @@ commands (build trigger, build list, ...) target it without --app.`,
 	c.Flags().StringVar(&branch, "branch", "", "default branch (default: 'git symbolic-ref --short HEAD', else 'master')")
 	c.Flags().StringVar(&title, "title", "", "app title (default: last path segment of repo URL)")
 	c.Flags().StringVar(&provider, "provider", "auto", "git provider: auto, github, gitlab, bitbucket, custom")
-	c.Flags().StringVar(&orgSlug, "workspace", "", "workspace slug to own the app")
+	c.Flags().StringVar(&orgSlug, "workspace", "", "workspace ID to own the app")
 	c.Flags().StringVar(&stackID, "stack", "", fmt.Sprintf("build stack ID (default %q)", internalapp.DefaultStackID))
 	c.Flags().StringVar(&projectType, "project-type", "", fmt.Sprintf("project type for server-side preset (default %q)", internalapp.DefaultProjectType))
 	c.Flags().BoolVar(&public, "public", false, "create as a public app")
@@ -219,8 +219,8 @@ func resolveBitriseYML(flagPath string) (string, yamlSource, error) {
 	return "", yamlSourceNone, nil
 }
 
-// persistAppSlug saves slug as the global default app_slug, mirroring
-// `bitrise-cli config set app_slug <slug>`. Logs the result to stderr
+// persistAppSlug saves slug as the global default app_id, mirroring
+// `bitrise-cli config set app_id <id>`. Logs the result to stderr
 // (suppressed by -q). Warns if a per-directory .bitrise-cli.yml will
 // continue to override the global default at runtime.
 func persistAppSlug(cmd *cobra.Command, slug string) error {
@@ -228,7 +228,7 @@ func persistAppSlug(cmd *cobra.Command, slug string) error {
 	if err != nil {
 		return fmt.Errorf("load config: %w", err)
 	}
-	if err := cfg.Set(config.KeyAppSlug, slug); err != nil {
+	if err := cfg.Set(config.KeyAppID, slug); err != nil {
 		return err
 	}
 	if err := config.Save(cfg); err != nil {
@@ -239,14 +239,14 @@ func persistAppSlug(cmd *cobra.Command, slug string) error {
 	}
 	cfgPath, _ := config.Path()
 	ew := cmdutil.NewErrWriter(cmd.ErrOrStderr())
-	ew.F("Set %s=%s in %s\n", config.KeyAppSlug, slug, cfgPath)
+	ew.F("Set %s=%s in %s\n", config.KeyAppID, slug, cfgPath)
 
 	// Per-directory file overrides the global default — surface the
 	// conflict so the user isn't surprised when their next command picks
 	// a different app.
 	dirCfg, dirPath, derr := config.LoadDir()
-	if derr == nil && dirPath != "" && dirCfg.AppSlug != "" && dirCfg.AppSlug != slug {
-		ew.F("Note: %s pins app_slug=%s, which still wins at runtime\n", dirPath, dirCfg.AppSlug)
+	if derr == nil && dirPath != "" && dirCfg.AppID != "" && dirCfg.AppID != slug {
+		ew.F("Note: %s pins %s=%s, which still wins at runtime\n", dirPath, config.KeyAppID, dirCfg.AppID)
 	}
 	return ew.Err
 }
@@ -266,8 +266,8 @@ func renderCreateText(w io.Writer, r internalapp.CreateResult) error {
 	}
 	ew.F("%s %s\n", s.Success.Render("✓"), s.Success.Render(fmt.Sprintf("Created app %s", r.Slug)))
 	ew.F("%s%s\n", lbl("  Title:"), r.Title)
-	ew.F("%s%s\n", lbl("  Slug:"), s.Slug.Render(r.Slug))
-	ew.F("%s%s\n", lbl("  Repository:"), s.URL.Render(r.RepoURL))
+	ew.F("%s%s\n", lbl("  ID:"), s.Slug.Render(r.Slug))
+	ew.F("%s%s\n", lbl("  Repo URL:"), s.URL.Render(r.RepoURL))
 	ew.F("%s%s\n", lbl("  Default branch:"), r.DefaultBranch)
 	ew.F("%s%s\n", lbl("  Workspace:"), r.OrgSlug)
 	ew.F("%s%s\n", lbl("  Stack:"), r.StackID)

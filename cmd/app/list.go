@@ -27,7 +27,7 @@ func newListCmd() *cobra.Command {
 	c := &cobra.Command{
 		Use:   "list",
 		Short: "List apps the authenticated user can access",
-		Long: `List all apps (projects) the authenticated user can access.
+		Long: `List all apps the authenticated user can access.
 
 Filters:
   --title TITLE              filter apps by title
@@ -140,20 +140,16 @@ func renderListText(w io.Writer, res internalapp.AppsResult, nextPageCmd func(st
 	}
 
 	s := style.New(w)
-	headers := []string{"TITLE", "PROVIDER", "PROJECT", "OWNER", "DISABLED", "SLUG"}
+	headers := []string{"TITLE", "PROVIDER", "PROJECT_TYPE", "WORKSPACE", "DISABLED", "ID"}
 	rows := make([][]string, 0, len(res.Items))
 	disabled := make([]bool, 0, len(res.Items))
 	for _, a := range res.Items {
-		owner := a.OwnerSlug
-		if a.OwnerType != "" {
-			owner = fmt.Sprintf("%s/%s", a.OwnerType, a.OwnerSlug)
-		}
 		dis := ""
 		if a.IsDisabled {
 			dis = "yes"
 		}
 		disabled = append(disabled, a.IsDisabled)
-		rows = append(rows, []string{a.Title, a.Provider, a.ProjectType, owner, dis, a.Slug})
+		rows = append(rows, []string{a.Title, a.Provider, a.ProjectType, a.OwnerSlug, dis, a.Slug})
 	}
 	const colSlug = 5
 	styler := func(row, col int, content string) string {

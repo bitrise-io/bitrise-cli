@@ -45,7 +45,7 @@ type SignupInput struct {
 // Account is the trimmed view of the user record returned by POST /users.
 // We surface only the fields the CLI displays; the website returns more.
 type Account struct {
-	Slug      string `json:"slug,omitempty"`
+	Slug      string `json:"id,omitempty"`
 	Email     string `json:"email"`
 	Username  string `json:"username,omitempty"`
 	FirstName string `json:"first_name,omitempty"`

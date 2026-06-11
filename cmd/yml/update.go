@@ -25,10 +25,10 @@ Note: if the app is configured to read its bitrise.yml from the repository,
 this command succeeds but the change will not affect builds.
 
 Required:
-  --app SLUG    app slug (or BITRISE_APP_SLUG env var)`,
-		Example: `  bitrise-cli yml update --app my-app-slug --file bitrise.yml
-  cat bitrise.yml | bitrise-cli yml update --app my-app-slug
-  bitrise-cli yml update --app my-app-slug < bitrise.yml`,
+  --app ID      app ID (or BITRISE_APP_ID env var)`,
+		Example: `  bitrise-cli yml update --app my-app-id --file bitrise.yml
+  cat bitrise.yml | bitrise-cli yml update --app my-app-id
+  bitrise-cli yml update --app my-app-id < bitrise.yml`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			appSlug, err := cmdutil.ResolveAppSlug(cmd)
 			if err != nil {

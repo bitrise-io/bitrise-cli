@@ -1,6 +1,6 @@
 ## bitrise-cli app
 
-List, inspect, and manage apps (also: project)
+List, inspect, and manage apps
 
 ```
 bitrise-cli app [flags]

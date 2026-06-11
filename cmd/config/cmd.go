@@ -24,7 +24,7 @@ Storage:
   Global file: YAML at $XDG_CONFIG_HOME/bitrise/config.yaml
                (falls back to ~/.config/bitrise/config.yaml).
   Per-dir:     .bitrise-cli.yml in the current directory or any ancestor.
-               Useful for per-project app_slug pinning.
+               Useful for per-project app_id pinning.
 
 Precedence at runtime:
   flag > env > per-directory file > global file > built-in default
@@ -72,8 +72,8 @@ func newPathCmd() *cobra.Command {
 // configList is the JSON shape of `bitrise-cli config list`.
 type configList struct {
 	Output     string `json:"output,omitempty"`
-	AppSlug    string `json:"app_slug,omitempty"`
-	OrgSlug    string `json:"default_workspace_slug,omitempty"`
+	AppSlug    string `json:"app_id,omitempty"`
+	OrgSlug    string `json:"default_workspace_id,omitempty"`
 	APIBaseURL string `json:"api_base_url,omitempty"`
 	WebBaseURL string `json:"web_base_url,omitempty"`
 	Theme      string `json:"theme,omitempty"`
@@ -100,8 +100,8 @@ to other bitrise-cli commands.`,
 			}
 			v := configList{
 				Output:     cfg.Output,
-				AppSlug:    cfg.AppSlug,
-				OrgSlug:    cfg.OrgSlug,
+				AppSlug:    cfg.AppID,
+				OrgSlug:    cfg.DefaultWorkspaceID,
 				APIBaseURL: cfg.APIBaseURL,
 				WebBaseURL: cfg.WebBaseURL,
 				Theme:      cfg.Theme,
@@ -126,8 +126,8 @@ func renderListHuman(w io.Writer, v configList) error {
 	}
 	ew.F("%s%s\n\n", lbl("Path:"), s.Dim.Render(v.Path))
 	ew.F("%s%s\n", lbl(internalconfig.KeyOutput+":"), value(v.Output))
-	ew.F("%s%s\n", lbl(internalconfig.KeyAppSlug+":"), value(v.AppSlug))
-	ew.F("%s%s\n", lbl(internalconfig.KeyOrgSlug+":"), value(v.OrgSlug))
+	ew.F("%s%s\n", lbl(internalconfig.KeyAppID+":"), value(v.AppSlug))
+	ew.F("%s%s\n", lbl(internalconfig.KeyDefaultWorkspaceID+":"), value(v.OrgSlug))
 	ew.F("%s%s\n", lbl(internalconfig.KeyAPIBaseURL+":"), value(v.APIBaseURL))
 	ew.F("%s%s\n", lbl(internalconfig.KeyWebBaseURL+":"), value(v.WebBaseURL))
 	ew.F("%s%s\n", lbl(internalconfig.KeyTheme+":"), value(v.Theme))
@@ -177,7 +177,7 @@ If VALUE is "-", the value is read from stdin (trailing newline trimmed).`,
 			strings.Join(internalconfig.Keys, ", "),
 		),
 		Example: `  bitrise-cli config set output json
-  bitrise-cli config set app_slug 5db8b1d8-cae8-4cea-b943-ddc8f48e5e7c`,
+  bitrise-cli config set app_id 5db8b1d8-cae8-4cea-b943-ddc8f48e5e7c`,
 		Args: cmdutil.RequireArgs("KEY", "VALUE"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			key := args[0]

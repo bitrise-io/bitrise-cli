@@ -10,16 +10,16 @@ Storage:
   Global file: YAML at $XDG_CONFIG_HOME/bitrise/config.yaml
                (falls back to ~/.config/bitrise/config.yaml).
   Per-dir:     .bitrise-cli.yml in the current directory or any ancestor.
-               Useful for per-project app_slug pinning.
+               Useful for per-project app_id pinning.
 
 Precedence at runtime:
   flag > env > per-directory file > global file > built-in default
 
 Recognized keys:
-  output, app_slug, default_workspace_slug, api_base_url, rde_api_base_url, web_base_url, theme
+  output, app_id, default_workspace_id, api_base_url, rde_api_base_url, web_base_url, theme
 
 Environment overrides for the same values:
-  BITRISE_OUTPUT, BITRISE_APP_SLUG, BITRISE_TOKEN, BITRISE_API_BASE_URL, BITRISE_WEB_BASE_URL, BITRISE_CLI_THEME
+  BITRISE_OUTPUT, BITRISE_APP_ID, BITRISE_TOKEN, BITRISE_API_BASE_URL, BITRISE_WEB_BASE_URL, BITRISE_CLI_THEME
 
 Note: 'set'/'unset' modify only the global file. Per-directory files must be
 edited by hand.

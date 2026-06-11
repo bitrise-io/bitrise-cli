@@ -3,7 +3,6 @@ package yml
 
 import (
 	"github.com/spf13/cobra"
-	"github.com/spf13/pflag"
 
 	"github.com/bitrise-io/bitrise-cli/cmd/cmdutil"
 )
@@ -30,13 +29,7 @@ commands still work, but uploaded changes will not affect builds.`,
 			return cmd.Help()
 		},
 	}
-	c.PersistentFlags().String(cmdutil.FlagApp, "", "app slug (also accepted as --project; or set BITRISE_APP_SLUG)")
-	c.SetGlobalNormalizationFunc(func(_ *pflag.FlagSet, name string) pflag.NormalizedName {
-		if name == "project" {
-			return pflag.NormalizedName(cmdutil.FlagApp)
-		}
-		return pflag.NormalizedName(name)
-	})
+	c.PersistentFlags().String(cmdutil.FlagApp, "", "app ID (or set BITRISE_APP_ID)")
 	c.AddCommand(
 		newGetCmd(),
 		newUpdateCmd(),

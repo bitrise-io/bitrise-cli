@@ -6,7 +6,7 @@ Set a config key and save the file
 
 Set a config key and save the file.
 
-Valid keys: output, app_slug, default_workspace_slug, api_base_url, rde_api_base_url, web_base_url, theme
+Valid keys: output, app_id, default_workspace_id, api_base_url, rde_api_base_url, web_base_url, theme
 
 The value is validated before being saved (e.g. "output" must be human or json,
 "api_base_url" and "web_base_url" must be valid URLs). The file is written with
@@ -22,7 +22,7 @@ bitrise-cli config set KEY VALUE [flags]
 
 ```
   bitrise-cli config set output json
-  bitrise-cli config set app_slug 5db8b1d8-cae8-4cea-b943-ddc8f48e5e7c
+  bitrise-cli config set app_id 5db8b1d8-cae8-4cea-b943-ddc8f48e5e7c
 ```
 
 ### Options

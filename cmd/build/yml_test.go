@@ -69,7 +69,7 @@ func TestBuildYMLCmd_JSONOutput(t *testing.T) {
 	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
 		t.Fatalf("invalid JSON: %v\n%s", err, stdout.String())
 	}
-	if got["app_slug"] != "my-app" || got["build_slug"] != "b-1" {
+	if got["app_id"] != "my-app" || got["build_id"] != "b-1" {
 		t.Errorf("unexpected JSON: %v", got)
 	}
 	if _, ok := got["content"]; !ok {

@@ -19,8 +19,8 @@ import (
 // Build is the CLI-facing build record. JSON tags define the stable
 // `--output json` shape; rename fields with care.
 type Build struct {
-	Slug                    string     `json:"slug"`
-	AppSlug                 string     `json:"app_slug"`
+	Slug                    string     `json:"id"`
+	AppSlug                 string     `json:"app_id"`
 	BuildNumber             int        `json:"build_number"`
 	Status                  string     `json:"status"`
 	StatusText              string     `json:"status_text,omitempty"`
@@ -112,7 +112,7 @@ func (s *Service) Trigger(ctx context.Context, req TriggerRequest) (Build, error
 		return Build{}, fmt.Errorf("API client not configured")
 	}
 	if req.AppSlug == "" {
-		return Build{}, fmt.Errorf("app slug is required")
+		return Build{}, fmt.Errorf("app ID is required")
 	}
 	envs := make([]bitriseapi.BuildTriggerEnv, 0, len(req.Environments))
 	for _, e := range req.Environments {
@@ -146,7 +146,7 @@ func (s *Service) List(ctx context.Context, opts ListOptions) (ListResult, error
 		return ListResult{}, fmt.Errorf("API client not configured")
 	}
 	if opts.AppSlug == "" {
-		return ListResult{}, fmt.Errorf("app slug is required")
+		return ListResult{}, fmt.Errorf("app ID is required")
 	}
 	statusInt, err := parseStatusFilter(opts.Status)
 	if err != nil {
@@ -189,10 +189,10 @@ func (s *Service) View(ctx context.Context, appSlug, buildSlug string) (Build, e
 		return Build{}, fmt.Errorf("API client not configured")
 	}
 	if appSlug == "" {
-		return Build{}, fmt.Errorf("app slug is required")
+		return Build{}, fmt.Errorf("app ID is required")
 	}
 	if buildSlug == "" {
-		return Build{}, fmt.Errorf("build slug is required")
+		return Build{}, fmt.Errorf("build ID is required")
 	}
 	b, err := s.client.Build(ctx, appSlug, buildSlug)
 	if err != nil {
@@ -213,10 +213,10 @@ func (s *Service) Watch(ctx context.Context, appSlug, buildSlug string, w io.Wri
 		return Build{}, fmt.Errorf("API client not configured")
 	}
 	if appSlug == "" {
-		return Build{}, fmt.Errorf("app slug is required")
+		return Build{}, fmt.Errorf("app ID is required")
 	}
 	if buildSlug == "" {
-		return Build{}, fmt.Errorf("build slug is required")
+		return Build{}, fmt.Errorf("build ID is required")
 	}
 	if interval <= 0 {
 		interval = 3 * time.Second
@@ -431,10 +431,10 @@ func (s *Service) WaitForCompletion(ctx context.Context, appSlug, buildSlug stri
 		return Build{}, fmt.Errorf("API client not configured")
 	}
 	if appSlug == "" {
-		return Build{}, fmt.Errorf("app slug is required")
+		return Build{}, fmt.Errorf("app ID is required")
 	}
 	if buildSlug == "" {
-		return Build{}, fmt.Errorf("build slug is required")
+		return Build{}, fmt.Errorf("build ID is required")
 	}
 	if interval <= 0 {
 		interval = 3 * time.Second
@@ -464,10 +464,10 @@ func (s *Service) Log(ctx context.Context, appSlug, buildSlug string, w io.Write
 		return fmt.Errorf("API client not configured")
 	}
 	if appSlug == "" {
-		return fmt.Errorf("app slug is required")
+		return fmt.Errorf("app ID is required")
 	}
 	if buildSlug == "" {
-		return fmt.Errorf("build slug is required")
+		return fmt.Errorf("build ID is required")
 	}
 	_, err := s.client.BuildLog(ctx, appSlug, buildSlug, w)
 	return err
@@ -486,8 +486,8 @@ type AbortRequest struct {
 // AbortResult is the CLI-facing result of aborting a build.
 // JSON tags define the stable --output json contract.
 type AbortResult struct {
-	AppSlug   string `json:"app_slug"`
-	BuildSlug string `json:"build_slug"`
+	AppSlug   string `json:"app_id"`
+	BuildSlug string `json:"build_id"`
 	Status    string `json:"status"`
 }
 
@@ -498,10 +498,10 @@ func (s *Service) Abort(ctx context.Context, req AbortRequest) (AbortResult, err
 		return AbortResult{}, fmt.Errorf("API client not configured")
 	}
 	if req.AppSlug == "" {
-		return AbortResult{}, fmt.Errorf("app slug is required")
+		return AbortResult{}, fmt.Errorf("app ID is required")
 	}
 	if req.BuildSlug == "" {
-		return AbortResult{}, fmt.Errorf("build slug is required")
+		return AbortResult{}, fmt.Errorf("build ID is required")
 	}
 	resp, err := s.client.AbortBuild(ctx, req.AppSlug, req.BuildSlug, bitriseapi.BuildAbortParams{
 		AbortReason:         req.Reason,
