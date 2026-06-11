@@ -85,8 +85,8 @@ func TestCreateCmd_HappyPath_PersistsAppSlug(t *testing.T) {
 	if err != nil {
 		t.Fatalf("config.Load: %v", err)
 	}
-	if cfg.AppSlug != "created-app" {
-		t.Errorf("config.AppSlug = %q, want created-app", cfg.AppSlug)
+	if cfg.AppID != "created-app" {
+		t.Errorf("config.AppSlug = %q, want created-app", cfg.AppID)
 	}
 
 	// stderr shows the persist message.

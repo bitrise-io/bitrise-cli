@@ -26,28 +26,28 @@ import (
 // Known config keys. These names are part of the user-facing CLI
 // contract — `bitrise-cli config set <key> <value>` references them directly.
 const (
-	KeyOutput        = "output"
-	KeyAppSlug       = "app_id"
-	KeyOrgSlug       = "default_workspace_id"
-	KeyAPIBaseURL    = "api_base_url"
-	KeyRDEAPIBaseURL = "rde_api_base_url"
-	KeyWebBaseURL    = "web_base_url"
-	KeyTheme         = "theme"
+	KeyOutput             = "output"
+	KeyAppID              = "app_id"
+	KeyDefaultWorkspaceID = "default_workspace_id"
+	KeyAPIBaseURL         = "api_base_url"
+	KeyRDEAPIBaseURL      = "rde_api_base_url"
+	KeyWebBaseURL         = "web_base_url"
+	KeyTheme              = "theme"
 )
 
 // Keys is the registered list of config keys, used for validation and help.
-var Keys = []string{KeyOutput, KeyAppSlug, KeyOrgSlug, KeyAPIBaseURL, KeyRDEAPIBaseURL, KeyWebBaseURL, KeyTheme}
+var Keys = []string{KeyOutput, KeyAppID, KeyDefaultWorkspaceID, KeyAPIBaseURL, KeyRDEAPIBaseURL, KeyWebBaseURL, KeyTheme}
 
 // Config is the on-disk shape. Fields use omitempty so unset values
 // don't appear in the saved YAML.
 type Config struct {
-	Output        string `yaml:"output,omitempty"`
-	AppSlug       string `yaml:"app_id,omitempty"`
-	OrgSlug       string `yaml:"default_workspace_id,omitempty"`
-	APIBaseURL    string `yaml:"api_base_url,omitempty"`
-	RDEAPIBaseURL string `yaml:"rde_api_base_url,omitempty"`
-	WebBaseURL    string `yaml:"web_base_url,omitempty"`
-	Theme         string `yaml:"theme,omitempty"`
+	Output             string `yaml:"output,omitempty"`
+	AppID              string `yaml:"app_id,omitempty"`
+	DefaultWorkspaceID string `yaml:"default_workspace_id,omitempty"`
+	APIBaseURL         string `yaml:"api_base_url,omitempty"`
+	RDEAPIBaseURL      string `yaml:"rde_api_base_url,omitempty"`
+	WebBaseURL         string `yaml:"web_base_url,omitempty"`
+	Theme              string `yaml:"theme,omitempty"`
 }
 
 // UnmarshalYAML reads a Config, accepting the legacy key names `app_slug` and
@@ -72,8 +72,8 @@ func (c *Config) UnmarshalYAML(value *yaml.Node) error {
 		return err
 	}
 	c.Output = raw.Output
-	c.AppSlug = firstNonEmpty(raw.AppID, raw.AppSlugLegacy)
-	c.OrgSlug = firstNonEmpty(raw.DefaultWorkspaceID, raw.DefaultWorkspaceSlug)
+	c.AppID = firstNonEmpty(raw.AppID, raw.AppSlugLegacy)
+	c.DefaultWorkspaceID = firstNonEmpty(raw.DefaultWorkspaceID, raw.DefaultWorkspaceSlug)
 	c.APIBaseURL = raw.APIBaseURL
 	c.RDEAPIBaseURL = raw.RDEAPIBaseURL
 	c.WebBaseURL = raw.WebBaseURL
@@ -227,10 +227,10 @@ func (c *Config) Get(key string) (string, error) {
 	switch key {
 	case KeyOutput:
 		return c.Output, nil
-	case KeyAppSlug:
-		return c.AppSlug, nil
-	case KeyOrgSlug:
-		return c.OrgSlug, nil
+	case KeyAppID:
+		return c.AppID, nil
+	case KeyDefaultWorkspaceID:
+		return c.DefaultWorkspaceID, nil
 	case KeyAPIBaseURL:
 		return c.APIBaseURL, nil
 	case KeyRDEAPIBaseURL:
@@ -251,10 +251,10 @@ func (c *Config) Set(key, value string) error {
 	switch key {
 	case KeyOutput:
 		next.Output = value
-	case KeyAppSlug:
-		next.AppSlug = value
-	case KeyOrgSlug:
-		next.OrgSlug = value
+	case KeyAppID:
+		next.AppID = value
+	case KeyDefaultWorkspaceID:
+		next.DefaultWorkspaceID = value
 	case KeyAPIBaseURL:
 		next.APIBaseURL = value
 	case KeyRDEAPIBaseURL:

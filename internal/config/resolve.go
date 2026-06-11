@@ -86,8 +86,8 @@ func Resolve(globalCfg, dirCfg Config, authData auth.Auth, flagOutput, flagTheme
 	}
 	r.Theme = t
 
-	r.AppSlug = firstNonEmpty(os.Getenv(EnvAppSlug), os.Getenv(EnvAppSlugLegacy), dirCfg.AppSlug, globalCfg.AppSlug)
-	r.OrgSlug = firstNonEmpty(dirCfg.OrgSlug, globalCfg.OrgSlug)
+	r.AppSlug = firstNonEmpty(os.Getenv(EnvAppSlug), os.Getenv(EnvAppSlugLegacy), dirCfg.AppID, globalCfg.AppID)
+	r.OrgSlug = firstNonEmpty(dirCfg.DefaultWorkspaceID, globalCfg.DefaultWorkspaceID)
 	// WorkspaceID resolution: BITRISE_WORKSPACE_ID env, then fall back to the
 	// existing default_workspace_id — the RDE workspaceId is the same
 	// workspace identifier we already store (a slug on the wire).

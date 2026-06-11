@@ -71,7 +71,7 @@ func ResolveWorkspaceID(cmd *cobra.Command) (string, error) {
 		return v, nil
 	}
 	return "", fmt.Errorf("--workspace is required (or set %s, or run 'bitrise-cli config set %s <id>')",
-		config.EnvWorkspaceID, config.KeyOrgSlug)
+		config.EnvWorkspaceID, config.KeyDefaultWorkspaceID)
 }
 
 // ResolveAppSlugArg returns the positional APP_ID argument, falling back to Resolved.
@@ -88,7 +88,7 @@ func ResolveAppSlugArg(cmd *cobra.Command, args []string) (string, error) {
 // AppSlugRequiredErr returns the standard missing-app-slug error.
 func AppSlugRequiredErr(via string) error {
 	return fmt.Errorf("%s is required (or set %s, or run 'bitrise-cli config set %s <id>')",
-		via, config.EnvAppSlug, config.KeyAppSlug)
+		via, config.EnvAppSlug, config.KeyAppID)
 }
 
 // ErrNoToken is returned by NewAPIClient when no Bitrise access token has

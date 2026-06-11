@@ -100,8 +100,8 @@ to other bitrise-cli commands.`,
 			}
 			v := configList{
 				Output:     cfg.Output,
-				AppSlug:    cfg.AppSlug,
-				OrgSlug:    cfg.OrgSlug,
+				AppSlug:    cfg.AppID,
+				OrgSlug:    cfg.DefaultWorkspaceID,
 				APIBaseURL: cfg.APIBaseURL,
 				WebBaseURL: cfg.WebBaseURL,
 				Theme:      cfg.Theme,
@@ -126,8 +126,8 @@ func renderListHuman(w io.Writer, v configList) error {
 	}
 	ew.F("%s%s\n\n", lbl("Path:"), s.Dim.Render(v.Path))
 	ew.F("%s%s\n", lbl(internalconfig.KeyOutput+":"), value(v.Output))
-	ew.F("%s%s\n", lbl(internalconfig.KeyAppSlug+":"), value(v.AppSlug))
-	ew.F("%s%s\n", lbl(internalconfig.KeyOrgSlug+":"), value(v.OrgSlug))
+	ew.F("%s%s\n", lbl(internalconfig.KeyAppID+":"), value(v.AppSlug))
+	ew.F("%s%s\n", lbl(internalconfig.KeyDefaultWorkspaceID+":"), value(v.OrgSlug))
 	ew.F("%s%s\n", lbl(internalconfig.KeyAPIBaseURL+":"), value(v.APIBaseURL))
 	ew.F("%s%s\n", lbl(internalconfig.KeyWebBaseURL+":"), value(v.WebBaseURL))
 	ew.F("%s%s\n", lbl(internalconfig.KeyTheme+":"), value(v.Theme))

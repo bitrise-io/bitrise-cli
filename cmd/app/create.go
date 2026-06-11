@@ -228,7 +228,7 @@ func persistAppSlug(cmd *cobra.Command, slug string) error {
 	if err != nil {
 		return fmt.Errorf("load config: %w", err)
 	}
-	if err := cfg.Set(config.KeyAppSlug, slug); err != nil {
+	if err := cfg.Set(config.KeyAppID, slug); err != nil {
 		return err
 	}
 	if err := config.Save(cfg); err != nil {
@@ -239,14 +239,14 @@ func persistAppSlug(cmd *cobra.Command, slug string) error {
 	}
 	cfgPath, _ := config.Path()
 	ew := cmdutil.NewErrWriter(cmd.ErrOrStderr())
-	ew.F("Set %s=%s in %s\n", config.KeyAppSlug, slug, cfgPath)
+	ew.F("Set %s=%s in %s\n", config.KeyAppID, slug, cfgPath)
 
 	// Per-directory file overrides the global default — surface the
 	// conflict so the user isn't surprised when their next command picks
 	// a different app.
 	dirCfg, dirPath, derr := config.LoadDir()
-	if derr == nil && dirPath != "" && dirCfg.AppSlug != "" && dirCfg.AppSlug != slug {
-		ew.F("Note: %s pins %s=%s, which still wins at runtime\n", dirPath, config.KeyAppSlug, dirCfg.AppSlug)
+	if derr == nil && dirPath != "" && dirCfg.AppID != "" && dirCfg.AppID != slug {
+		ew.F("Note: %s pins %s=%s, which still wins at runtime\n", dirPath, config.KeyAppID, dirCfg.AppID)
 	}
 	return ew.Err
 }
