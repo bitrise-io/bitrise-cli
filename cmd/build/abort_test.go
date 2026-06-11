@@ -69,7 +69,7 @@ func TestAbortCmd_JSONOutput(t *testing.T) {
 	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
 		t.Fatalf("invalid JSON: %v\n%s", err, stdout.String())
 	}
-	if got["build_slug"] != "b-1" || got["status"] != "ok" {
+	if got["build_id"] != "b-1" || got["status"] != "ok" {
 		t.Errorf("unexpected JSON: %v", got)
 	}
 }

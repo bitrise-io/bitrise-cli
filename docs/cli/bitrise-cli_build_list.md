@@ -7,7 +7,7 @@ List builds for an app
 List builds for an app, newest first.
 
 Required flags:
-  --app SLUG              (or BITRISE_APP_SLUG env var)
+  --app ID                (or BITRISE_APP_ID env var)
 
 Optional filters:
   --branch BRANCH           filter by branch name
@@ -28,7 +28,7 @@ Pagination:
   --all                   fetch all pages automatically
 
 In JSON mode (--output json), the next_cursor field holds the cursor value for scripting:
-  bitrise-cli build list --app SLUG --output json | jq -r '.next_cursor'
+  bitrise-cli build list --app ID --output json | jq -r '.next_cursor'
 
 ```
 bitrise-cli build list [flags]
@@ -37,12 +37,12 @@ bitrise-cli build list [flags]
 ### Examples
 
 ```
-  bitrise-cli build list --app my-app-slug
-  bitrise-cli build list --app my-app-slug --all
-  bitrise-cli build list --app my-app-slug --branch main --status failed
-  bitrise-cli build list --app my-app-slug --sort-by running_first
-  bitrise-cli build list --app my-app-slug --after 2024-01-01T00:00:00Z
-  bitrise-cli build list --app my-app-slug --output json
+  bitrise-cli build list --app my-app-id
+  bitrise-cli build list --app my-app-id --all
+  bitrise-cli build list --app my-app-id --branch main --status failed
+  bitrise-cli build list --app my-app-id --sort-by running_first
+  bitrise-cli build list --app my-app-id --after 2024-01-01T00:00:00Z
+  bitrise-cli build list --app my-app-id --output json
 ```
 
 ### Options
@@ -68,7 +68,7 @@ bitrise-cli build list [flags]
 ### Options inherited from parent commands
 
 ```
-      --app string      app slug (also accepted as --project; or set BITRISE_APP_SLUG)
+      --app string      app ID (or set BITRISE_APP_ID)
       --no-color        disable ANSI colors (NO_COLOR env is also honored)
   -o, --output string   output format: human|json (default "human")
   -q, --quiet           suppress non-error diagnostic messages

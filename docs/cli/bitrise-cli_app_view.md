@@ -4,17 +4,17 @@ Show details of a single app
 
 ### Synopsis
 
-Show details for a single app identified by its slug.
+Show details for a single app identified by its ID.
 
 Argument:
-  APP_SLUG           the unique slug of the app (visible in app URLs);
-                     falls back to BITRISE_APP_SLUG when omitted
+  APP_ID             the unique ID of the app (visible in app URLs);
+                     falls back to BITRISE_APP_ID when omitted
 
 Flags:
   --web              open the app page in the browser instead of printing
 
 ```
-bitrise-cli app view APP_SLUG [flags]
+bitrise-cli app view APP_ID [flags]
 ```
 
 ### Examples
@@ -23,7 +23,7 @@ bitrise-cli app view APP_SLUG [flags]
   bitrise-cli app view stub-app-aaa
   bitrise-cli app view stub-app-aaa --output json
   bitrise-cli app view stub-app-aaa --web
-  BITRISE_APP_SLUG=stub-app-aaa bitrise-cli app view
+  BITRISE_APP_ID=stub-app-aaa bitrise-cli app view
 ```
 
 ### Options
@@ -44,5 +44,5 @@ bitrise-cli app view APP_SLUG [flags]
 
 ### SEE ALSO
 
-* [bitrise-cli app](bitrise-cli_app.md)	 - List, inspect, and manage apps (also: project)
+* [bitrise-cli app](bitrise-cli_app.md)	 - List, inspect, and manage apps
 

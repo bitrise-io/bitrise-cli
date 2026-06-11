@@ -34,7 +34,7 @@ When --workspace is provided, returns stacks available for that workspace,
 including any custom stacks configured for it.
 Without --workspace, returns globally available stacks.`,
 		Example: `  bitrise-cli stack list
-  bitrise-cli stack list --workspace my-workspace-slug
+  bitrise-cli stack list --workspace my-workspace-id
   bitrise-cli stack list --output json`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			format := cmdutil.ResolveFormat(cmd)
@@ -53,7 +53,7 @@ Without --workspace, returns globally available stacks.`,
 		},
 	}
 
-	c.Flags().StringVar(&workspaceSlug, "workspace", "", "workspace slug for workspace-specific stacks (including custom stacks)")
+	c.Flags().StringVar(&workspaceSlug, "workspace", "", "workspace ID for workspace-specific stacks (including custom stacks)")
 	return c
 }
 

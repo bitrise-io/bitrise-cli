@@ -71,7 +71,7 @@ func TestViewCmd_JSONOutput(t *testing.T) {
 	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
 		t.Fatalf("invalid JSON: %v\n%s", err, stdout.String())
 	}
-	if got["slug"] != "b-2" || got["status"] != "failed" {
+	if got["id"] != "b-2" || got["status"] != "failed" {
 		t.Errorf("unexpected JSON: %v", got)
 	}
 }
@@ -91,7 +91,7 @@ func TestViewCmd_MissingArg(t *testing.T) {
 	}))
 
 	err := c.Execute()
-	if err == nil || !strings.Contains(err.Error(), "BUILD_SLUG") {
-		t.Errorf("expected missing BUILD_SLUG error, got %v", err)
+	if err == nil || !strings.Contains(err.Error(), "BUILD_ID") {
+		t.Errorf("expected missing BUILD_ID error, got %v", err)
 	}
 }

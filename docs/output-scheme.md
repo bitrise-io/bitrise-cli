@@ -72,7 +72,7 @@ legacy terminals.
 
 | Constant | ANSI 256 | Purpose |
 |----------|----------|---------|
-| `colorGrey` | `245` | Dim text, table headers, slugs |
+| `colorGrey` | `245` | Dim text, table headers, IDs |
 | `colorGreen` | `42` | Success |
 | `colorRed` | `196` | Failure |
 | `colorBlue` | `33` | In-progress / running |
@@ -89,7 +89,7 @@ legacy terminals.
 | `Dim` | grey | Secondary text, file paths, pagination hints, disabled rows |
 | `Bold` | bold | App/binary name, primary emphasis |
 | `Label` | bold | Key side of key/value pairs |
-| `Slug` | grey | Technical identifiers (app slug, commit hash, build slug) |
+| `Slug` | grey | Technical identifiers (app ID, commit hash, build ID) |
 | `URL` | underlined | Hyperlinks (PR URL, build URL) |
 | `Success` | green | `✓` symbol and confirmation lines |
 | `Failure` | red | `✗` symbol and failure indicators |
@@ -145,14 +145,14 @@ style.Table(w, headers, rows, s.Header, cellStyler)
 | Column type | Style | Notes |
 |-------------|-------|-------|
 | Status | `s.BuildStatus(status)` | Color varies by API value |
-| Slug / hash | `s.Slug` (grey) | Always dimmed |
+| ID / hash | `s.Slug` (grey) | Always dimmed |
 | Disabled row | `s.Dim` (full row) | Applied when an app is disabled |
 | Everything else | plain | No additional styling |
 
 ### Example — build list
 
 ```
-NUMBER  STATUS      BRANCH   WORKFLOW  TRIGGERED         SLUG
+NUMBER  STATUS      BRANCH   WORKFLOW  TRIGGERED         ID
 42      success     main     primary   2024-01-15 14:30  stub-build-aaa
 41      in-progress feature  primary   2024-01-15 14:25  stub-build-bbb
 ```
@@ -164,9 +164,9 @@ NUMBER  STATUS      BRANCH   WORKFLOW  TRIGGERED         SLUG
 ### Example — app list
 
 ```
-TITLE    PROVIDER  PROJECT  OWNER           DISABLED  SLUG
-My App   github    ios      workspace/alice            my-app-slug
-Old App  github    android  workspace/alice  yes        old-app-slug
+TITLE    PROVIDER  PROJECT_TYPE  WORKSPACE        DISABLED  ID
+My App   github    ios           workspace/alice            my-app-id
+Old App  github    android       workspace/alice  yes        old-app-id
 ```
 
 - Disabled rows: every cell is grey.
@@ -204,7 +204,7 @@ aligning values into a column. No separator character between label and value.
 
 ```
 Build:          #42 (stub-build-aaa)
-App:            my-app-slug
+App:            my-app-id
 Status:         in-progress
 Workflow:       primary
 Branch:         main
@@ -220,7 +220,7 @@ Triggered:      2024-01-15 14:30:00 UTC
 |------------|---------------|
 | Label | `s.Label` (bold) |
 | Status value | `s.BuildStatus(status)` |
-| Slug / hash / build slug | `s.Slug` (grey) |
+| ID / hash / build ID | `s.Slug` (grey) |
 | File path | `s.Dim` (grey) |
 | URL | `s.URL` (underlined) |
 | PR arrow | `→` plain text |

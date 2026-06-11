@@ -6,7 +6,7 @@ Print the value of a single config key (raw, unmasked)
 
 Print the raw value of one config key.
 
-Valid keys: output, app_slug, default_workspace_slug, api_base_url, rde_api_base_url, web_base_url, theme
+Valid keys: output, app_id, default_workspace_id, api_base_url, rde_api_base_url, web_base_url, theme
 
 ```
 bitrise-cli config get KEY [flags]

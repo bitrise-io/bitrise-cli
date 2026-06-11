@@ -10,7 +10,6 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
-	"github.com/spf13/pflag"
 	"golang.org/x/term"
 
 	"github.com/bitrise-io/bitrise-cli/bitriseapi"
@@ -61,10 +60,9 @@ func ResolveAppSlug(cmd *cobra.Command) (string, error) {
 	return "", AppSlugRequiredErr("--app")
 }
 
-// ResolveWorkspaceID returns the RDE workspace ID (== workspace slug),
-// preferring --workspace, then BITRISE_WORKSPACE_ID, then the
-// default_workspace_slug config key (per the RDE plan, the workspaceId
-// is the workspace slug).
+// ResolveWorkspaceID returns the workspace ID, preferring --workspace, then
+// BITRISE_WORKSPACE_ID, then the default_workspace_id config key. (On the
+// Bitrise API this identifier is a slug; the CLI never exposes that term.)
 func ResolveWorkspaceID(cmd *cobra.Command) (string, error) {
 	if v, _ := cmd.Flags().GetString(FlagWorkspace); v != "" {
 		return v, nil
@@ -72,11 +70,11 @@ func ResolveWorkspaceID(cmd *cobra.Command) (string, error) {
 	if v := config.FromContext(cmd.Context()).WorkspaceID; v != "" {
 		return v, nil
 	}
-	return "", fmt.Errorf("--workspace is required (or set %s, or run 'bitrise-cli config set %s <slug>')",
-		config.EnvWorkspaceID, config.KeyOrgSlug)
+	return "", fmt.Errorf("--workspace is required (or set %s, or run 'bitrise-cli config set %s <id>')",
+		config.EnvWorkspaceID, config.KeyDefaultWorkspaceID)
 }
 
-// ResolveAppSlugArg returns the positional APP_SLUG argument, falling back to Resolved.
+// ResolveAppSlugArg returns the positional APP_ID argument, falling back to Resolved.
 func ResolveAppSlugArg(cmd *cobra.Command, args []string) (string, error) {
 	if len(args) >= 1 && args[0] != "" {
 		return args[0], nil
@@ -84,23 +82,13 @@ func ResolveAppSlugArg(cmd *cobra.Command, args []string) (string, error) {
 	if v := config.FromContext(cmd.Context()).AppSlug; v != "" {
 		return v, nil
 	}
-	return "", AppSlugRequiredErr("APP_SLUG positional argument")
+	return "", AppSlugRequiredErr("APP_ID positional argument")
 }
 
 // AppSlugRequiredErr returns the standard missing-app-slug error.
 func AppSlugRequiredErr(via string) error {
-	return fmt.Errorf("%s is required (or set %s, or run 'bitrise-cli config set %s <slug>')",
-		via, config.EnvAppSlug, config.KeyAppSlug)
-}
-
-// AddAppProjectAlias registers --project as a parse-time synonym for --app.
-func AddAppProjectAlias(c *cobra.Command) {
-	c.Flags().SetNormalizeFunc(func(_ *pflag.FlagSet, name string) pflag.NormalizedName {
-		if name == "project" {
-			return pflag.NormalizedName(FlagApp)
-		}
-		return pflag.NormalizedName(name)
-	})
+	return fmt.Errorf("%s is required (or set %s, or run 'bitrise-cli config set %s <id>')",
+		via, config.EnvAppSlug, config.KeyAppID)
 }
 
 // ErrNoToken is returned by NewAPIClient when no Bitrise access token has

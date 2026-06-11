@@ -73,7 +73,7 @@ func TestListCmd_JSONOutput(t *testing.T) {
 		t.Fatalf("expected 1 item, got %d", len(items))
 	}
 	item, _ := items[0].(map[string]any)
-	if item["slug"] != "b-1" || item["status"] != "success" {
+	if item["id"] != "b-1" || item["status"] != "success" {
 		t.Errorf("unexpected item: %v", item)
 	}
 }

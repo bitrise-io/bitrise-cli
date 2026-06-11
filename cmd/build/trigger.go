@@ -40,7 +40,7 @@ func newTriggerCmd() *cobra.Command {
 		Long: `Start a new build on the given app.
 
 Required flags:
-  --app SLUG         (or BITRISE_APP_SLUG env var)
+  --app ID           (or BITRISE_APP_ID env var)
 
 Optional flags:
   --workflow ID          workflow ID (mutually exclusive with --pipeline); Bitrise
@@ -61,14 +61,14 @@ Optional flags:
                          1 on failure. With --output json logs go to stderr and the final
                          build record is written to stdout.
   --interval DURATION    polling interval when --wait or --watch is active (default 3s)`,
-		Example: `  bitrise-cli build trigger --app my-app-slug --workflow primary
-  bitrise-cli build trigger --app my-app-slug --workflow deploy --branch release/1.2 --output json
-  bitrise-cli build trigger --app my-app-slug --pipeline my-pipeline --branch main
-  bitrise-cli build trigger --app my-app-slug --workflow primary --tag v1.2.3
-  bitrise-cli build trigger --app my-app-slug --workflow primary --env '{"MY_VAR":"hello","OTHER":"world"}'
-  bitrise-cli build trigger --app my-app-slug --workflow primary --wait
-  bitrise-cli build trigger --app my-app-slug --workflow primary --watch
-  bitrise-cli build trigger --app my-app-slug --workflow primary --watch --output json`,
+		Example: `  bitrise-cli build trigger --app my-app-id --workflow primary
+  bitrise-cli build trigger --app my-app-id --workflow deploy --branch release/1.2 --output json
+  bitrise-cli build trigger --app my-app-id --pipeline my-pipeline --branch main
+  bitrise-cli build trigger --app my-app-id --workflow primary --tag v1.2.3
+  bitrise-cli build trigger --app my-app-id --workflow primary --env '{"MY_VAR":"hello","OTHER":"world"}'
+  bitrise-cli build trigger --app my-app-id --workflow primary --wait
+  bitrise-cli build trigger --app my-app-id --workflow primary --watch
+  bitrise-cli build trigger --app my-app-id --workflow primary --watch --output json`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			appSlug, err := cmdutil.ResolveAppSlug(cmd)
 			if err != nil {

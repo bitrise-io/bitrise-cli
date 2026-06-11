@@ -20,7 +20,7 @@ Configuration (precedence: flag > env > per-dir > global > built-in default):
   Global file:   $XDG_CONFIG_HOME/bitrise/config.yaml (or ~/.config/bitrise/config.yaml)
   Per-dir file:  .bitrise-cli.yml in the current directory or any ancestor
   Manage with:   bitrise-cli config set <key> <value>   (run "bitrise-cli config" for details)
-  Env overrides: BITRISE_TOKEN, BITRISE_APP_SLUG, BITRISE_WORKSPACE_ID,
+  Env overrides: BITRISE_TOKEN, BITRISE_APP_ID, BITRISE_WORKSPACE_ID,
                  BITRISE_OUTPUT, BITRISE_API_BASE_URL, BITRISE_RDE_API_BASE_URL,
                  BITRISE_WEB_BASE_URL, BITRISE_CLI_THEME
 
@@ -47,7 +47,7 @@ Tip for automation / agents:
 
 ### SEE ALSO
 
-* [bitrise-cli app](bitrise-cli_app.md)	 - List, inspect, and manage apps (also: project)
+* [bitrise-cli app](bitrise-cli_app.md)	 - List, inspect, and manage apps
 * [bitrise-cli auth](bitrise-cli_auth.md)	 - Manage the Bitrise access token
 * [bitrise-cli build](bitrise-cli_build.md)	 - Trigger, list, and inspect builds
 * [bitrise-cli completion](bitrise-cli_completion.md)	 - Generate the autocompletion script for the specified shell

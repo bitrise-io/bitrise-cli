@@ -26,28 +26,61 @@ import (
 // Known config keys. These names are part of the user-facing CLI
 // contract — `bitrise-cli config set <key> <value>` references them directly.
 const (
-	KeyOutput        = "output"
-	KeyAppSlug       = "app_slug"
-	KeyOrgSlug       = "default_workspace_slug"
-	KeyAPIBaseURL    = "api_base_url"
-	KeyRDEAPIBaseURL = "rde_api_base_url"
-	KeyWebBaseURL    = "web_base_url"
-	KeyTheme         = "theme"
+	KeyOutput             = "output"
+	KeyAppID              = "app_id"
+	KeyDefaultWorkspaceID = "default_workspace_id"
+	KeyAPIBaseURL         = "api_base_url"
+	KeyRDEAPIBaseURL      = "rde_api_base_url"
+	KeyWebBaseURL         = "web_base_url"
+	KeyTheme              = "theme"
 )
 
 // Keys is the registered list of config keys, used for validation and help.
-var Keys = []string{KeyOutput, KeyAppSlug, KeyOrgSlug, KeyAPIBaseURL, KeyRDEAPIBaseURL, KeyWebBaseURL, KeyTheme}
+var Keys = []string{KeyOutput, KeyAppID, KeyDefaultWorkspaceID, KeyAPIBaseURL, KeyRDEAPIBaseURL, KeyWebBaseURL, KeyTheme}
 
 // Config is the on-disk shape. Fields use omitempty so unset values
 // don't appear in the saved YAML.
 type Config struct {
-	Output        string `yaml:"output,omitempty"`
-	AppSlug       string `yaml:"app_slug,omitempty"`
-	OrgSlug       string `yaml:"default_workspace_slug,omitempty"`
-	APIBaseURL    string `yaml:"api_base_url,omitempty"`
-	RDEAPIBaseURL string `yaml:"rde_api_base_url,omitempty"`
-	WebBaseURL    string `yaml:"web_base_url,omitempty"`
-	Theme         string `yaml:"theme,omitempty"`
+	Output             string `yaml:"output,omitempty"`
+	AppID              string `yaml:"app_id,omitempty"`
+	DefaultWorkspaceID string `yaml:"default_workspace_id,omitempty"`
+	APIBaseURL         string `yaml:"api_base_url,omitempty"`
+	RDEAPIBaseURL      string `yaml:"rde_api_base_url,omitempty"`
+	WebBaseURL         string `yaml:"web_base_url,omitempty"`
+	Theme              string `yaml:"theme,omitempty"`
+}
+
+// UnmarshalYAML reads a Config, accepting the legacy key names `app_slug` and
+// `default_workspace_slug` as fallbacks for the current `app_id` and
+// `default_workspace_id`. This keeps config files written by older versions
+// readable (so a saved default app/workspace isn't silently lost on upgrade);
+// the next Save rewrites the file with the current key names. The current key
+// wins if a file somehow carries both.
+func (c *Config) UnmarshalYAML(value *yaml.Node) error {
+	// NOTE: new Config fields must be added here too (two places: the struct and the copy block below).
+	var raw struct {
+		Output               string `yaml:"output"`
+		AppID                string `yaml:"app_id"`
+		AppSlugLegacy        string `yaml:"app_slug"`
+		DefaultWorkspaceID   string `yaml:"default_workspace_id"`
+		DefaultWorkspaceSlug string `yaml:"default_workspace_slug"`
+		APIBaseURL           string `yaml:"api_base_url"`
+		RDEAPIBaseURL        string `yaml:"rde_api_base_url"`
+		WebBaseURL           string `yaml:"web_base_url"`
+		Theme                string `yaml:"theme"`
+	}
+	if err := value.Decode(&raw); err != nil {
+		return err
+	}
+	// NOTE: new Config fields must be added here too (and to the raw struct above).
+	c.Output = raw.Output
+	c.AppID = firstNonEmpty(raw.AppID, raw.AppSlugLegacy)
+	c.DefaultWorkspaceID = firstNonEmpty(raw.DefaultWorkspaceID, raw.DefaultWorkspaceSlug)
+	c.APIBaseURL = raw.APIBaseURL
+	c.RDEAPIBaseURL = raw.RDEAPIBaseURL
+	c.WebBaseURL = raw.WebBaseURL
+	c.Theme = raw.Theme
+	return nil
 }
 
 // DirFileName is the file looked up in the working directory and its
@@ -196,10 +229,10 @@ func (c *Config) Get(key string) (string, error) {
 	switch key {
 	case KeyOutput:
 		return c.Output, nil
-	case KeyAppSlug:
-		return c.AppSlug, nil
-	case KeyOrgSlug:
-		return c.OrgSlug, nil
+	case KeyAppID:
+		return c.AppID, nil
+	case KeyDefaultWorkspaceID:
+		return c.DefaultWorkspaceID, nil
 	case KeyAPIBaseURL:
 		return c.APIBaseURL, nil
 	case KeyRDEAPIBaseURL:
@@ -220,10 +253,10 @@ func (c *Config) Set(key, value string) error {
 	switch key {
 	case KeyOutput:
 		next.Output = value
-	case KeyAppSlug:
-		next.AppSlug = value
-	case KeyOrgSlug:
-		next.OrgSlug = value
+	case KeyAppID:
+		next.AppID = value
+	case KeyDefaultWorkspaceID:
+		next.DefaultWorkspaceID = value
 	case KeyAPIBaseURL:
 		next.APIBaseURL = value
 	case KeyRDEAPIBaseURL:

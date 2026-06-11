@@ -4,7 +4,7 @@ Register a new app on Bitrise
 
 ### Synopsis
 
-Register a new app (project) on Bitrise.
+Register a new app on Bitrise.
 
 Auto-detection from the current git repo:
   --repo-url     git remote get-url origin
@@ -14,7 +14,7 @@ Auto-detection from the current git repo:
 Workspace:
   --workspace is required if you belong to multiple workspaces.
   Otherwise it falls back to:
-    1. default_workspace_slug from config
+    1. default_workspace_id from config
     2. auto-detect when your account has exactly one workspace
 
 bitrise.yml handling:
@@ -22,7 +22,7 @@ bitrise.yml handling:
   (no flag, ./bitrise.yml exists)   upload it
   (no flag, no file)   skip — server preset for --project-type takes effect
 
-The new app's slug is saved as the global default app_slug, so subsequent
+The new app's ID is saved as the global default app_id, so subsequent
 commands (build trigger, build list, ...) target it without --app.
 
 ```
@@ -50,7 +50,7 @@ bitrise-cli app create [flags]
       --repo-url string       git repo URL (default: 'git remote get-url origin' in cwd)
       --stack string          build stack ID (default "linux-docker-android-22.04")
       --title string          app title (default: last path segment of repo URL)
-      --workspace string      workspace slug to own the app
+      --workspace string      workspace ID to own the app
 ```
 
 ### Options inherited from parent commands
@@ -64,5 +64,5 @@ bitrise-cli app create [flags]
 
 ### SEE ALSO
 
-* [bitrise-cli app](bitrise-cli_app.md)	 - List, inspect, and manage apps (also: project)
+* [bitrise-cli app](bitrise-cli_app.md)	 - List, inspect, and manage apps
 
