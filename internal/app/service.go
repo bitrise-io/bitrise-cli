@@ -17,7 +17,6 @@ type App struct {
 	Title       string `json:"title"`
 	Provider    string `json:"provider"`
 	RepoURL     string `json:"repo_url"`
-	OwnerType   string `json:"-"` // owner is always a workspace; kept only for the "workspace/<id>" human rendering
 	OwnerSlug   string `json:"workspace_id,omitempty"`
 	ProjectType string `json:"project_type,omitempty"`
 	IsDisabled  bool   `json:"is_disabled,omitempty"`
@@ -83,7 +82,6 @@ func fromAPI(a bitriseapi.App) App {
 		Title:       a.Title,
 		Provider:    a.Provider,
 		RepoURL:     a.RepoURL,
-		OwnerType:   a.Owner.AccountType,
 		OwnerSlug:   a.Owner.Slug,
 		ProjectType: a.ProjectType,
 		IsDisabled:  a.IsDisabled,

@@ -81,8 +81,8 @@ func renderAppText(w io.Writer, a internalapp.App) error {
 	ew.F("%s%s\n", lbl("ID:"), s.Slug.Render(a.Slug))
 	ew.F("%s%s\n", lbl("Provider:"), a.Provider)
 	ew.F("%s%s\n", lbl("Repo URL:"), s.URL.Render(a.RepoURL))
-	if a.OwnerType != "" || a.OwnerSlug != "" {
-		ew.F("%s%s/%s\n", lbl("Workspace:"), a.OwnerType, a.OwnerSlug)
+	if a.OwnerSlug != "" {
+		ew.F("%s%s\n", lbl("Workspace:"), a.OwnerSlug)
 	}
 	if a.ProjectType != "" {
 		ew.F("%s%s\n", lbl("Project type:"), a.ProjectType)

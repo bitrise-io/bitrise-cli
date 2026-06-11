@@ -60,7 +60,6 @@ func TestService_List_MapsAPIShape(t *testing.T) {
 		Title:       "First",
 		Provider:    "github",
 		RepoURL:     "https://github.com/x/y",
-		OwnerType:   "Organization",
 		OwnerSlug:   "acme",
 		ProjectType: "android",
 		IsDisabled:  false,
@@ -141,7 +140,7 @@ func TestService_View_HitsCorrectPath(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := App{Slug: "my-app", Title: "App", Provider: "github", OwnerType: "User", OwnerSlug: "acme"}
+	want := App{Slug: "my-app", Title: "App", Provider: "github", OwnerSlug: "acme"}
 	if got != want {
 		t.Errorf("got %+v, want %+v", got, want)
 	}

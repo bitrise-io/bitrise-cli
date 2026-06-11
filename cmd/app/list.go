@@ -144,16 +144,12 @@ func renderListText(w io.Writer, res internalapp.AppsResult, nextPageCmd func(st
 	rows := make([][]string, 0, len(res.Items))
 	disabled := make([]bool, 0, len(res.Items))
 	for _, a := range res.Items {
-		owner := a.OwnerSlug
-		if a.OwnerType != "" {
-			owner = fmt.Sprintf("%s/%s", a.OwnerType, a.OwnerSlug)
-		}
 		dis := ""
 		if a.IsDisabled {
 			dis = "yes"
 		}
 		disabled = append(disabled, a.IsDisabled)
-		rows = append(rows, []string{a.Title, a.Provider, a.ProjectType, owner, dis, a.Slug})
+		rows = append(rows, []string{a.Title, a.Provider, a.ProjectType, a.OwnerSlug, dis, a.Slug})
 	}
 	const colSlug = 5
 	styler := func(row, col int, content string) string {
