@@ -9,7 +9,7 @@ bitrise-cli build [flags]
 ### Options
 
 ```
-      --app string   app ID (also accepted as --project; or set BITRISE_APP_ID)
+      --app string   app ID (or set BITRISE_APP_ID)
   -h, --help         help for build
 ```
 

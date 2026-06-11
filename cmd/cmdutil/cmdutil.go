@@ -10,7 +10,6 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
-	"github.com/spf13/pflag"
 	"golang.org/x/term"
 
 	"github.com/bitrise-io/bitrise-cli/bitriseapi"
@@ -90,16 +89,6 @@ func ResolveAppSlugArg(cmd *cobra.Command, args []string) (string, error) {
 func AppSlugRequiredErr(via string) error {
 	return fmt.Errorf("%s is required (or set %s, or run 'bitrise-cli config set %s <id>')",
 		via, config.EnvAppSlug, config.KeyAppSlug)
-}
-
-// AddAppProjectAlias registers --project as a parse-time synonym for --app.
-func AddAppProjectAlias(c *cobra.Command) {
-	c.Flags().SetNormalizeFunc(func(_ *pflag.FlagSet, name string) pflag.NormalizedName {
-		if name == "project" {
-			return pflag.NormalizedName(FlagApp)
-		}
-		return pflag.NormalizedName(name)
-	})
 }
 
 // ErrNoToken is returned by NewAPIClient when no Bitrise access token has

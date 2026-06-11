@@ -76,10 +76,6 @@ new commands extend the services without touching the cmd layer's shape.
 - **Bitrise verbs**: `build trigger` (not create); `build abort` (not
   cancel) when added; `build rerun` for re-runs; `view` is the detail verb.
 - **Singular nouns**: `app`, `build`, `workflow` — never plural.
-- **`app` ↔ `project` aliases**: both the command (`bitrise-cli project ...`)
-  and the flag (`--project`) accept either form. `app` is canonical. A project
-  contains exactly one app and an app belongs to exactly one project; they
-  share a single name, so the alias is unambiguous.
 - **Identifier term: `ID`, never `slug`** (user-facing). Every user-visible
   surface — help text, flag/arg metavars (`APP_ID`, `BUILD_ID`), output labels
   (`ID:`) and table headers (`ID`), config keys (`app_id`,
@@ -97,8 +93,9 @@ new commands extend the services without touching the cmd layer's shape.
   different concept — and keeps "Owner".)
 - **`PROJECT_TYPE`, not `PROJECT`**: the platform column/label (ios, android,
   …) is "Project type" (`PROJECT_TYPE` as an ALL-CAPS table header,
-  `Project type:` as a key/value label) — never bare "Project", which would
-  collide with the app↔project alias.
+  `Project type:` as a key/value label). This reflects the API's `project_type`
+  field — keep it in internal code but don't use "project" as a standalone
+  user-facing term for an app.
 - **Stdin via `-`**: `bitrise-cli config set token -` reads from stdin so
   secrets stay out of shell history. Apply this pattern to any new
   secret-accepting command.

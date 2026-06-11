@@ -32,7 +32,7 @@ func newCreateCmd() *cobra.Command {
 	c := &cobra.Command{
 		Use:   "create",
 		Short: "Register a new app on Bitrise",
-		Long: `Register a new app (project) on Bitrise.
+		Long: `Register a new app on Bitrise.
 
 Auto-detection from the current git repo:
   --repo-url     git remote get-url origin

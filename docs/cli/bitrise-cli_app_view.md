@@ -44,5 +44,5 @@ bitrise-cli app view APP_ID [flags]
 
 ### SEE ALSO
 
-* [bitrise-cli app](bitrise-cli_app.md)	 - List, inspect, and manage apps (also: project)
+* [bitrise-cli app](bitrise-cli_app.md)	 - List, inspect, and manage apps
 

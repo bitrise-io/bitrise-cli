@@ -36,7 +36,7 @@ bitrise-cli yml update [flags]
 ### Options inherited from parent commands
 
 ```
-      --app string      app ID (also accepted as --project; or set BITRISE_APP_ID)
+      --app string      app ID (or set BITRISE_APP_ID)
       --no-color        disable ANSI colors (NO_COLOR env is also honored)
   -o, --output string   output format: human|json (default "human")
   -q, --quiet           suppress non-error diagnostic messages

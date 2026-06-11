@@ -9,10 +9,9 @@ import (
 // NewCmd returns the `bitrise-cli app` parent command.
 func NewCmd() *cobra.Command {
 	c := &cobra.Command{
-		Use:     "app",
-		Aliases: []string{"project"},
-		Short:   "List, inspect, and manage apps (also: project)",
-		RunE:    cmdutil.DelegateToList,
+		Use:   "app",
+		Short: "List, inspect, and manage apps",
+		RunE:  cmdutil.DelegateToList,
 	}
 	c.AddCommand(
 		newListCmd(),

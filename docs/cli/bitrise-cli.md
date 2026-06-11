@@ -47,7 +47,7 @@ Tip for automation / agents:
 
 ### SEE ALSO
 
-* [bitrise-cli app](bitrise-cli_app.md)	 - List, inspect, and manage apps (also: project)
+* [bitrise-cli app](bitrise-cli_app.md)	 - List, inspect, and manage apps
 * [bitrise-cli auth](bitrise-cli_auth.md)	 - Manage the Bitrise access token
 * [bitrise-cli build](bitrise-cli_build.md)	 - Trigger, list, and inspect builds
 * [bitrise-cli completion](bitrise-cli_completion.md)	 - Generate the autocompletion script for the specified shell

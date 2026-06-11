@@ -4,7 +4,7 @@ Register a new app on Bitrise
 
 ### Synopsis
 
-Register a new app (project) on Bitrise.
+Register a new app on Bitrise.
 
 Auto-detection from the current git repo:
   --repo-url     git remote get-url origin
@@ -64,5 +64,5 @@ bitrise-cli app create [flags]
 
 ### SEE ALSO
 
-* [bitrise-cli app](bitrise-cli_app.md)	 - List, inspect, and manage apps (also: project)
+* [bitrise-cli app](bitrise-cli_app.md)	 - List, inspect, and manage apps
 

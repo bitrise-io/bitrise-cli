@@ -27,7 +27,7 @@ func newListCmd() *cobra.Command {
 	c := &cobra.Command{
 		Use:   "list",
 		Short: "List apps the authenticated user can access",
-		Long: `List all apps (projects) the authenticated user can access.
+		Long: `List all apps the authenticated user can access.
 
 Filters:
   --title TITLE              filter apps by title
