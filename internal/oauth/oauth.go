@@ -27,26 +27,16 @@ import (
 	"time"
 )
 
-const (
-	// DefaultClientID is the CLI's OAuth client_id: a public Client ID
-	// Metadata Document (CIMD) URL that Bitrise hosts. The URL *is* the id;
-	// WorkOS fetches and validates the doc at authorize time (CIMD, no
-	// pre-registered client record). It is not a secret.
-	//
-	// The metadata document is served by the monolith (bitrise-website) at this
-	// exact URL; the value here must match the URL WorkOS fetches and the
-	// `client_id` declared inside the document. Real end-to-end login also needs
-	// the CLI resource indicator registered in WorkOS (see DefaultResource).
-	DefaultClientID = "https://app.bitrise.io/.well-known/oauth-client/cli"
-
-	// DefaultResource is the CLI's audience / resource indicator. Sent on the
-	// authorize request so WorkOS pins it into the JWT `aud`. It must be
-	// registered as a Resource Indicator in the WorkOS dashboard (Prod +
-	// Staging) for WorkOS to honour it; the monolith already accepts any
-	// *.bitrise.io audience at /oidc/token. Mirrors the MCP server's
-	// https://mcp.bitrise.io.
-	DefaultResource = "https://cli.bitrise.io"
-)
+// DefaultResource is the CLI's audience / resource indicator. Sent on the
+// authorize request so WorkOS pins it into the JWT `aud`. It must be registered
+// as a Resource Indicator in the WorkOS dashboard for WorkOS to honour it; the
+// monolith already accepts any *.bitrise.io audience at /oidc/token. Mirrors
+// the MCP server's https://mcp.bitrise.io.
+//
+// Unlike the client_id (a per-environment CIMD URL, resolved by the config
+// layer and overridable via BITRISE_OAUTH_CLIENT_ID), the resource is a stable
+// identifier shared across environments, so it stays a compile-time constant.
+const DefaultResource = "https://cli.bitrise.io"
 
 // defaultTimeout bounds each token HTTP call. defaultPATLifetime is the
 // fallback PAT lifetime when the exchange response omits expires_in (the
@@ -59,8 +49,8 @@ const (
 )
 
 // Config carries the external inputs for the OAuth flow. The cmd layer builds
-// one with NewConfig (package-default client_id/resource + resolved
-// issuer/endpoint); tests construct it directly with their own httptest URLs.
+// one with NewConfig (resolved issuer/endpoint/client_id + package-default
+// resource); tests construct it directly with their own httptest URLs.
 type Config struct {
 	// Issuer is the WorkOS AuthKit domain hosting /oauth2/authorize and
 	// /oauth2/token. May be empty when no default is compiled in and none is
@@ -76,13 +66,16 @@ type Config struct {
 	HTTPClient *http.Client
 }
 
-// NewConfig returns a Config using the package-default client_id and resource
-// with the supplied (resolved) issuer and OIDC token endpoint.
-func NewConfig(issuer, oidcTokenEndpoint string) Config {
+// NewConfig returns a Config for the OAuth flow from the supplied (resolved)
+// issuer, OIDC token endpoint, and client_id, with the package-default
+// resource. client_id is passed in rather than a constant because it is a
+// per-environment CIMD URL the config layer resolves (config.DefaultOAuthClientID,
+// overridable via BITRISE_OAUTH_CLIENT_ID).
+func NewConfig(issuer, oidcTokenEndpoint, clientID string) Config {
 	return Config{
 		Issuer:            issuer,
 		OIDCTokenEndpoint: oidcTokenEndpoint,
-		ClientID:          DefaultClientID,
+		ClientID:          clientID,
 		Resource:          DefaultResource,
 	}
 }

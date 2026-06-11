@@ -125,7 +125,7 @@ func liveToken(cmd *cobra.Command) (string, error) {
 	if r.Token == "" {
 		return "", ErrNoToken
 	}
-	return oauth.NewConfig(r.OAuthIssuer, r.OIDCTokenEndpoint).EnsureFreshPAT(cmd.Context(), r.Token)
+	return oauth.NewConfig(r.OAuthIssuer, r.OIDCTokenEndpoint, r.OAuthClientID).EnsureFreshPAT(cmd.Context(), r.Token)
 }
 
 // NewAPIClient builds a *bitriseapi.Client from the Resolved settings on

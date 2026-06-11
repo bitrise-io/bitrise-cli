@@ -190,7 +190,7 @@ func runEmailLogin(cmd *cobra.Command, email string, passwordStdin bool) error {
 // and persists the PAT plus the refresh material that keeps it fresh.
 func runOAuthLogin(cmd *cobra.Command) error {
 	r := resolvedFromCmd(cmd)
-	a, err := oauth.NewConfig(r.OAuthIssuer, r.OIDCTokenEndpoint).
+	a, err := oauth.NewConfig(r.OAuthIssuer, r.OIDCTokenEndpoint, r.OAuthClientID).
 		Login(cmd.Context(), cmdutil.OpenBrowser, cmd.ErrOrStderr())
 	if err != nil {
 		return err

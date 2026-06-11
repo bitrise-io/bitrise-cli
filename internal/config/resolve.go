@@ -21,10 +21,13 @@ const (
 	EnvTheme         = "BITRISE_CLI_THEME"
 	// EnvOAuthIssuer overrides the WorkOS AuthKit issuer (full URL) the OAuth
 	// login flow authorizes against; EnvOIDCTokenEndpoint overrides the
-	// monolith JWT→PAT exchange endpoint (full URL). Both exist only to point
-	// the flow at a non-prod environment — neither value is secret.
+	// monolith JWT→PAT exchange endpoint (full URL); EnvOAuthClientID overrides
+	// the CLI's CIMD client_id URL. These point the flow at a non-prod
+	// environment — the client_id differs per environment because its metadata
+	// document is served from each environment's own host. None is secret.
 	EnvOAuthIssuer       = "BITRISE_OAUTH_ISSUER"
 	EnvOIDCTokenEndpoint = "BITRISE_OIDC_TOKEN_ENDPOINT" //nolint:gosec // G101: env var name, not a credential
+	EnvOAuthClientID     = "BITRISE_OAUTH_CLIENT_ID"
 )
 
 // DefaultAPIBaseURL is the production Bitrise API base URL.
@@ -52,6 +55,15 @@ const DefaultOIDCTokenEndpoint = "https://app.bitrise.io/oidc/token" //nolint:go
 // (e.g. staging) environment.
 const DefaultOAuthIssuer = "https://pleasing-being-57.authkit.app"
 
+// DefaultOAuthClientID is the production CLI OAuth client_id: the URL of the
+// Client ID Metadata Document (CIMD) the monolith serves at app.bitrise.io.
+// WorkOS fetches it at authorize time — the URL *is* the id, and it is not a
+// secret. It is host-specific (the document is served from each environment's
+// own root URL), so non-prod environments override it via
+// BITRISE_OAUTH_CLIENT_ID. The prod monolith derives the same value from its
+// app root URL, keeping the two in sync.
+const DefaultOAuthClientID = "https://app.bitrise.io/.well-known/oauth-client/cli"
+
 // Resolved is the merged settings the cmd layer reads on every invocation.
 //
 // Layering per the CLI patterns guide, highest to lowest precedence:
@@ -73,11 +85,13 @@ type Resolved struct {
 	APIBaseURL    string
 	RDEAPIBaseURL string
 	WebBaseURL    string
-	// OAuthIssuer and OIDCTokenEndpoint configure the `auth login --oauth`
-	// flow and its background token refresh. OAuthIssuer may be empty when no
-	// default is compiled in and none is set via BITRISE_OAUTH_ISSUER.
+	// OAuthIssuer, OIDCTokenEndpoint, and OAuthClientID configure the
+	// `auth login --oauth` flow and its background token refresh. They default
+	// to production and are overridable per environment via the matching
+	// BITRISE_OAUTH_* / BITRISE_OIDC_* env vars.
 	OAuthIssuer       string
 	OIDCTokenEndpoint string
+	OAuthClientID     string
 	Theme             style.Theme
 }
 
@@ -119,6 +133,7 @@ func Resolve(globalCfg, dirCfg Config, authData auth.Auth, flagOutput, flagTheme
 	r.WebBaseURL = firstNonEmpty(os.Getenv(EnvWebBaseURL), dirCfg.WebBaseURL, globalCfg.WebBaseURL, DefaultWebBaseURL)
 	r.OAuthIssuer = firstNonEmpty(os.Getenv(EnvOAuthIssuer), DefaultOAuthIssuer)
 	r.OIDCTokenEndpoint = firstNonEmpty(os.Getenv(EnvOIDCTokenEndpoint), DefaultOIDCTokenEndpoint)
+	r.OAuthClientID = firstNonEmpty(os.Getenv(EnvOAuthClientID), DefaultOAuthClientID)
 	r.Token = firstNonEmpty(os.Getenv(EnvToken), authData.Token)
 
 	return r, nil
