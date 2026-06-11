@@ -105,8 +105,8 @@ func (c *Config) UnmarshalYAML(value *yaml.Node) error {
 		return err
 	}
 	c.Output = raw.Output
-	c.AppSlug = firstNonEmpty(raw.AppID, raw.AppSlugLegacy)
-	c.OrgSlug = firstNonEmpty(raw.DefaultWorkspaceID, raw.DefaultWorkspaceSlug)
+	c.AppID = firstNonEmpty(raw.AppID, raw.AppSlugLegacy)
+	c.DefaultWorkspaceID = firstNonEmpty(raw.DefaultWorkspaceID, raw.DefaultWorkspaceSlug)
 	c.APIBaseURL = raw.APIBaseURL
 	c.RDEAPIBaseURL = raw.RDEAPIBaseURL
 	c.WebBaseURL = raw.WebBaseURL
