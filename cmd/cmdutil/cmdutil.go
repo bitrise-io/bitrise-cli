@@ -196,29 +196,46 @@ func SilenceRootErrors(cmd *cobra.Command) {
 	}
 }
 
+// terminalFd returns r's file descriptor and reports whether r is an
+// interactive terminal (an *os.File backed by a TTY). It is the single place
+// that inspects the underlying *os.File; IsTerminal and ReadSecretInput both
+// build on it. fd is only meaningful when isTerminal is true.
+func terminalFd(r io.Reader) (fd int, isTerminal bool) {
+	f, ok := r.(*os.File)
+	if !ok {
+		return 0, false
+	}
+	fd = int(f.Fd()) //nolint:gosec // file descriptors are small ints, no overflow risk
+	return fd, term.IsTerminal(fd)
+}
+
+// IsTerminal reports whether r is an interactive terminal — an *os.File backed
+// by a TTY. Pipes, buffers, and test readers are never terminals, so callers
+// can use it to pick an interactive default (e.g. a browser flow) while keeping
+// non-interactive stdin (CI, pipes) working.
+func IsTerminal(r io.Reader) bool {
+	_, ok := terminalFd(r)
+	return ok
+}
+
 // ReadSecretInput reads a secret (token, password) from in. When fromStdin
 // is true, or when in is not a terminal, it reads a single line directly.
 // Otherwise it prints prompt to stderr, reads a masked line, and writes a
 // trailing newline. The trimmed value is returned with surrounding
 // whitespace removed.
 func ReadSecretInput(in io.Reader, stderr io.Writer, prompt string, fromStdin bool) (string, error) {
-	if !fromStdin {
-		if f, ok := in.(*os.File); ok {
-			fd := int(f.Fd()) //nolint:gosec // file descriptors are small ints, no overflow risk
-			if term.IsTerminal(fd) {
-				if _, err := fmt.Fprint(stderr, prompt); err != nil {
-					return "", err
-				}
-				b, err := term.ReadPassword(fd)
-				if _, perr := fmt.Fprintln(stderr); perr != nil { // newline after no-echo input
-					return "", perr
-				}
-				if err != nil {
-					return "", err
-				}
-				return strings.TrimSpace(string(b)), nil
-			}
+	if fd, ok := terminalFd(in); ok && !fromStdin {
+		if _, err := fmt.Fprint(stderr, prompt); err != nil {
+			return "", err
 		}
+		b, err := term.ReadPassword(fd)
+		if _, perr := fmt.Fprintln(stderr); perr != nil { // newline after no-echo input
+			return "", perr
+		}
+		if err != nil {
+			return "", err
+		}
+		return strings.TrimSpace(string(b)), nil
 	}
 	s, err := bufio.NewReader(in).ReadString('\n')
 	if err != nil && err != io.EOF {

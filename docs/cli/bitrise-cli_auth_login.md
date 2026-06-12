@@ -6,39 +6,40 @@ Save a Bitrise access token
 
 Save a Bitrise access token for future commands to use.
 
-There are three modes:
+By default, in an interactive terminal, this opens your browser to sign in to
+Bitrise (OAuth) and stores a managed, auto-refreshing token. The modes:
 
-  1. Token paste (default).
-     Prompts for a Personal Access Token (or pipes one in with --with-token).
-     The token is masked when stdin is a terminal:
+  Browser sign-in (default; explicit with --oauth).
+     Opens your browser to sign in, exchanges the result for a Personal Access
+     Token, and keeps it fresh in the background so you rarely sign in again:
 
          bitrise-cli auth login
+         bitrise-cli auth login --oauth
+
+     This needs the browser on the same machine as the CLI (the sign-in is
+     handed back over a loopback address). On a remote/headless host over SSH
+     it can't complete — pipe a token instead (see below).
+
+  Token (--with-token, or any non-interactive stdin).
+     Reads a Personal Access Token from stdin. This is also used automatically
+     when stdin is not a terminal, so CI and pipes keep working without a flag:
+
+         echo "$BITRISE_TOKEN" | bitrise-cli auth login
          echo "$BITRISE_TOKEN" | bitrise-cli auth login --with-token
 
-  2. Email and password (--email).
+  Email and password (--email).
      Signs in to app.bitrise.io with your account credentials, then asks the
      server to mint a fresh Personal Access Token and stores it. The cookie
-     session used to mint the token is dropped immediately. Your account
-     must have its email verified — run 'bitrise-cli user create' first if
-     you don't yet have an account:
+     session used to mint the token is dropped immediately. Your account must
+     have its email verified — run 'bitrise-cli user create' first if you don't
+     yet have an account:
 
          bitrise-cli auth login --email alice@example.com
          printf '%s' "$PW" | bitrise-cli auth login --email alice@example.com --password-stdin
 
-  3. Browser sign-in (--oauth).
-     Opens your browser to sign in to Bitrise, then exchanges the result for a
-     Personal Access Token and stores it. The CLI keeps the credential fresh in
-     the background, so you rarely need to sign in again:
-
-         bitrise-cli auth login --oauth
-
-     This requires the browser to run on the same machine as the CLI (the sign-in
-     is handed back over a loopback address). Signing in on a remote/headless
-     host over SSH is not yet supported — paste a token with --with-token there.
-
-Either way the resulting token is written to
-$XDG_CONFIG_HOME/bitrise/auth.yaml with 0600 permissions. The token is NOT
-echoed in any output (use 'auth status' to verify, 'auth logout' to clear).
+The resulting token is written to $XDG_CONFIG_HOME/bitrise/auth.yaml with 0600
+permissions and is never echoed (use 'auth status' to verify, 'auth logout' to
+clear).
 
 ```
 bitrise-cli auth login [flags]
@@ -47,11 +48,9 @@ bitrise-cli auth login [flags]
 ### Examples
 
 ```
-  bitrise-cli auth login                                       # interactive token prompt
-  echo "$BITRISE_TOKEN" | bitrise-cli auth login --with-token
-  bitrise-cli auth login --oauth                               # sign in via the browser
-  bitrise-cli auth login --email alice@example.com             # interactive password prompt
-  printf '%s' "$PW" | bitrise-cli auth login --email alice@example.com --password-stdin
+  bitrise-cli auth login                                       # browser sign-in (OAuth)
+  echo "$BITRISE_TOKEN" | bitrise-cli auth login --with-token  # paste/pipe a token
+  bitrise-cli auth login --email alice@example.com             # email/password
 ```
 
 ### Options

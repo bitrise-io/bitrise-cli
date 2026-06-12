@@ -177,6 +177,26 @@ func TestAuthLogin_NoShadowWarningWhenEnvUnset(t *testing.T) {
 	}
 }
 
+func TestAuthLogin_DefaultNonInteractive_ReadsTokenFromStdin(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+
+	c := newAuthLoginCmd()
+	c.SetOut(io.Discard)
+	c.SetErr(io.Discard)
+	// A strings.Reader isn't a terminal, so the default routes to token-from-stdin
+	// (not the browser flow), keeping `echo "$TOKEN" | auth login` working.
+	c.SetIn(strings.NewReader("bitpat_piped\n"))
+	c.SetArgs(nil)
+	c.SetContext(config.WithResolved(context.Background(), config.Resolved{Output: "human"}))
+
+	if err := c.Execute(); err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if a, _ := auth.Load(); a.Token != "bitpat_piped" {
+		t.Fatalf("saved token = %q, want bitpat_piped", a.Token)
+	}
+}
+
 func TestAuthStatus_OAuthManaged_ShowsSourceAndExpiryNoToken(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	t.Setenv("BITRISE_TOKEN", "") // ensure the env path is not taken
