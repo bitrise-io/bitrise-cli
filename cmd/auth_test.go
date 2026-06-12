@@ -129,6 +129,54 @@ func TestAuthLogin_OAuthRejectsWithToken(t *testing.T) {
 	}
 }
 
+func TestAuthLogin_WarnsWhenEnvTokenShadowsSavedToken(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv(config.EnvToken, "ci-env-token") // shadows whatever login saves
+
+	c := newAuthLoginCmd()
+	stderr := &bytes.Buffer{}
+	c.SetOut(io.Discard)
+	c.SetErr(stderr)
+	c.SetIn(strings.NewReader("bitpat_saved\n"))
+	c.SetArgs([]string{"--with-token"})
+	c.SetContext(config.WithResolved(context.Background(), config.Resolved{Output: "human"}))
+
+	if err := c.Execute(); err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if a, _ := auth.Load(); a.Token != "bitpat_saved" {
+		t.Fatalf("token not saved: %q", a.Token)
+	}
+	out := stderr.String()
+	if !strings.Contains(out, config.EnvToken) || !strings.Contains(out, "takes precedence") {
+		t.Fatalf("expected a shadow warning naming BITRISE_TOKEN, got: %q", out)
+	}
+}
+
+func TestAuthLogin_NoShadowWarningWhenEnvUnset(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv(config.EnvToken, "") // not shadowed
+
+	c := newAuthLoginCmd()
+	stderr := &bytes.Buffer{}
+	c.SetOut(io.Discard)
+	c.SetErr(stderr)
+	c.SetIn(strings.NewReader("bitpat_saved\n"))
+	c.SetArgs([]string{"--with-token"})
+	c.SetContext(config.WithResolved(context.Background(), config.Resolved{Output: "human"}))
+
+	if err := c.Execute(); err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	out := stderr.String()
+	if !strings.Contains(out, "Saved access token") {
+		t.Fatalf("expected the save confirmation, got: %q", out)
+	}
+	if strings.Contains(out, "takes precedence") {
+		t.Fatalf("unexpected shadow warning when BITRISE_TOKEN is unset: %q", out)
+	}
+}
+
 func TestAuthStatus_OAuthManaged_ShowsSourceAndExpiryNoToken(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	t.Setenv("BITRISE_TOKEN", "") // ensure the env path is not taken
