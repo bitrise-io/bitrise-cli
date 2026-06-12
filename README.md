@@ -171,6 +171,7 @@ details) under [docs/cli](docs/cli/bitrise-cli.md).
 
 | Command | Description |
 |---|---|
+| [`api`](docs/cli/bitrise-cli_api.md) | Make an authenticated request to the Bitrise API |
 | [`purr`](docs/cli/bitrise-cli_purr.md) | Visit Purr Request, the Bitrise CLI mascot |
 | [`version`](docs/cli/bitrise-cli_version.md) | Print version, commit, and build info |
 
