@@ -48,21 +48,26 @@ func New(baseURL, token string, opts ...Option) *Client {
 // APIError represents a non-2xx response from the Bitrise API. Message is
 // the human-readable text extracted from a known JSON error field; Body is
 // the raw response body, surfaced only when no structured field was found
-// so unexpected error shapes still tell the user something.
+// so unexpected error shapes still tell the user something. RequestInfo
+// records "METHOD /path?query" so the failing call is visible in error output.
 type APIError struct {
-	StatusCode int
-	Message    string
-	Body       string
+	StatusCode  int
+	Message     string
+	Body        string
+	RequestInfo string
 }
 
 func (e *APIError) Error() string {
+	base := fmt.Sprintf("bitrise API %d", e.StatusCode)
 	if e.Message != "" {
-		return fmt.Sprintf("bitrise API %d: %s", e.StatusCode, e.Message)
+		base += ": " + e.Message
+	} else if e.Body != "" {
+		base += ": " + truncate(e.Body, 500)
 	}
-	if e.Body != "" {
-		return fmt.Sprintf("bitrise API %d: %s", e.StatusCode, truncate(e.Body, 500))
+	if e.RequestInfo != "" {
+		return e.RequestInfo + ": " + base
 	}
-	return fmt.Sprintf("bitrise API %d", e.StatusCode)
+	return base
 }
 
 // errorBody covers the common JSON error shapes the Bitrise services
@@ -155,7 +160,11 @@ func (c *Client) do(req *http.Request) ([]byte, error) {
 		var e errorBody
 		_ = json.Unmarshal(body, &e)
 		msg := e.pick()
-		apiErr := &APIError{StatusCode: resp.StatusCode, Message: msg}
+		apiErr := &APIError{
+			StatusCode:  resp.StatusCode,
+			Message:     msg,
+			RequestInfo: req.Method + " " + req.URL.RequestURI(),
+		}
 		if msg == "" {
 			// No structured field — keep the raw body so the user has
 			// something concrete to see (e.g. an unmarshalable Rails 500

@@ -134,6 +134,9 @@ func (s *Service) Trigger(ctx context.Context, req TriggerRequest) (Build, error
 		},
 	})
 	if err != nil {
+		if apiErr, ok := errors.AsType[*bitriseapi.APIError](err); ok && apiErr.StatusCode == http.StatusNotFound {
+			return Build{}, fmt.Errorf("app %q not found", req.AppSlug)
+		}
 		return Build{}, err
 	}
 	return triggerRespToBuild(resp, req), nil
@@ -146,7 +149,7 @@ func (s *Service) List(ctx context.Context, opts ListOptions) (ListResult, error
 		return ListResult{}, fmt.Errorf("API client not configured")
 	}
 	if opts.AppSlug == "" {
-		return ListResult{}, fmt.Errorf("app ID is required")
+		return ListResult{}, fmt.Errorf("app is required")
 	}
 	statusInt, err := parseStatusFilter(opts.Status)
 	if err != nil {
@@ -173,6 +176,9 @@ func (s *Service) List(ctx context.Context, opts ListOptions) (ListResult, error
 	}
 	page, err := s.client.Builds(ctx, opts.AppSlug, apiOpts)
 	if err != nil {
+		if apiErr, ok := errors.AsType[*bitriseapi.APIError](err); ok && apiErr.StatusCode == http.StatusNotFound {
+			return ListResult{}, fmt.Errorf("app %q not found", opts.AppSlug)
+		}
 		return ListResult{}, err
 	}
 	items := make([]Build, 0, len(page.Items))
@@ -196,6 +202,9 @@ func (s *Service) View(ctx context.Context, appSlug, buildSlug string) (Build, e
 	}
 	b, err := s.client.Build(ctx, appSlug, buildSlug)
 	if err != nil {
+		if apiErr, ok := errors.AsType[*bitriseapi.APIError](err); ok && apiErr.StatusCode == http.StatusNotFound {
+			return Build{}, fmt.Errorf("build %q not found", buildSlug)
+		}
 		return Build{}, err
 	}
 	return fromAPI(b, appSlug), nil
@@ -235,9 +244,11 @@ func (s *Service) Watch(ctx context.Context, appSlug, buildSlug string, w io.Wri
 		if err == nil {
 			break
 		}
-		var apiErr *bitriseapi.APIError
-		if !errors.As(err, &apiErr) || apiErr.StatusCode != http.StatusNotFound || attempt >= maxInitialRetries {
+		if apiErr, ok := errors.AsType[*bitriseapi.APIError](err); !ok || apiErr.StatusCode != http.StatusNotFound {
 			return Build{}, err
+		}
+		if attempt >= maxInitialRetries {
+			return Build{}, fmt.Errorf("build %q not found", buildSlug)
 		}
 		select {
 		case <-ctx.Done():
@@ -470,7 +481,13 @@ func (s *Service) Log(ctx context.Context, appSlug, buildSlug string, w io.Write
 		return fmt.Errorf("build ID is required")
 	}
 	_, err := s.client.BuildLog(ctx, appSlug, buildSlug, w)
-	return err
+	if err != nil {
+		if apiErr, ok := errors.AsType[*bitriseapi.APIError](err); ok && apiErr.StatusCode == http.StatusNotFound {
+			return fmt.Errorf("build %q not found ", buildSlug)
+		}
+		return err
+	}
+	return nil
 }
 
 // AbortRequest describes a build-abort operation.
@@ -510,6 +527,9 @@ func (s *Service) Abort(ctx context.Context, req AbortRequest) (AbortResult, err
 		SkipNotifications:   req.SkipNotifications,
 	})
 	if err != nil {
+		if apiErr, ok := errors.AsType[*bitriseapi.APIError](err); ok && apiErr.StatusCode == http.StatusNotFound {
+			return AbortResult{}, fmt.Errorf("build %q not found", req.BuildSlug)
+		}
 		return AbortResult{}, err
 	}
 	return AbortResult{

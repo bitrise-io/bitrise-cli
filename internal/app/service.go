@@ -5,7 +5,9 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"net/http"
 
 	"github.com/bitrise-io/bitrise-cli/bitriseapi"
 	"github.com/bitrise-io/bitrise-cli/internal/resolve"
@@ -111,10 +113,13 @@ func (s *Service) View(ctx context.Context, appSlug string) (App, error) {
 		return App{}, fmt.Errorf("API client not configured")
 	}
 	if appSlug == "" {
-		return App{}, fmt.Errorf("app ID is required")
+		return App{}, fmt.Errorf("app is required")
 	}
 	app, err := s.client.App(ctx, appSlug)
 	if err != nil {
+		if apiErr, ok := errors.AsType[*bitriseapi.APIError](err); ok && apiErr.StatusCode == http.StatusNotFound {
+			return App{}, fmt.Errorf("app %q not found", appSlug)
+		}
 		return App{}, err
 	}
 	return fromAPI(app), nil

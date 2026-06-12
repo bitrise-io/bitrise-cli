@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 
 	"gopkg.in/yaml.v3"
 
@@ -54,6 +55,12 @@ func (s *Service) Get(ctx context.Context, appSlug, buildSlug string) (GetResult
 		content, err = s.client.AppBitriseYML(ctx, appSlug)
 	}
 	if err != nil {
+		if apiErr, ok := errors.AsType[*bitriseapi.APIError](err); ok && apiErr.StatusCode == http.StatusNotFound {
+			if buildSlug != "" {
+				return GetResult{}, fmt.Errorf("build %q not found", buildSlug)
+			}
+			return GetResult{}, fmt.Errorf("app %q not found", appSlug)
+		}
 		return GetResult{}, err
 	}
 	return GetResult{AppSlug: appSlug, BuildSlug: buildSlug, Content: content}, nil
@@ -72,7 +79,13 @@ func (s *Service) Update(ctx context.Context, appSlug, rawYAML string) error {
 	if err := yaml.Unmarshal([]byte(rawYAML), &parsed); err != nil {
 		return fmt.Errorf("parse bitrise.yml: %w", err)
 	}
-	return s.client.UpdateAppBitriseYML(ctx, appSlug, parsed)
+	if err := s.client.UpdateAppBitriseYML(ctx, appSlug, parsed); err != nil {
+		if apiErr, ok := errors.AsType[*bitriseapi.APIError](err); ok && apiErr.StatusCode == http.StatusNotFound {
+			return fmt.Errorf("app %q not found", appSlug)
+		}
+		return err
+	}
+	return nil
 }
 
 // Validate sends rawYAML to the API validation endpoint.
