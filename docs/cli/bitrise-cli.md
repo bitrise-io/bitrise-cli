@@ -47,6 +47,7 @@ Tip for automation / agents:
 
 ### SEE ALSO
 
+* [bitrise-cli api](bitrise-cli_api.md)	 - Make an authenticated request to the Bitrise API
 * [bitrise-cli app](bitrise-cli_app.md)	 - List, inspect, and manage apps
 * [bitrise-cli auth](bitrise-cli_auth.md)	 - Manage the Bitrise access token
 * [bitrise-cli build](bitrise-cli_build.md)	 - Trigger, list, and inspect builds

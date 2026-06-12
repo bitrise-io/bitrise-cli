@@ -11,6 +11,7 @@ import (
 	"github.com/spf13/cobra"
 
 	rdeapi "github.com/bitrise-io/bitrise-cli/bitriseapi/rde"
+	cmdapi "github.com/bitrise-io/bitrise-cli/cmd/api"
 	cmdapp "github.com/bitrise-io/bitrise-cli/cmd/app"
 	cmdbuild "github.com/bitrise-io/bitrise-cli/cmd/build"
 	"github.com/bitrise-io/bitrise-cli/cmd/cmdutil"
@@ -104,6 +105,7 @@ func init() {
 	rootCmd.SetHelpCommand(&cobra.Command{Hidden: true})
 	rootCmd.AddCommand(cmdbuild.NewCmd())
 	rootCmd.AddCommand(cmdapp.NewCmd())
+	rootCmd.AddCommand(cmdapi.NewCmd())
 	rootCmd.AddCommand(cmdconfig.NewCmd())
 	rootCmd.AddCommand(cmduser.NewCmd())
 	rootCmd.AddCommand(newAuthCmd())
