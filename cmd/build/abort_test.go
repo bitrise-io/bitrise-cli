@@ -10,12 +10,13 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/bitrise-io/bitrise-cli/cmd/cmdtest"
 	"github.com/bitrise-io/bitrise-cli/internal/config"
 	"github.com/bitrise-io/bitrise-cli/internal/output"
 )
 
 func TestAbortCmd_HappyPath(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(cmdtest.AppPassthrough(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/apps/my-app/builds/b-1/abort" || r.Method != http.MethodPost {
 			t.Errorf("unexpected: %s %s", r.Method, r.URL.Path)
 		}
@@ -45,7 +46,7 @@ func TestAbortCmd_HappyPath(t *testing.T) {
 }
 
 func TestAbortCmd_JSONOutput(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	srv := httptest.NewServer(cmdtest.AppPassthrough(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = io.WriteString(w, `{"status":"ok"}`)
 	}))
 	defer srv.Close()
@@ -76,7 +77,7 @@ func TestAbortCmd_JSONOutput(t *testing.T) {
 
 func TestAbortCmd_SendsReasonInBody(t *testing.T) {
 	var gotReason string
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(cmdtest.AppPassthrough(func(w http.ResponseWriter, r *http.Request) {
 		var body map[string]any
 		_ = json.NewDecoder(r.Body).Decode(&body)
 		gotReason, _ = body["abort_reason"].(string)

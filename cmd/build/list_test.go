@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/bitrise-io/bitrise-cli/cmd/cmdtest"
 	"github.com/bitrise-io/bitrise-cli/internal/config"
 	"github.com/bitrise-io/bitrise-cli/internal/output"
 )
@@ -33,13 +34,13 @@ func runListCmd(t *testing.T, srvURL string, args []string, format output.Format
 }
 
 func TestListCmd_HappyPath(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(cmdtest.AppPassthrough(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/apps/my-app/builds" {
 			t.Errorf("unexpected path: %s", r.URL.Path)
 		}
 		_, _ = io.WriteString(w, `{"data":[
-			{"slug":"b-1","build_number":42,"status":1,"branch":"main","triggered_workflow":"primary","triggered_at":"2026-05-06T10:00:00Z"}
-		],"paging":{}}`)
+				{"slug":"b-1","build_number":42,"status":1,"branch":"main","triggered_workflow":"primary","triggered_at":"2026-05-06T10:00:00Z"}
+			],"paging":{}}`)
 	}))
 	defer srv.Close()
 
@@ -55,7 +56,7 @@ func TestListCmd_HappyPath(t *testing.T) {
 }
 
 func TestListCmd_JSONOutput(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	srv := httptest.NewServer(cmdtest.AppPassthrough(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = io.WriteString(w, `{"data":[{"slug":"b-1","build_number":42,"status":1,"branch":"main","triggered_workflow":"primary","triggered_at":"2026-05-06T10:00:00Z"}],"paging":{}}`)
 	}))
 	defer srv.Close()
@@ -79,7 +80,7 @@ func TestListCmd_JSONOutput(t *testing.T) {
 }
 
 func TestListCmd_EmptyResults(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	srv := httptest.NewServer(cmdtest.AppPassthrough(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = io.WriteString(w, `{"data":[],"paging":{}}`)
 	}))
 	defer srv.Close()
@@ -94,7 +95,7 @@ func TestListCmd_EmptyResults(t *testing.T) {
 }
 
 func TestListCmd_AllAndCursorMutuallyExclusive(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	srv := httptest.NewServer(cmdtest.AppPassthrough(func(http.ResponseWriter, *http.Request) {}))
 	defer srv.Close()
 
 	_, _, err := runListCmd(t, srv.URL, []string{"--all", "--cursor", "tok"}, output.Human)
@@ -104,7 +105,7 @@ func TestListCmd_AllAndCursorMutuallyExclusive(t *testing.T) {
 }
 
 func TestListCmd_InvalidAfterFlag(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	srv := httptest.NewServer(cmdtest.AppPassthrough(func(http.ResponseWriter, *http.Request) {}))
 	defer srv.Close()
 
 	_, _, err := runListCmd(t, srv.URL, []string{"--after", "not-a-time"}, output.Human)
