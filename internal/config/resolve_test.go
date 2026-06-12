@@ -21,6 +21,9 @@ func clearEnv(t *testing.T) {
 	t.Setenv(EnvRDEAPIBaseURL, "")
 	t.Setenv(EnvWebBaseURL, "")
 	t.Setenv(EnvTheme, "")
+	t.Setenv(EnvOAuthIssuer, "")
+	t.Setenv(EnvOIDCTokenEndpoint, "")
+	t.Setenv(EnvOAuthClientID, "")
 }
 
 func TestResolve_DefaultsWhenNothingSet(t *testing.T) {
@@ -40,6 +43,37 @@ func TestResolve_DefaultsWhenNothingSet(t *testing.T) {
 	}
 	if r.Token != "" || r.AppSlug != "" {
 		t.Errorf("expected empty Token/AppSlug, got %+v", r)
+	}
+}
+
+func TestResolve_OAuthDefaultsAndClientIDOverride(t *testing.T) {
+	clearEnv(t)
+
+	// With nothing set, the production OAuth values compile in.
+	r, err := Resolve(Config{}, Config{}, auth.Auth{}, "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.OAuthIssuer != DefaultOAuthIssuer {
+		t.Errorf("OAuthIssuer = %q, want %q", r.OAuthIssuer, DefaultOAuthIssuer)
+	}
+	if r.OIDCTokenEndpoint != DefaultOIDCTokenEndpoint {
+		t.Errorf("OIDCTokenEndpoint = %q, want %q", r.OIDCTokenEndpoint, DefaultOIDCTokenEndpoint)
+	}
+	if r.OAuthClientID != DefaultOAuthClientID {
+		t.Errorf("OAuthClientID = %q, want %q", r.OAuthClientID, DefaultOAuthClientID)
+	}
+
+	// BITRISE_OAUTH_CLIENT_ID overrides the default (e.g. pointing at staging,
+	// whose CIMD doc is served from its own host).
+	const staging = "https://app-staging.example/.well-known/oauth-client/cli"
+	t.Setenv(EnvOAuthClientID, staging)
+	r, err = Resolve(Config{}, Config{}, auth.Auth{}, "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.OAuthClientID != staging {
+		t.Errorf("OAuthClientID = %q, want %q (env override)", r.OAuthClientID, staging)
 	}
 }
 

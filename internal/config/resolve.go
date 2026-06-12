@@ -20,6 +20,15 @@ const (
 	EnvRDEAPIBaseURL = "BITRISE_RDE_API_BASE_URL"
 	EnvWebBaseURL    = "BITRISE_WEB_BASE_URL"
 	EnvTheme         = "BITRISE_CLI_THEME"
+	// EnvOAuthIssuer overrides the WorkOS AuthKit issuer (full URL) the OAuth
+	// login flow authorizes against; EnvOIDCTokenEndpoint overrides the
+	// monolith JWT→PAT exchange endpoint (full URL); EnvOAuthClientID overrides
+	// the CLI's CIMD client_id URL. These point the flow at a non-prod
+	// environment — the client_id differs per environment because its metadata
+	// document is served from each environment's own host. None is secret.
+	EnvOAuthIssuer       = "BITRISE_OAUTH_ISSUER"
+	EnvOIDCTokenEndpoint = "BITRISE_OIDC_TOKEN_ENDPOINT" //nolint:gosec // G101: env var name, not a credential
+	EnvOAuthClientID     = "BITRISE_OAUTH_CLIENT_ID"
 )
 
 // DefaultAPIBaseURL is the production Bitrise API base URL.
@@ -34,6 +43,27 @@ const DefaultRDEAPIBaseURL = "https://api.bitrise.io/rde"
 // Used by `user create` and `auth login --email` to drive the website's
 // signup and sign-in JSON endpoints.
 const DefaultWebBaseURL = "https://app.bitrise.io"
+
+// DefaultOIDCTokenEndpoint is the production monolith endpoint that exchanges
+// a WorkOS-issued JWT for a Bitrise PAT (RFC 8693 token exchange), used by the
+// `auth login --oauth` flow and its background token refresh.
+const DefaultOIDCTokenEndpoint = "https://app.bitrise.io/oidc/token" //nolint:gosec // G101: public endpoint URL, not a credential
+
+// DefaultOAuthIssuer is the WorkOS AuthKit domain (issuer) the OAuth login
+// flow authorizes against; it hosts /oauth2/authorize and /oauth2/token. It's
+// the production WorkOS environment's custom domain (shared with the MCP
+// server, whose EXTERNAL_OAUTH_ISSUER must match) — not a secret. Override with
+// BITRISE_OAUTH_ISSUER to target a different (e.g. staging) environment.
+const DefaultOAuthIssuer = "https://oauth.bitrise.io"
+
+// DefaultOAuthClientID is the production CLI OAuth client_id: the URL of the
+// Client ID Metadata Document (CIMD) the monolith serves at app.bitrise.io.
+// WorkOS fetches it at authorize time — the URL *is* the id, and it is not a
+// secret. It is host-specific (the document is served from each environment's
+// own root URL), so non-prod environments override it via
+// BITRISE_OAUTH_CLIENT_ID. The prod monolith derives the same value from its
+// app root URL, keeping the two in sync.
+const DefaultOAuthClientID = "https://app.bitrise.io/.well-known/oauth-client/cli"
 
 // Resolved is the merged settings the cmd layer reads on every invocation.
 //
@@ -56,7 +86,14 @@ type Resolved struct {
 	APIBaseURL    string
 	RDEAPIBaseURL string
 	WebBaseURL    string
-	Theme         style.Theme
+	// OAuthIssuer, OIDCTokenEndpoint, and OAuthClientID configure the
+	// `auth login --oauth` flow and its background token refresh. They default
+	// to production and are overridable per environment via the matching
+	// BITRISE_OAUTH_* / BITRISE_OIDC_* env vars.
+	OAuthIssuer       string
+	OIDCTokenEndpoint string
+	OAuthClientID     string
+	Theme             style.Theme
 }
 
 // Resolve merges global config, per-directory config, the auth file, and
@@ -95,6 +132,9 @@ func Resolve(globalCfg, dirCfg Config, authData auth.Auth, flagOutput, flagTheme
 	r.APIBaseURL = firstNonEmpty(os.Getenv(EnvAPIBaseURL), dirCfg.APIBaseURL, globalCfg.APIBaseURL, DefaultAPIBaseURL)
 	r.RDEAPIBaseURL = firstNonEmpty(os.Getenv(EnvRDEAPIBaseURL), dirCfg.RDEAPIBaseURL, globalCfg.RDEAPIBaseURL, DefaultRDEAPIBaseURL)
 	r.WebBaseURL = firstNonEmpty(os.Getenv(EnvWebBaseURL), dirCfg.WebBaseURL, globalCfg.WebBaseURL, DefaultWebBaseURL)
+	r.OAuthIssuer = firstNonEmpty(os.Getenv(EnvOAuthIssuer), DefaultOAuthIssuer)
+	r.OIDCTokenEndpoint = firstNonEmpty(os.Getenv(EnvOIDCTokenEndpoint), DefaultOIDCTokenEndpoint)
+	r.OAuthClientID = firstNonEmpty(os.Getenv(EnvOAuthClientID), DefaultOAuthClientID)
 	r.Token = firstNonEmpty(os.Getenv(EnvToken), authData.Token)
 
 	return r, nil

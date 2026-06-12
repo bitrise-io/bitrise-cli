@@ -6,7 +6,7 @@ Save a Bitrise access token
 
 Save a Bitrise access token for future commands to use.
 
-There are two modes:
+There are three modes:
 
   1. Token paste (default).
      Prompts for a Personal Access Token (or pipes one in with --with-token).
@@ -25,6 +25,17 @@ There are two modes:
          bitrise-cli auth login --email alice@example.com
          printf '%s' "$PW" | bitrise-cli auth login --email alice@example.com --password-stdin
 
+  3. Browser sign-in (--oauth).
+     Opens your browser to sign in to Bitrise, then exchanges the result for a
+     Personal Access Token and stores it. The CLI keeps the credential fresh in
+     the background, so you rarely need to sign in again:
+
+         bitrise-cli auth login --oauth
+
+     This requires the browser to run on the same machine as the CLI (the sign-in
+     is handed back over a loopback address). Signing in on a remote/headless
+     host over SSH is not yet supported — paste a token with --with-token there.
+
 Either way the resulting token is written to
 $XDG_CONFIG_HOME/bitrise/auth.yaml with 0600 permissions. The token is NOT
 echoed in any output (use 'auth status' to verify, 'auth logout' to clear).
@@ -38,6 +49,7 @@ bitrise-cli auth login [flags]
 ```
   bitrise-cli auth login                                       # interactive token prompt
   echo "$BITRISE_TOKEN" | bitrise-cli auth login --with-token
+  bitrise-cli auth login --oauth                               # sign in via the browser
   bitrise-cli auth login --email alice@example.com             # interactive password prompt
   printf '%s' "$PW" | bitrise-cli auth login --email alice@example.com --password-stdin
 ```
@@ -47,6 +59,7 @@ bitrise-cli auth login [flags]
 ```
       --email string     sign in by email/password and mint a Personal Access Token
   -h, --help             help for login
+      --oauth            sign in via the browser (OAuth) and store a managed, auto-refreshing token
       --password-stdin   with --email, read the password from stdin without prompting
       --with-token       read token from stdin without an interactive prompt
 ```
