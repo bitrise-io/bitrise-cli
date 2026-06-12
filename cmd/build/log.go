@@ -46,16 +46,17 @@ Note:
   bitrise-cli build log --app my-app-id <build-id> > build.log`,
 		Args: cmdutil.RequireArgs("BUILD_ID"),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			appSlug, err := cmdutil.ResolveAppSlug(cmd)
-			if err != nil {
-				return err
-			}
-			buildSlug := args[0]
-
 			client, err := cmdutil.NewAPIClient(cmd)
 			if err != nil {
 				return err
 			}
+			appSlug, err := cmdutil.ResolveAndLookupAppSlug(cmd, client)
+			if err != nil {
+				return err
+			}
+
+			buildSlug := args[0]
+
 			svc := internalbuild.NewService(client)
 
 			if wait {

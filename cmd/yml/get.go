@@ -32,16 +32,15 @@ Optional:
   bitrise-cli yml get --app my-app-id --output json
   BITRISE_APP_ID=my-app-id bitrise-cli yml get`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			appSlug, err := cmdutil.ResolveAppSlug(cmd)
-			if err != nil {
-				return err
-			}
-			format := cmdutil.ResolveFormat(cmd)
-
 			client, err := cmdutil.NewAPIClient(cmd)
 			if err != nil {
 				return err
 			}
+			appSlug, err := cmdutil.ResolveAndLookupAppSlug(cmd, client)
+			if err != nil {
+				return err
+			}
+			format := cmdutil.ResolveFormat(cmd)
 			svc := internalyml.NewService(client)
 			result, err := svc.Get(cmd.Context(), appSlug, buildSlug)
 			if err != nil {

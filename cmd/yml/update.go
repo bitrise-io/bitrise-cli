@@ -30,7 +30,11 @@ Required:
   cat bitrise.yml | bitrise-cli yml update --app my-app-id
   bitrise-cli yml update --app my-app-id < bitrise.yml`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			appSlug, err := cmdutil.ResolveAppSlug(cmd)
+			client, err := cmdutil.NewAPIClient(cmd)
+			if err != nil {
+				return err
+			}
+			appSlug, err := cmdutil.ResolveAndLookupAppSlug(cmd, client)
 			if err != nil {
 				return err
 			}
@@ -41,11 +45,6 @@ Required:
 			}
 			if len(rawYAML) == 0 {
 				return fmt.Errorf("bitrise.yml content is empty")
-			}
-
-			client, err := cmdutil.NewAPIClient(cmd)
-			if err != nil {
-				return err
 			}
 			svc := internalyml.NewService(client)
 			if err := svc.Update(cmd.Context(), appSlug, string(rawYAML)); err != nil {

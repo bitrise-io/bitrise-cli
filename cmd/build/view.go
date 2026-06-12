@@ -31,7 +31,11 @@ Flags:
   bitrise-cli build view --app my-app-id stub-build-aaa --web`,
 		Args: cmdutil.RequireArgs("BUILD_ID"),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			appSlug, err := cmdutil.ResolveAppSlug(cmd)
+			client, err := cmdutil.NewAPIClient(cmd)
+			if err != nil {
+				return err
+			}
+			appSlug, err := cmdutil.ResolveAndLookupAppSlug(cmd, client)
 			if err != nil {
 				return err
 			}
@@ -53,10 +57,6 @@ Flags:
 
 			format := cmdutil.ResolveFormat(cmd)
 
-			client, err := cmdutil.NewAPIClient(cmd)
-			if err != nil {
-				return err
-			}
 			svc := internalbuild.NewService(client)
 			b, err := svc.View(cmd.Context(), appSlug, buildSlug)
 			if err != nil {

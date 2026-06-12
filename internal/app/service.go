@@ -8,6 +8,7 @@ import (
 	"fmt"
 
 	"github.com/bitrise-io/bitrise-cli/bitriseapi"
+	"github.com/bitrise-io/bitrise-cli/internal/resolve"
 )
 
 // App represents a registered Bitrise app (project), trimmed to the fields
@@ -88,6 +89,21 @@ func fromAPI(a bitriseapi.App) App {
 	}
 }
 
+// ViewByNameOrSlug resolves value via r and returns the app. When r found a
+// name match in the current API call (complete=true), that result is used
+// directly — no second request. When value passes through as a literal slug
+// (cache hit or no name match), GET /apps/{slug} is called.
+func (s *Service) ViewByNameOrSlug(ctx context.Context, r *resolve.Resolver, value string) (App, error) {
+	app, complete, err := r.ResolveApp(ctx, value)
+	if err != nil {
+		return App{}, err
+	}
+	if complete {
+		return fromAPI(app), nil
+	}
+	return s.View(ctx, app.Slug)
+}
+
 // View returns details of a single app by slug.
 // Endpoint: GET /apps/{app-slug}.
 func (s *Service) View(ctx context.Context, appSlug string) (App, error) {
@@ -97,9 +113,9 @@ func (s *Service) View(ctx context.Context, appSlug string) (App, error) {
 	if appSlug == "" {
 		return App{}, fmt.Errorf("app ID is required")
 	}
-	a, err := s.client.App(ctx, appSlug)
+	app, err := s.client.App(ctx, appSlug)
 	if err != nil {
 		return App{}, err
 	}
-	return fromAPI(a), nil
+	return fromAPI(app), nil
 }

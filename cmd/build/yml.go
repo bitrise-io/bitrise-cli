@@ -25,17 +25,16 @@ Required:
   bitrise-cli build yml abc123 --app my-app-id --output json`,
 		Args: cmdutil.RequireArgs("BUILD_ID"),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			appSlug, err := cmdutil.ResolveAppSlug(cmd)
+			client, err := cmdutil.NewAPIClient(cmd)
+			if err != nil {
+				return err
+			}
+			appSlug, err := cmdutil.ResolveAndLookupAppSlug(cmd, client)
 			if err != nil {
 				return err
 			}
 			buildSlug := args[0]
 			format := cmdutil.ResolveFormat(cmd)
-
-			client, err := cmdutil.NewAPIClient(cmd)
-			if err != nil {
-				return err
-			}
 			svc := internalyml.NewService(client)
 			result, err := svc.Get(cmd.Context(), appSlug, buildSlug)
 			if err != nil {

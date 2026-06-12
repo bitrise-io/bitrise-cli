@@ -70,7 +70,11 @@ Optional flags:
   bitrise-cli build trigger --app my-app-id --workflow primary --watch
   bitrise-cli build trigger --app my-app-id --workflow primary --watch --output json`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			appSlug, err := cmdutil.ResolveAppSlug(cmd)
+			client, err := cmdutil.NewAPIClient(cmd)
+			if err != nil {
+				return err
+			}
+			appSlug, err := cmdutil.ResolveAndLookupAppSlug(cmd, client)
 			if err != nil {
 				return err
 			}
@@ -90,11 +94,6 @@ Optional flags:
 				for k, v := range raw {
 					envs = append(envs, internalbuild.TriggerEnv{Key: k, Value: v})
 				}
-			}
-
-			client, err := cmdutil.NewAPIClient(cmd)
-			if err != nil {
-				return err
 			}
 			svc := internalbuild.NewService(client)
 			b, err := svc.Trigger(cmd.Context(), internalbuild.TriggerRequest{

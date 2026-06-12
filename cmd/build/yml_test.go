@@ -10,13 +10,14 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/bitrise-io/bitrise-cli/cmd/cmdtest"
 	"github.com/bitrise-io/bitrise-cli/internal/config"
 	"github.com/bitrise-io/bitrise-cli/internal/output"
 )
 
 func TestBuildYMLCmd_HappyPath(t *testing.T) {
 	const ymlContent = "format_version: \"13\"\nworkflows:\n  primary:\n    steps: []\n"
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(cmdtest.AppPassthrough(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/apps/my-app/builds/b-1/bitrise.yml" {
 			t.Errorf("unexpected path: %s", r.URL.Path)
 		}
@@ -45,7 +46,7 @@ func TestBuildYMLCmd_HappyPath(t *testing.T) {
 }
 
 func TestBuildYMLCmd_JSONOutput(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	srv := httptest.NewServer(cmdtest.AppPassthrough(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = io.WriteString(w, "format_version: \"13\"\n")
 	}))
 	defer srv.Close()

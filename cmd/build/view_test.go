@@ -10,12 +10,13 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/bitrise-io/bitrise-cli/cmd/cmdtest"
 	"github.com/bitrise-io/bitrise-cli/internal/config"
 	"github.com/bitrise-io/bitrise-cli/internal/output"
 )
 
 func TestViewCmd_HappyPath(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(cmdtest.AppPassthrough(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/apps/my-app/builds/b-1" {
 			t.Errorf("unexpected path: %s", r.URL.Path)
 		}
@@ -47,7 +48,7 @@ func TestViewCmd_HappyPath(t *testing.T) {
 }
 
 func TestViewCmd_JSONOutput(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	srv := httptest.NewServer(cmdtest.AppPassthrough(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = io.WriteString(w, `{"data":{"slug":"b-2","build_number":8,"status":2,"triggered_workflow":"deploy","branch":"feature","triggered_at":"2026-05-06T10:00:00Z"}}`)
 	}))
 	defer srv.Close()
@@ -77,7 +78,7 @@ func TestViewCmd_JSONOutput(t *testing.T) {
 }
 
 func TestViewCmd_MissingArg(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	srv := httptest.NewServer(cmdtest.AppPassthrough(func(http.ResponseWriter, *http.Request) {}))
 	defer srv.Close()
 
 	c := newViewCmd()
