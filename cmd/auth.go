@@ -142,12 +142,7 @@ func runTokenLogin(cmd *cobra.Command, withToken bool) error {
 	if err := auth.Save(auth.Auth{Token: tok}); err != nil {
 		return err
 	}
-	if !quiet {
-		if _, err := fmt.Fprintln(cmd.ErrOrStderr(), "Saved access token"); err != nil {
-			return err
-		}
-	}
-	return nil
+	return confirmLoginSaved(cmd)
 }
 
 func runEmailLogin(cmd *cobra.Command, email string, passwordStdin bool) error {
@@ -177,12 +172,7 @@ func runEmailLogin(cmd *cobra.Command, email string, passwordStdin bool) error {
 	if err := auth.Save(auth.Auth{Token: tok}); err != nil {
 		return err
 	}
-	if !quiet {
-		if _, err := fmt.Fprintln(cmd.ErrOrStderr(), "Saved access token"); err != nil {
-			return err
-		}
-	}
-	return nil
+	return confirmLoginSaved(cmd)
 }
 
 // runOAuthLogin drives the browser-based OAuth flow: it runs the authorization
@@ -198,12 +188,26 @@ func runOAuthLogin(cmd *cobra.Command) error {
 	if err := auth.Save(a); err != nil {
 		return err
 	}
+	return confirmLoginSaved(cmd)
+}
+
+// confirmLoginSaved reports a successful login on stderr (unless --quiet) and,
+// when BITRISE_TOKEN is set, warns that it shadows the token just saved.
+// BITRISE_TOKEN takes precedence over auth.yaml (see config resolution), so
+// without this notice the login would silently have no effect on later commands
+// — a common cause of a confusing 401. The warning is shown even under --quiet,
+// since it means the login didn't take effect.
+func confirmLoginSaved(cmd *cobra.Command) error {
+	ew := cmdutil.NewErrWriter(cmd.ErrOrStderr())
 	if !quiet {
-		if _, err := fmt.Fprintln(cmd.ErrOrStderr(), "Saved access token"); err != nil {
-			return err
-		}
+		ew.Ln("Saved access token")
 	}
-	return nil
+	if os.Getenv(config.EnvToken) != "" {
+		s := style.New(cmd.ErrOrStderr())
+		ew.F("%s %s is set and takes precedence over the token just saved.\n", s.Warn.Render("Warning:"), config.EnvToken)
+		ew.F("         Commands will use it, not this login — run 'unset %s' to use the saved token.\n", config.EnvToken)
+	}
+	return ew.Err
 }
 
 func newAuthLogoutCmd() *cobra.Command {
