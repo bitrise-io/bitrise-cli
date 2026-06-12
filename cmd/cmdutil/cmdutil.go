@@ -196,16 +196,26 @@ func SilenceRootErrors(cmd *cobra.Command) {
 	}
 }
 
+// terminalFd returns r's file descriptor and reports whether r is an
+// interactive terminal (an *os.File backed by a TTY). It is the single place
+// that inspects the underlying *os.File; IsTerminal and ReadSecretInput both
+// build on it. fd is only meaningful when isTerminal is true.
+func terminalFd(r io.Reader) (fd int, isTerminal bool) {
+	f, ok := r.(*os.File)
+	if !ok {
+		return 0, false
+	}
+	fd = int(f.Fd()) //nolint:gosec // file descriptors are small ints, no overflow risk
+	return fd, term.IsTerminal(fd)
+}
+
 // IsTerminal reports whether r is an interactive terminal — an *os.File backed
 // by a TTY. Pipes, buffers, and test readers are never terminals, so callers
 // can use it to pick an interactive default (e.g. a browser flow) while keeping
 // non-interactive stdin (CI, pipes) working.
 func IsTerminal(r io.Reader) bool {
-	f, ok := r.(*os.File)
-	if !ok {
-		return false
-	}
-	return term.IsTerminal(int(f.Fd())) //nolint:gosec // file descriptors are small ints, no overflow risk
+	_, ok := terminalFd(r)
+	return ok
 }
 
 // ReadSecretInput reads a secret (token, password) from in. When fromStdin
@@ -214,8 +224,7 @@ func IsTerminal(r io.Reader) bool {
 // trailing newline. The trimmed value is returned with surrounding
 // whitespace removed.
 func ReadSecretInput(in io.Reader, stderr io.Writer, prompt string, fromStdin bool) (string, error) {
-	if !fromStdin && IsTerminal(in) {
-		fd := int(in.(*os.File).Fd()) //nolint:gosec // IsTerminal verified *os.File; fds are small ints
+	if fd, ok := terminalFd(in); ok && !fromStdin {
 		if _, err := fmt.Fprint(stderr, prompt); err != nil {
 			return "", err
 		}
