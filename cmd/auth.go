@@ -245,10 +245,12 @@ func newAuthStatusCmd() *cobra.Command {
 		Long: `Show whether an access token is configured and which source supplied it.
 
 Sources, in precedence order:
-  env                BITRISE_TOKEN environment variable
-  oauth (auth file)  auth.yaml, signed in via 'auth login --oauth' (auto-refreshed)
-  auth file          auth.yaml (set via 'bitrise-cli auth login')
-  none               no token configured`,
+  env        BITRISE_TOKEN environment variable
+  auth file  auth.yaml, written by 'bitrise-cli auth login' (OAuth or a
+             pasted/email token — a new login overwrites the previous one).
+             OAuth logins are shown as "oauth (auth file)" and refreshed
+             automatically.
+  none       no token configured`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			r := resolvedFromCmd(cmd)
 			p, err := auth.Path()
