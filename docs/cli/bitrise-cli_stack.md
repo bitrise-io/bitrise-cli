@@ -2,8 +2,22 @@
 
 List available stacks
 
+### Synopsis
+
+List the build stacks available to you.
+
+Running "bitrise-cli stack" with no subcommand lists stacks.
+
 ```
 bitrise-cli stack [flags]
+```
+
+### Examples
+
+```
+  bitrise-cli stack list
+  bitrise-cli stack list --output json
+  bitrise-cli stack list --workspace WORKSPACE_ID
 ```
 
 ### Options

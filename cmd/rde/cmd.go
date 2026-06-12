@@ -27,6 +27,9 @@ Workspace resolution (highest to lowest precedence):
   default_workspace_id      saved with 'bitrise-cli config set'
 
 Saved inputs are user-scoped — they do not require --workspace.`,
+		Example: `  bitrise-cli rde session list --workspace WORKSPACE_ID
+  bitrise-cli rde session list --output json
+  bitrise-cli rde template list`,
 	}
 	c.PersistentFlags().String(cmdutil.FlagWorkspace, "", "workspace ID (or set BITRISE_WORKSPACE_ID; defaults to default_workspace_id)")
 

@@ -19,7 +19,7 @@ Recognized keys:
   output, app_id, default_workspace_id, api_base_url, rde_api_base_url, web_base_url, theme
 
 Environment overrides for the same values:
-  BITRISE_OUTPUT, BITRISE_APP_ID, BITRISE_TOKEN, BITRISE_API_BASE_URL, BITRISE_WEB_BASE_URL, BITRISE_CLI_THEME
+  BITRISE_OUTPUT, BITRISE_APP_ID, BITRISE_WORKSPACE_ID, BITRISE_TOKEN, BITRISE_API_BASE_URL, BITRISE_RDE_API_BASE_URL, BITRISE_WEB_BASE_URL, BITRISE_CLI_THEME
 
 Note: 'set'/'unset' modify only the global file. Per-directory files must be
 edited by hand.

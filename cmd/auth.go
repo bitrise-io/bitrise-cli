@@ -39,6 +39,9 @@ Storage:
 
 Env override:
   BITRISE_TOKEN takes precedence over the saved token; useful for CI.`,
+		Example: `  bitrise-cli auth status
+  bitrise-cli auth login
+  bitrise-cli auth logout`,
 	}
 	c.AddCommand(
 		newAuthLoginCmd(),

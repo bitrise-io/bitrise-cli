@@ -2,8 +2,23 @@
 
 List, inspect, and manage apps
 
+### Synopsis
+
+List, inspect, and manage the apps you can access.
+
+Running "bitrise-cli app" with no subcommand lists your apps.
+
 ```
 bitrise-cli app [flags]
+```
+
+### Examples
+
+```
+  bitrise-cli app
+  bitrise-cli app list --output json
+  bitrise-cli app view APP_ID
+  bitrise-cli app create --repo-url https://github.com/acme/widget.git --workspace WORKSPACE_ID
 ```
 
 ### Options

@@ -45,34 +45,16 @@ var rootCmd = &cobra.Command{
 	Version: versionString(),
 	Long: `bitrise-cli is the Bitrise platform CLI — manage builds, apps, and pipelines from your terminal.
 
-Tip:
-  Install a "br" alias for less typing where the name is free, e.g.
-    ln -s "$(command -v bitrise-cli)" /usr/local/bin/br
-  or as a shell alias:
-    alias br=bitrise-cli
+Get started: run "bitrise-cli auth login" to store your access token.
 
-Output formats:
-  --output human  human-readable, default (tables and key/value lines)
-  --output json   machine-readable; the schema is part of the CLI's stable contract
+For scripts and agents:
+  Pass --output json for stable, machine-readable output (or run
+  "bitrise-cli config set output json" once). Data goes to stdout and
+  diagnostics to stderr — even in json mode — so output stays pipeable.
+  Most build and yml commands act on one app: pass --app ID or set BITRISE_APP_ID.
 
-Configuration (precedence: flag > env > per-dir > global > built-in default):
-  Global file:   $XDG_CONFIG_HOME/bitrise/config.yaml (or ~/.config/bitrise/config.yaml)
-  Per-dir file:  .bitrise-cli.yml in the current directory or any ancestor
-  Manage with:   bitrise-cli config set <key> <value>   (run "bitrise-cli config" for details)
-  Env overrides: BITRISE_TOKEN, BITRISE_APP_ID, BITRISE_WORKSPACE_ID,
-                 BITRISE_OUTPUT, BITRISE_API_BASE_URL, BITRISE_RDE_API_BASE_URL,
-                 BITRISE_WEB_BASE_URL, BITRISE_CLI_THEME
-
-Color theme:
-  --theme auto    detect terminal background via OSC 11 (default)
-  --theme dark    force the dark-mode palette
-  --theme light   force the light-mode palette (use on white-bg terminals)
-  --theme none    disable ANSI colors entirely (same as --no-color)
-
-Tip for automation / agents:
-  Pass --output json on every command — or run "bitrise-cli config set output json"
-  once — to get parseable output. Data is written to stdout; errors and diagnostics
-  always go to stderr, even in JSON mode.`,
+Configuration precedence: flag > env > per-dir (.bitrise-cli.yml) > global
+config.yaml > built-in default. Run "bitrise-cli config" for all keys and env vars.`,
 	SilenceUsage:      true,
 	SilenceErrors:     false,
 	PersistentPreRunE: persistentPreRun,

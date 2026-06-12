@@ -61,8 +61,9 @@ func newPurrCmd() *cobra.Command {
 		interval time.Duration
 	)
 	c := &cobra.Command{
-		Use:   "purr",
-		Short: "Visit Purr Request, the Bitrise CLI mascot",
+		Use:    "purr",
+		Short:  "Visit Purr Request, the Bitrise CLI mascot",
+		Hidden: true,
 		Long: `Visit Purr Request — the rocket-powered cat that's always here to help you.
 
 The mascot animates with a swinging tail. The animation runs for --duration

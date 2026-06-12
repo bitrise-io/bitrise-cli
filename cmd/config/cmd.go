@@ -33,15 +33,16 @@ Recognized keys:
   %s
 
 Environment overrides for the same values:
-  %s, %s, %s, %s, %s, %s
+  %s, %s, %s, %s, %s, %s, %s, %s
 
 Note: 'set'/'unset' modify only the global file. Per-directory files must be
 edited by hand.
 
 To manage your access token, use 'bitrise-cli auth login/logout/status'.`,
 			strings.Join(internalconfig.Keys, ", "),
-			internalconfig.EnvOutput, internalconfig.EnvAppSlug, internalconfig.EnvToken,
-			internalconfig.EnvAPIBaseURL, internalconfig.EnvWebBaseURL, internalconfig.EnvTheme,
+			internalconfig.EnvOutput, internalconfig.EnvAppSlug, internalconfig.EnvWorkspaceID,
+			internalconfig.EnvToken, internalconfig.EnvAPIBaseURL, internalconfig.EnvRDEAPIBaseURL,
+			internalconfig.EnvWebBaseURL, internalconfig.EnvTheme,
 		),
 	}
 	c.AddCommand(

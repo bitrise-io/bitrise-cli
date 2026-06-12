@@ -16,7 +16,13 @@ func newStackCmd() *cobra.Command {
 	c := &cobra.Command{
 		Use:   "stack",
 		Short: "List available stacks",
-		RunE:  cmdutil.DelegateToList,
+		Long: `List the build stacks available to you.
+
+Running "bitrise-cli stack" with no subcommand lists stacks.`,
+		Example: `  bitrise-cli stack list
+  bitrise-cli stack list --output json
+  bitrise-cli stack list --workspace WORKSPACE_ID`,
+		RunE: cmdutil.DelegateToList,
 	}
 	c.AddCommand(newStackListCmd())
 	return c
