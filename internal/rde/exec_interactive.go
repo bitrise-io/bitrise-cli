@@ -43,7 +43,9 @@ func (s *Service) ExecuteInteractive(ctx context.Context, workspaceID, sessionID
 	}
 	target.Password = sess.SSHPassword
 
-	client, err := dialSSH(ctx, target)
+	// Retry the dial: the backend reports SSH ready a moment before the port
+	// actually accepts connections, so the first attempts can be refused.
+	client, err := dialSSHWithRetry(ctx, target)
 	if err != nil {
 		return -1, err
 	}

@@ -60,6 +60,59 @@ type sshClient struct {
 
 const sshHandshakeTimeout = 15 * time.Second
 
+const (
+	// sshDialReadyTimeout bounds how long dialSSHWithRetry keeps retrying a
+	// connection that's refused/unreachable — the SSH port may not accept
+	// connections for a few seconds after the session reports SSH-ready.
+	sshDialReadyTimeout  = 2 * time.Minute
+	sshDialRetryInterval = 2 * time.Second
+)
+
+// dialSSHWithRetry dials t, retrying on transient connection failures
+// (connection refused, reset, unreachable, timeout, early EOF) until
+// sshDialReadyTimeout elapses. Non-transient failures — notably authentication
+// — return immediately so a real misconfiguration fails fast.
+func dialSSHWithRetry(ctx context.Context, t sshTarget) (*sshClient, error) {
+	dialCtx, cancel := context.WithTimeout(ctx, sshDialReadyTimeout)
+	defer cancel()
+
+	var lastErr error
+	for {
+		client, err := dialSSH(dialCtx, t)
+		if err == nil {
+			return client, nil
+		}
+		if !isRetryableDialErr(err) {
+			return nil, err
+		}
+		lastErr = err
+		select {
+		case <-dialCtx.Done():
+			return nil, fmt.Errorf("ssh not reachable after %s: %w", sshDialReadyTimeout, lastErr)
+		case <-time.After(sshDialRetryInterval):
+		}
+	}
+}
+
+// isRetryableDialErr reports whether err is a transient connection-level
+// failure worth retrying. Network errors (connection refused/reset, host
+// unreachable, timeouts — all surfaced as *net.OpError / net.Error) and an
+// early io.EOF qualify; SSH auth/handshake errors do not.
+func isRetryableDialErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	var opErr *net.OpError
+	if errors.As(err, &opErr) {
+		return true
+	}
+	var netErr net.Error
+	if errors.As(err, &netErr) {
+		return true
+	}
+	return errors.Is(err, io.EOF)
+}
+
 func dialSSH(ctx context.Context, t sshTarget) (*sshClient, error) {
 	if t.Host == "" {
 		return nil, fmt.Errorf("ssh target: host is empty")
