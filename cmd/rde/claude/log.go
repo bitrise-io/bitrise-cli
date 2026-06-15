@@ -15,9 +15,10 @@ import (
 // lines, and a green "✓" confirmation when a group completes. Warnings use the
 // yellow Warn style. Everything is a diagnostic — it never touches stdout.
 type stepLogger struct {
-	w     io.Writer
-	s     style.Styles
-	quiet bool
+	w       io.Writer
+	s       style.Styles
+	quiet   bool
+	grouped bool // whether a group has been printed yet (for separator spacing)
 }
 
 func newStepLogger(cmd *cobra.Command) *stepLogger {
@@ -25,12 +26,18 @@ func newStepLogger(cmd *cobra.Command) *stepLogger {
 	return &stepLogger{w: w, s: style.New(w), quiet: cmdutil.IsQuiet(cmd)}
 }
 
-// group starts a new section with a blank-line separator and a bold title.
+// group starts a new section with a bold title, separated from the previous
+// group by a blank line (omitted before the first group).
 func (l *stepLogger) group(title string) {
 	if l.quiet {
 		return
 	}
-	_, _ = fmt.Fprintf(l.w, "\n%s\n", l.s.Bold.Render(title))
+	sep := "\n"
+	if !l.grouped {
+		sep = ""
+		l.grouped = true
+	}
+	_, _ = fmt.Fprintf(l.w, "%s%s\n", sep, l.s.Bold.Render(title))
 }
 
 // step reports an in-progress action within the current group (indented, dim).
