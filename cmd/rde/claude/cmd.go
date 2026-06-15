@@ -91,15 +91,11 @@ SSH form so the forwarded agent can authenticate.`,
 				return err
 			}
 
-			quiet := cmdutil.IsQuiet(cmd)
-			progress := func(format string, a ...any) {
-				if quiet {
-					return
-				}
-				_, _ = fmt.Fprintf(cmd.ErrOrStderr(), format, a...)
-			}
+			log := newStepLogger(cmd)
 
-			progress("Creating session %q…\n", name)
+			// ── Session ────────────────────────────────────────────────────
+			log.group("Session")
+			log.step("Creating session %q…", name)
 			res, err := svc.CreateSession(ctx, workspaceID, internalrde.CreateSessionRequest{
 				Name:       name,
 				TemplateID: templateID,
@@ -113,15 +109,18 @@ SSH form so the forwarded agent can authenticate.`,
 			// PTY errors and Ctrl-C. A fresh context is used because
 			// cmd.Context() may already be cancelled by the time we get here.
 			defer func() {
-				progress("Terminating session %q…\n", name)
+				log.group("Cleanup")
+				log.step("Terminating session %q…", name)
 				termCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 				defer cancel()
 				if _, termErr := svc.TerminateSession(termCtx, workspaceID, sessionID); termErr != nil {
-					_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "warning: failed to terminate session %q: %v\n", sessionID, termErr)
+					log.warn("Failed to terminate session %q: %v", sessionID, termErr)
+					return
 				}
+				log.done("Session terminated")
 			}()
 
-			progress("Waiting for session to start (timeout %s)…\n", waitTimeout)
+			log.step("Waiting for it to start (timeout %s)…", waitTimeout)
 			// The whole startup wait — reaching "running" and then SSH
 			// credentials being issued — shares one timeout budget.
 			waitCtx, cancel := context.WithTimeout(ctx, waitTimeout)
@@ -139,16 +138,20 @@ SSH form so the forwarded agent can authenticate.`,
 			// "running" does not mean SSH is reachable yet — the backend
 			// issues credentials a few seconds later. Wait for them before
 			// dialing in.
-			progress("Waiting for SSH access…\n")
+			log.step("Waiting for remote access…")
 			if _, err := svc.WaitForSSHReady(waitCtx, workspaceID, sessionID, 0); err != nil {
 				return fmt.Errorf("waiting for SSH access: %w", err)
 			}
+			log.done("Session ready")
+
+			// ── Repository ─────────────────────────────────────────────────
+			log.group("Repository")
 
 			// The clone authenticates via the forwarded local SSH agent; make
 			// sure an agent is running with a key loaded before we dial in.
 			// cleanupAgent kills a temporary agent we may have started; it
 			// must outlive the claude session, so defer it to command exit.
-			cleanupAgent := ensureAgentHasKey(ctx, progress, cloneURL)
+			cleanupAgent := ensureAgentHasKey(ctx, log, cloneURL)
 			defer cleanupAgent()
 
 			// Clone the same repo + branch into the session over the
@@ -164,9 +167,10 @@ SSH form so the forwarded agent can authenticate.`,
 				useDefaultBranch = true
 			}
 			if useDefaultBranch {
-				progress("Branch %q is not on the remote; cloning %s on the default branch instead.\n", branch, repoDir)
+				log.warn("Branch %q is not on the remote; cloning the default branch instead.", branch)
+				log.step("Cloning %s (default branch)…", repoDir)
 			} else {
-				progress("Cloning %s (branch %s) into the session…\n", repoDir, branch)
+				log.step("Cloning %s (branch %s)…", repoDir, branch)
 			}
 			cloneCmd := buildCloneCommand(cloneURL, repoDir, branch, useDefaultBranch)
 			cloneCode, err := svc.ExecuteInteractive(ctx, workspaceID, sessionID, cloneCmd, os.Stdin, os.Stdout, os.Stderr)
@@ -177,8 +181,10 @@ SSH form so the forwarded agent can authenticate.`,
 				cmdutil.SilenceRootErrors(cmd)
 				return fmt.Errorf("git clone failed (status %d)", cloneCode)
 			}
+			log.done("Repository cloned")
 
-			progress("Connecting…\n")
+			// ── Claude Code ────────────────────────────────────────────────
+			log.group("Starting Claude Code…")
 			// cd into the clone, then `exec claude` so the login-interactive
 			// bash replaces itself with Claude Code — the user lands directly
 			// in claude (inside the repo), not a shell.

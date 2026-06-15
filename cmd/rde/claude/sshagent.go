@@ -22,7 +22,7 @@ import (
 //
 // Entirely best-effort: any failure just means the clone may prompt or fail,
 // which the user sees live. The returned cleanup is never nil.
-func ensureAgentHasKey(ctx context.Context, progress func(string, ...any), cloneURL string) (cleanup func()) {
+func ensureAgentHasKey(ctx context.Context, log *stepLogger, cloneURL string) (cleanup func()) {
 	cleanup = func() {}
 
 	// Agent forwarding only helps SSH remotes; HTTPS clones don't use it.
@@ -41,10 +41,10 @@ func ensureAgentHasKey(ctx context.Context, progress func(string, ...any), clone
 	case agentNoAgent:
 		c, err := startAgent(ctx)
 		if err != nil {
-			progress("No SSH agent running and could not start one (%v); git clone of private repos in the session may fail.\n", err)
+			log.warn("No SSH agent running and could not start one (%v); git clone of private repos in the session may fail.", err)
 			return cleanup
 		}
-		progress("Started a temporary SSH agent.\n")
+		log.step("Started a temporary SSH agent")
 		cleanup = c
 		// fall through to add a key to the fresh agent
 	case agentEmpty:
@@ -53,10 +53,10 @@ func ensureAgentHasKey(ctx context.Context, progress func(string, ...any), clone
 
 	key := pickIdentityFile(ctx, sshHostFromURL(cloneURL))
 	if key == "" {
-		progress("SSH agent has no keys and no key file was found to add; private clones may fail.\n")
+		log.warn("SSH agent has no keys and no key file was found to add; private clones may fail.")
 		return cleanup
 	}
-	progress("Adding SSH key %s to the agent…\n", key)
+	log.step("Adding SSH key %s to the agent…", key)
 	add := exec.CommandContext(ctx, "ssh-add", key) //nolint:gosec // G204: key is a local key-file path (from ssh -G or default files), passed as its own argv element — no shell, no injection
 	add.Stdin = os.Stdin
 	add.Stdout = os.Stderr // ssh-add writes prompts/results to stderr; keep stdout clean
