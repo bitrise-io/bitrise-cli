@@ -143,8 +143,11 @@ SSH form so the forwarded agent can authenticate.`,
 			}
 
 			// The clone authenticates via the forwarded local SSH agent; make
-			// sure it has a key loaded before we dial in for the clone.
-			ensureAgentHasKey(ctx, progress, cloneURL)
+			// sure an agent is running with a key loaded before we dial in.
+			// cleanupAgent kills a temporary agent we may have started; it
+			// must outlive the claude session, so defer it to command exit.
+			cleanupAgent := ensureAgentHasKey(ctx, progress, cloneURL)
+			defer cleanupAgent()
 
 			// Clone the same repo + branch into the session over the
 			// forwarded SSH agent. Runs in its own interactive session so its

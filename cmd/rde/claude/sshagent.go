@@ -13,28 +13,40 @@ import (
 
 // ensureAgentHasKey is an rde-claude-only convenience. The in-session git
 // clone authenticates via the forwarded local SSH agent (see exec_ssh.go), so
-// an agent with no keys loaded means a private clone fails. If the agent is
-// running but empty, add a key — chosen from the SSH config for the clone host
-// (via `ssh -G`, which also yields the built-in defaults), falling back to the
-// default key files. Entirely best-effort: any failure just means the clone
-// may prompt or fail, which the user sees live.
-func ensureAgentHasKey(ctx context.Context, progress func(string, ...any), cloneURL string) {
+// an agent with no keys loaded means a private clone fails. It:
+//   - starts a temporary agent if none is running (and returns a cleanup that
+//     kills it on exit);
+//   - adds a key when the agent is empty — chosen from the SSH config for the
+//     clone host (via `ssh -G`, which also yields the built-in defaults),
+//     falling back to the default key files.
+//
+// Entirely best-effort: any failure just means the clone may prompt or fail,
+// which the user sees live. The returned cleanup is never nil.
+func ensureAgentHasKey(ctx context.Context, progress func(string, ...any), cloneURL string) (cleanup func()) {
+	cleanup = func() {}
+
 	// Agent forwarding only helps SSH remotes; HTTPS clones don't use it.
 	if !isSSHCloneURL(cloneURL) {
-		return
+		return cleanup
 	}
 	// ssh-add may prompt for a passphrase, so only attempt it with a real
 	// terminal (the rest of rde claude needs one anyway).
 	if !cmdutil.IsTerminal(os.Stdin) {
-		return
+		return cleanup
 	}
 
 	switch agentState(ctx) {
 	case agentHasKeys, agentUnknown:
-		return
+		return cleanup
 	case agentNoAgent:
-		progress("No SSH agent running ($SSH_AUTH_SOCK unset); git clone of private repos in the session may fail.\n")
-		return
+		c, err := startAgent(ctx)
+		if err != nil {
+			progress("No SSH agent running and could not start one (%v); git clone of private repos in the session may fail.\n", err)
+			return cleanup
+		}
+		progress("Started a temporary SSH agent.\n")
+		cleanup = c
+		// fall through to add a key to the fresh agent
 	case agentEmpty:
 		// fall through to add a key
 	}
@@ -42,7 +54,7 @@ func ensureAgentHasKey(ctx context.Context, progress func(string, ...any), clone
 	key := pickIdentityFile(ctx, sshHostFromURL(cloneURL))
 	if key == "" {
 		progress("SSH agent has no keys and no key file was found to add; private clones may fail.\n")
-		return
+		return cleanup
 	}
 	progress("Adding SSH key %s to the agent…\n", key)
 	add := exec.CommandContext(ctx, "ssh-add", key) //nolint:gosec // G204: key is a local key-file path (from ssh -G or default files), passed as its own argv element — no shell, no injection
@@ -50,6 +62,48 @@ func ensureAgentHasKey(ctx context.Context, progress func(string, ...any), clone
 	add.Stdout = os.Stderr // ssh-add writes prompts/results to stderr; keep stdout clean
 	add.Stderr = os.Stderr
 	_ = add.Run() // best-effort; the clone surfaces any remaining auth error
+	return cleanup
+}
+
+// startAgent launches a temporary `ssh-agent`, exports its socket (and PID)
+// into this process's environment so ssh-add and our own agent forwarding
+// (dialLocalAgent reads $SSH_AUTH_SOCK) use it, and returns a cleanup that
+// terminates the agent. The agent must outlive both the clone and the
+// interactive claude session, so the caller defers cleanup to process exit.
+func startAgent(ctx context.Context) (func(), error) {
+	out, err := exec.CommandContext(ctx, "ssh-agent", "-s").Output()
+	if err != nil {
+		return nil, err
+	}
+	sock := parseAgentVar(string(out), "SSH_AUTH_SOCK")
+	if sock == "" {
+		return nil, errors.New("ssh-agent did not report a socket path")
+	}
+	if err := os.Setenv("SSH_AUTH_SOCK", sock); err != nil {
+		return nil, err
+	}
+	if pid := parseAgentVar(string(out), "SSH_AGENT_PID"); pid != "" {
+		_ = os.Setenv("SSH_AGENT_PID", pid)
+	}
+	return func() {
+		// `ssh-agent -k` reads SSH_AGENT_PID/SSH_AUTH_SOCK from the env we just
+		// set and kills the agent + removes its socket. Not ctx-bound: ctx is
+		// likely already cancelled by the time cleanup runs.
+		_ = exec.Command("ssh-agent", "-k").Run()
+	}, nil
+}
+
+// parseAgentVar extracts NAME's value from `ssh-agent -s` output, whose lines
+// look like `SSH_AUTH_SOCK=/tmp/…/agent.123; export SSH_AUTH_SOCK;`.
+func parseAgentVar(out, name string) string {
+	for line := range strings.SplitSeq(out, "\n") {
+		for field := range strings.SplitSeq(line, ";") {
+			if rest, ok := strings.CutPrefix(strings.TrimSpace(field), name+"="); ok {
+				return rest
+			}
+		}
+	}
+	return ""
 }
 
 type agentStatus int

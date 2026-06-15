@@ -62,6 +62,21 @@ func TestIsSSHCloneURL(t *testing.T) {
 	}
 }
 
+func TestParseAgentVar(t *testing.T) {
+	out := "SSH_AUTH_SOCK=/tmp/ssh-abc/agent.123; export SSH_AUTH_SOCK;\n" +
+		"SSH_AGENT_PID=456; export SSH_AGENT_PID;\n" +
+		"echo Agent pid 456;\n"
+	if got := parseAgentVar(out, "SSH_AUTH_SOCK"); got != "/tmp/ssh-abc/agent.123" {
+		t.Errorf("SSH_AUTH_SOCK = %q, want /tmp/ssh-abc/agent.123", got)
+	}
+	if got := parseAgentVar(out, "SSH_AGENT_PID"); got != "456" {
+		t.Errorf("SSH_AGENT_PID = %q, want 456", got)
+	}
+	if got := parseAgentVar(out, "MISSING"); got != "" {
+		t.Errorf("MISSING = %q, want empty", got)
+	}
+}
+
 func TestRepoDirFromURL(t *testing.T) {
 	for _, tc := range []struct {
 		name string
