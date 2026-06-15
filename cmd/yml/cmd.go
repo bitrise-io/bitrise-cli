@@ -19,6 +19,9 @@ Running 'bitrise-cli yml' without a subcommand defaults to 'yml get'.
 Subcommands operate on the YAML stored server-side. If your project stores
 bitrise.yml in the repository (version-controlled mode), get and update
 commands still work, but uploaded changes will not affect builds.`,
+		Example: `  bitrise-cli yml get --app APP_ID
+  bitrise-cli yml validate --file bitrise.yml
+  bitrise-cli yml update --app APP_ID --file bitrise.yml`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			for _, sub := range cmd.Commands() {
 				if sub.Name() == "get" {

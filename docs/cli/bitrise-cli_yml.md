@@ -16,6 +16,14 @@ commands still work, but uploaded changes will not affect builds.
 bitrise-cli yml [flags]
 ```
 
+### Examples
+
+```
+  bitrise-cli yml get --app APP_ID
+  bitrise-cli yml validate --file bitrise.yml
+  bitrise-cli yml update --app APP_ID --file bitrise.yml
+```
+
 ### Options
 
 ```

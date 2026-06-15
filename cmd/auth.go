@@ -39,6 +39,9 @@ Storage:
 
 Env override:
   BITRISE_TOKEN takes precedence over the saved token; useful for CI.`,
+		Example: `  bitrise-cli auth status
+  bitrise-cli auth login
+  bitrise-cli auth logout`,
 	}
 	c.AddCommand(
 		newAuthLoginCmd(),
@@ -64,9 +67,9 @@ func newAuthLoginCmd() *cobra.Command {
 By default, in an interactive terminal, this opens your browser to sign in to
 Bitrise (OAuth) and stores a managed, auto-refreshing token. The modes:
 
-  Browser sign-in (default; explicit with --oauth).
+  Browser sign-in (default in an interactive terminal; explicit with --oauth).
      Opens your browser to sign in, exchanges the result for a Personal Access
-     Token, and keeps it fresh in the background so you rarely sign in again:
+     Token, and refreshes it automatically so you rarely sign in again:
 
          bitrise-cli auth login
          bitrise-cli auth login --oauth
@@ -79,8 +82,8 @@ Bitrise (OAuth) and stores a managed, auto-refreshing token. The modes:
      Reads a Personal Access Token from stdin. This is also used automatically
      when stdin is not a terminal, so CI and pipes keep working without a flag:
 
-         echo "$BITRISE_TOKEN" | bitrise-cli auth login
-         echo "$BITRISE_TOKEN" | bitrise-cli auth login --with-token
+         echo "$BITRISE_PAT" | bitrise-cli auth login
+         echo "$BITRISE_PAT" | bitrise-cli auth login --with-token
 
   Email and password (--email).
      Signs in to app.bitrise.io with your account credentials, then asks the
@@ -95,9 +98,9 @@ Bitrise (OAuth) and stores a managed, auto-refreshing token. The modes:
 The resulting token is written to $XDG_CONFIG_HOME/bitrise/auth.yaml with 0600
 permissions and is never echoed (use 'auth status' to verify, 'auth logout' to
 clear).`,
-		Example: `  bitrise-cli auth login                                       # browser sign-in (OAuth)
-  echo "$BITRISE_TOKEN" | bitrise-cli auth login --with-token  # paste/pipe a token
-  bitrise-cli auth login --email alice@example.com             # email/password`,
+		Example: `  bitrise-cli auth login                                     # browser sign-in (OAuth)
+  echo "$BITRISE_PAT" | bitrise-cli auth login --with-token  # paste/pipe a token
+  bitrise-cli auth login --email alice@example.com           # email/password`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			switch {
 			case oauthLogin || webLogin:

@@ -2,8 +2,25 @@
 
 Trigger, list, and inspect builds
 
+### Synopsis
+
+Trigger, list, and inspect builds.
+
+Builds belong to an app: pass --app ID on any build command, or set
+BITRISE_APP_ID (or run "bitrise-cli config set app_id ID"). Running
+"bitrise-cli build" with no subcommand lists builds for that app.
+
 ```
 bitrise-cli build [flags]
+```
+
+### Examples
+
+```
+  bitrise-cli build list --app APP_ID
+  bitrise-cli build trigger --app APP_ID --branch main --workflow primary
+  bitrise-cli build view --app APP_ID BUILD_ID --output json
+  bitrise-cli build log --app APP_ID BUILD_ID
 ```
 
 ### Options

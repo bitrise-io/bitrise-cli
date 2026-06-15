@@ -2,6 +2,18 @@
 
 Search steps and inspect their inputs
 
+### Synopsis
+
+Search the step library and inspect a step version's inputs.
+
+### Examples
+
+```
+  bitrise-cli step search clone
+  bitrise-cli step search fastlane --output json
+  bitrise-cli step inputs git-clone@8.3.1
+```
+
 ### Options
 
 ```

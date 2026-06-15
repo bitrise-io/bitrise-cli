@@ -14,6 +14,14 @@ Workspace resolution (highest to lowest precedence):
 
 Saved inputs are user-scoped — they do not require --workspace.
 
+### Examples
+
+```
+  bitrise-cli rde session list --workspace WORKSPACE_ID
+  bitrise-cli rde session list --output json
+  bitrise-cli rde template list
+```
+
 ### Options
 
 ```
