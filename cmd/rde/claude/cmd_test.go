@@ -62,6 +62,56 @@ func TestIsSSHCloneURL(t *testing.T) {
 	}
 }
 
+func TestBuildClaudeCommand(t *testing.T) {
+	if got, want := buildClaudeCommand("repo", "", ""),
+		"cd repo && exec claude"; got != want {
+		t.Errorf("no cred:\n got  %q\n want %q", got, want)
+	}
+	if got, want := buildClaudeCommand("repo", "CLAUDE_CODE_OAUTH_TOKEN", "sk-tok en"),
+		"export CLAUDE_CODE_OAUTH_TOKEN='sk-tok en' && cd repo && exec claude"; got != want {
+		t.Errorf("with cred:\n got  %q\n want %q", got, want)
+	}
+}
+
+func TestParseClaudeAccessToken(t *testing.T) {
+	if got, ok := parseClaudeAccessToken([]byte(`{"claudeAiOauth":{"accessToken":"tok-123","refreshToken":"r"}}`)); !ok || got != "tok-123" {
+		t.Errorf("json blob: got %q ok=%v, want tok-123 true", got, ok)
+	}
+	if got, ok := parseClaudeAccessToken([]byte("  bare-token\n")); !ok || got != "bare-token" {
+		t.Errorf("bare token: got %q ok=%v, want bare-token true", got, ok)
+	}
+	if _, ok := parseClaudeAccessToken([]byte(`{"claudeAiOauth":{"accessToken":""}}`)); ok {
+		t.Error("empty accessToken JSON should not be ok")
+	}
+	if _, ok := parseClaudeAccessToken([]byte("")); ok {
+		t.Error("empty input should not be ok")
+	}
+}
+
+func TestExistingLocalCredentialEnv(t *testing.T) {
+	t.Setenv("CLAUDE_CODE_OAUTH_TOKEN", "oauth-tok")
+	t.Setenv("ANTHROPIC_API_KEY", "api-key")
+	cred, ok := existingLocalCredential()
+	if !ok || cred.EnvVar != "CLAUDE_CODE_OAUTH_TOKEN" || cred.Value != "oauth-tok" || cred.Minted {
+		t.Errorf("oauth env should win: %+v ok=%v", cred, ok)
+	}
+
+	t.Setenv("CLAUDE_CODE_OAUTH_TOKEN", "")
+	cred, ok = existingLocalCredential()
+	if !ok || cred.EnvVar != "ANTHROPIC_API_KEY" || cred.Value != "api-key" {
+		t.Errorf("api key fallback: %+v ok=%v", cred, ok)
+	}
+}
+
+func TestLastNonEmptyLine(t *testing.T) {
+	if got := lastNonEmptyLine("setup instructions\n\nsk-ant-oat-123\n\n"); got != "sk-ant-oat-123" {
+		t.Errorf("got %q, want sk-ant-oat-123", got)
+	}
+	if got := lastNonEmptyLine("   \n  \n"); got != "" {
+		t.Errorf("blank input: got %q, want empty", got)
+	}
+}
+
 func TestBuildCloneCommand(t *testing.T) {
 	const url = "git@github.com:org/repo.git"
 	if got, want := buildCloneCommand(url, "repo", "main", false),

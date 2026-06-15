@@ -45,7 +45,14 @@ session (claude-<id>).
 A local SSH agent ($SSH_AUTH_SOCK), if present, is forwarded into the session
 so the clone (and git-over-SSH inside the session) uses your local keys. If the
 repo's origin is an HTTPS GitHub/GitLab/Bitbucket URL, it's rewritten to its
-SSH form so the forwarded agent can authenticate.`,
+SSH form so the forwarded agent can authenticate.
+
+Unless a Claude Code token is already configured on the control plane, your
+local Claude Code credentials are forwarded so the in-session claude is logged
+in. The credential is taken from $CLAUDE_CODE_OAUTH_TOKEN or $ANTHROPIC_API_KEY,
+then ~/.claude/.credentials.json; if none is found, 'claude setup-token' is run
+to mint one (browser auth) and the result is saved on the control plane so
+future sessions don't need to mint again.`,
 		Example: `  bitrise-cli rde claude --workspace WORKSPACE_ID`,
 		Args:    cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -95,10 +102,20 @@ SSH form so the forwarded agent can authenticate.`,
 
 			// ── Session ────────────────────────────────────────────────────
 			log.group("Session")
+
+			// If the control plane already has a Claude Code token (saved
+			// input), map it into the session and skip forwarding the local
+			// one. Best-effort: on a failed lookup, treat as absent and forward.
+			controlPlaneToken, cpErr := controlPlaneHasClaudeToken(ctx, svc)
+			if cpErr != nil {
+				controlPlaneToken = false
+			}
+
 			log.step("Creating session %q…", name)
 			res, err := svc.CreateSession(ctx, workspaceID, internalrde.CreateSessionRequest{
-				Name:       name,
-				TemplateID: templateID,
+				Name:                    name,
+				TemplateID:              templateID,
+				MapSavedToSessionInputs: controlPlaneToken,
 			})
 			if err != nil {
 				return err
@@ -185,10 +202,43 @@ SSH form so the forwarded agent can authenticate.`,
 
 			// ── Claude Code ────────────────────────────────────────────────
 			log.group("Starting Claude Code…")
+
+			// Forward local Claude Code auth so the in-session claude is logged
+			// in — unless the control plane already provides a token.
+			var claudeEnvVar, claudeEnvVal string
+			if controlPlaneToken {
+				log.step("Using the Claude Code token from the control plane")
+			} else {
+				cred, ok := existingLocalCredential()
+				if !ok {
+					// Nothing local — mint a long-lived token (interactive browser auth).
+					log.step("No local Claude Code credentials; running 'claude setup-token'…")
+					cred, ok = mintSetupToken(ctx)
+					if !ok {
+						log.warn("Could not obtain a Claude Code token; you may need to log in inside the session.")
+					}
+				}
+				if ok {
+					claudeEnvVar, claudeEnvVal = cred.EnvVar, cred.Value
+					log.step("Forwarding local Claude Code credentials (%s from %s)", cred.EnvVar, cred.Source)
+					// Persist a freshly-minted token on the control plane so
+					// future sessions pick it up without minting again.
+					if cred.Minted {
+						if _, saveErr := svc.CreateSavedInput(ctx, internalrde.CreateSavedInputRequest{
+							Key: cred.EnvVar, Value: cred.Value, IsSecret: true,
+						}); saveErr != nil {
+							log.warn("Failed to save the token on the control plane (%v); it won't persist for next time.", saveErr)
+						} else {
+							log.step("Saved the token on the control plane for future sessions")
+						}
+					}
+				}
+			}
+
 			// cd into the clone, then `exec claude` so the login-interactive
 			// bash replaces itself with Claude Code — the user lands directly
 			// in claude (inside the repo), not a shell.
-			claudeCmd := "cd " + cmdutil.ShellQuote(repoDir) + " && exec claude"
+			claudeCmd := buildClaudeCommand(repoDir, claudeEnvVar, claudeEnvVal)
 			exitCode, err := svc.ExecuteInteractive(ctx, workspaceID, sessionID, claudeCmd, os.Stdin, os.Stdout, os.Stderr)
 			if err != nil {
 				return err
@@ -245,6 +295,19 @@ func buildCloneCommand(cloneURL, repoDir, branch string, useDefaultBranch bool) 
 	}
 	return fmt.Sprintf("%s git clone --branch %s %s %s",
 		sshEnv, cmdutil.ShellQuote(branch), cmdutil.ShellQuote(cloneURL), cmdutil.ShellQuote(repoDir))
+}
+
+// buildClaudeCommand returns the remote shell command that starts Claude Code
+// inside repoDir. When envVar is non-empty, it exports the forwarded credential
+// first so the in-session claude is authenticated. The value is shell-quoted;
+// the var name is a fixed identifier. `exec` replaces the login-interactive
+// bash with claude, so the token drops out of the VM's process list.
+func buildClaudeCommand(repoDir, envVar, envVal string) string {
+	cd := "cd " + cmdutil.ShellQuote(repoDir) + " && exec claude"
+	if envVar == "" {
+		return cd
+	}
+	return "export " + envVar + "=" + cmdutil.ShellQuote(envVal) + " && " + cd
 }
 
 // sshRewriteHosts are the hosts whose HTTPS clone URLs we rewrite to SSH form,

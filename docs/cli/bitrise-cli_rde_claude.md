@@ -21,6 +21,13 @@ so the clone (and git-over-SSH inside the session) uses your local keys. If the
 repo's origin is an HTTPS GitHub/GitLab/Bitbucket URL, it's rewritten to its
 SSH form so the forwarded agent can authenticate.
 
+Unless a Claude Code token is already configured on the control plane, your
+local Claude Code credentials are forwarded so the in-session claude is logged
+in. The credential is taken from $CLAUDE_CODE_OAUTH_TOKEN or $ANTHROPIC_API_KEY,
+then ~/.claude/.credentials.json; if none is found, 'claude setup-token' is run
+to mint one (browser auth) and the result is saved on the control plane so
+future sessions don't need to mint again.
+
 ```
 bitrise-cli rde claude [flags]
 ```
