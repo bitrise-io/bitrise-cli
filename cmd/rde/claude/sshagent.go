@@ -3,6 +3,7 @@ package claude
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -21,28 +22,29 @@ import (
 //     falling back to the default key files.
 //
 // Entirely best-effort: any failure just means the clone may prompt or fail,
-// which the user sees live. The returned cleanup is never nil.
-func ensureAgentHasKey(ctx context.Context, log *stepLogger, cloneURL string) (cleanup func()) {
+// which the user sees live. The returned cleanup is never nil; auth is a short
+// description of the resulting git-clone auth method, for display.
+func ensureAgentHasKey(ctx context.Context, log *stepLogger, cloneURL string) (cleanup func(), auth string) {
 	cleanup = func() {}
 
 	// Agent forwarding only helps SSH remotes; HTTPS clones don't use it.
 	if !isSSHCloneURL(cloneURL) {
-		return cleanup
+		return cleanup, "HTTPS remote (no SSH key forwarding)"
 	}
 	// ssh-add may prompt for a passphrase, so only attempt it with a real
 	// terminal (the rest of rde claude needs one anyway).
 	if !cmdutil.IsTerminal(os.Stdin) {
-		return cleanup
+		return cleanup, forwardedAgentDesc(ctx)
 	}
 
 	switch agentState(ctx) {
 	case agentHasKeys, agentUnknown:
-		return cleanup
+		return cleanup, forwardedAgentDesc(ctx)
 	case agentNoAgent:
 		c, err := startAgent(ctx)
 		if err != nil {
 			log.warn("No SSH agent running and could not start one (%v); git clone of private repos in the session may fail.", err)
-			return cleanup
+			return cleanup, forwardedAgentDesc(ctx)
 		}
 		log.step("Started a temporary SSH agent")
 		cleanup = c
@@ -54,7 +56,7 @@ func ensureAgentHasKey(ctx context.Context, log *stepLogger, cloneURL string) (c
 	key := pickIdentityFile(ctx, sshHostFromURL(cloneURL))
 	if key == "" {
 		log.warn("SSH agent has no keys and no key file was found to add; private clones may fail.")
-		return cleanup
+		return cleanup, forwardedAgentDesc(ctx)
 	}
 	log.step("Adding SSH key %s to the agent…", key)
 	add := exec.CommandContext(ctx, "ssh-add", key) //nolint:gosec // G204: key is a local key-file path (from ssh -G or default files), passed as its own argv element — no shell, no injection
@@ -62,7 +64,36 @@ func ensureAgentHasKey(ctx context.Context, log *stepLogger, cloneURL string) (c
 	add.Stdout = os.Stderr // ssh-add writes prompts/results to stderr; keep stdout clean
 	add.Stderr = os.Stderr
 	_ = add.Run() // best-effort; the clone surfaces any remaining auth error
-	return cleanup
+	return cleanup, forwardedAgentDesc(ctx)
+}
+
+// forwardedAgentDesc describes the git-clone auth method based on what the
+// local SSH agent currently holds (and will therefore forward into the VM).
+func forwardedAgentDesc(ctx context.Context) string {
+	switch n := agentKeyCount(ctx); {
+	case n == 1:
+		return "forwarded SSH agent (1 key)"
+	case n > 1:
+		return fmt.Sprintf("forwarded SSH agent (%d keys)", n)
+	default:
+		return "no forwarded SSH agent keys"
+	}
+}
+
+// agentKeyCount returns how many identities the local SSH agent holds, or 0
+// when no agent is reachable / it's empty (`ssh-add -l` exits non-zero).
+func agentKeyCount(ctx context.Context) int {
+	out, err := exec.CommandContext(ctx, "ssh-add", "-l").Output()
+	if err != nil {
+		return 0
+	}
+	n := 0
+	for line := range strings.SplitSeq(string(out), "\n") {
+		if strings.TrimSpace(line) != "" {
+			n++
+		}
+	}
+	return n
 }
 
 // startAgent launches a temporary `ssh-agent`, exports its socket (and PID)

@@ -168,8 +168,9 @@ future sessions don't need to mint again.`,
 			// sure an agent is running with a key loaded before we dial in.
 			// cleanupAgent kills a temporary agent we may have started; it
 			// must outlive the claude session, so defer it to command exit.
-			cleanupAgent := ensureAgentHasKey(ctx, log, cloneURL)
+			cleanupAgent, repoAuth := ensureAgentHasKey(ctx, log, cloneURL)
 			defer cleanupAgent()
+			log.step("Auth: %s", repoAuth)
 
 			// Clone the same repo + branch into the session over the
 			// forwarded SSH agent. Runs in its own interactive session so its
@@ -201,26 +202,23 @@ future sessions don't need to mint again.`,
 			log.done("Repository cloned")
 
 			// ── Claude Code ────────────────────────────────────────────────
-			log.group("Starting Claude Code…")
+			log.group("Claude Code")
 
 			// Forward local Claude Code auth so the in-session claude is logged
 			// in — unless the control plane already provides a token.
 			var claudeEnvVar, claudeEnvVal string
 			if controlPlaneToken {
-				log.step("Using the Claude Code token from the control plane")
+				log.step("Auth: control plane token")
 			} else {
 				cred, ok := existingLocalCredential()
 				if !ok {
 					// Nothing local — mint a long-lived token (interactive browser auth).
-					log.step("No local Claude Code credentials; running 'claude setup-token'…")
+					log.step("No local credentials; minting one with 'claude setup-token'…")
 					cred, ok = mintSetupToken(ctx)
-					if !ok {
-						log.warn("Could not obtain a Claude Code token; you may need to log in inside the session.")
-					}
 				}
 				if ok {
 					claudeEnvVar, claudeEnvVal = cred.EnvVar, cred.Value
-					log.step("Forwarding local Claude Code credentials (%s from %s)", cred.EnvVar, cred.Source)
+					log.step("Auth: forwarded %s (from %s)", cred.EnvVar, cred.Source)
 					// Persist durable creds (env token/key or a freshly minted
 					// token) on the control plane so future sessions pick them
 					// up without re-forwarding.
@@ -233,9 +231,12 @@ future sessions don't need to mint again.`,
 							log.step("Saved the token on the control plane for future sessions")
 						}
 					}
+				} else {
+					log.warn("Auth: none found — you may need to log in inside the session.")
 				}
 			}
 
+			log.step("Starting…")
 			// cd into the clone, then `exec claude` so the login-interactive
 			// bash replaces itself with Claude Code — the user lands directly
 			// in claude (inside the repo), not a shell.
