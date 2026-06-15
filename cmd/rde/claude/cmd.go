@@ -6,8 +6,10 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"strings"
 	"time"
 
@@ -154,13 +156,19 @@ SSH form so the forwarded agent can authenticate.`,
 			// output (git progress) streams live with no timeout.
 			// StrictHostKeyChecking=accept-new avoids a host-key prompt that
 			// would otherwise hang the non-interactive clone.
-			progress("Cloning %s (branch %s) into the session…\n", repoDir, branch)
-			cloneCmd := fmt.Sprintf("GIT_SSH_COMMAND=%s git clone --branch %s %s %s",
-				cmdutil.ShellQuote("ssh -o StrictHostKeyChecking=accept-new"),
-				cmdutil.ShellQuote(branch),
-				cmdutil.ShellQuote(cloneURL),
-				cmdutil.ShellQuote(repoDir),
-			)
+			//
+			// If the current branch hasn't been pushed (not on the remote),
+			// fall back to cloning the remote's default branch.
+			useDefaultBranch := false
+			if found, determined := remoteHasBranch(ctx, branch); determined && !found {
+				useDefaultBranch = true
+			}
+			if useDefaultBranch {
+				progress("Branch %q is not on the remote; cloning %s on the default branch instead.\n", branch, repoDir)
+			} else {
+				progress("Cloning %s (branch %s) into the session…\n", repoDir, branch)
+			}
+			cloneCmd := buildCloneCommand(cloneURL, repoDir, branch, useDefaultBranch)
 			cloneCode, err := svc.ExecuteInteractive(ctx, workspaceID, sessionID, cloneCmd, os.Stdin, os.Stdout, os.Stderr)
 			if err != nil {
 				return err
@@ -200,6 +208,37 @@ func generateSessionName() (string, error) {
 		return "", fmt.Errorf("generate session name: %w", err)
 	}
 	return "claude-" + hex.EncodeToString(b), nil
+}
+
+// remoteHasBranch reports whether branch exists on the cwd repo's "origin"
+// remote. `git ls-remote --exit-code` exits 0 when the ref is found and 2 when
+// it isn't; any other outcome (network/auth error, git missing) leaves it
+// undetermined, in which case the caller keeps the requested branch.
+func remoteHasBranch(ctx context.Context, branch string) (found, determined bool) {
+	//nolint:gosec // G204: branch comes from the local repo's checked-out HEAD, passed as its own argv element — no shell, no injection
+	err := exec.CommandContext(ctx, "git", "ls-remote", "--heads", "--exit-code", "origin", branch).Run()
+	if err == nil {
+		return true, true
+	}
+	if exitErr, ok := errors.AsType[*exec.ExitError](err); ok && exitErr.ExitCode() == 2 {
+		return false, true
+	}
+	return false, false
+}
+
+// buildCloneCommand returns the remote shell command that clones cloneURL into
+// repoDir. When useDefaultBranch is true it omits --branch, so git clones the
+// remote's default branch (the fallback when the local branch isn't pushed).
+// GIT_SSH_COMMAND's accept-new keeps the non-interactive clone from hanging on
+// a host-key prompt.
+func buildCloneCommand(cloneURL, repoDir, branch string, useDefaultBranch bool) string {
+	sshEnv := "GIT_SSH_COMMAND=" + cmdutil.ShellQuote("ssh -o StrictHostKeyChecking=accept-new")
+	if useDefaultBranch {
+		return fmt.Sprintf("%s git clone %s %s",
+			sshEnv, cmdutil.ShellQuote(cloneURL), cmdutil.ShellQuote(repoDir))
+	}
+	return fmt.Sprintf("%s git clone --branch %s %s %s",
+		sshEnv, cmdutil.ShellQuote(branch), cmdutil.ShellQuote(cloneURL), cmdutil.ShellQuote(repoDir))
 }
 
 // sshRewriteHosts are the hosts whose HTTPS clone URLs we rewrite to SSH form,

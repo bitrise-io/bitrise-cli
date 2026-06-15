@@ -62,6 +62,18 @@ func TestIsSSHCloneURL(t *testing.T) {
 	}
 }
 
+func TestBuildCloneCommand(t *testing.T) {
+	const url = "git@github.com:org/repo.git"
+	if got, want := buildCloneCommand(url, "repo", "main", false),
+		"GIT_SSH_COMMAND='ssh -o StrictHostKeyChecking=accept-new' git clone --branch main git@github.com:org/repo.git repo"; got != want {
+		t.Errorf("with branch:\n got  %q\n want %q", got, want)
+	}
+	if got, want := buildCloneCommand(url, "repo", "feature/x", true),
+		"GIT_SSH_COMMAND='ssh -o StrictHostKeyChecking=accept-new' git clone git@github.com:org/repo.git repo"; got != want {
+		t.Errorf("default branch:\n got  %q\n want %q", got, want)
+	}
+}
+
 func TestParseAgentVar(t *testing.T) {
 	out := "SSH_AUTH_SOCK=/tmp/ssh-abc/agent.123; export SSH_AUTH_SOCK;\n" +
 		"SSH_AGENT_PID=456; export SSH_AGENT_PID;\n" +
