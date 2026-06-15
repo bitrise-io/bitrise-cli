@@ -92,14 +92,14 @@ func TestExistingLocalCredentialEnv(t *testing.T) {
 	t.Setenv("CLAUDE_CODE_OAUTH_TOKEN", "oauth-tok")
 	t.Setenv("ANTHROPIC_API_KEY", "api-key")
 	cred, ok := existingLocalCredential()
-	if !ok || cred.EnvVar != "CLAUDE_CODE_OAUTH_TOKEN" || cred.Value != "oauth-tok" || cred.Minted {
-		t.Errorf("oauth env should win: %+v ok=%v", cred, ok)
+	if !ok || cred.EnvVar != "CLAUDE_CODE_OAUTH_TOKEN" || cred.Value != "oauth-tok" || !cred.Persist {
+		t.Errorf("oauth env should win and persist: %+v ok=%v", cred, ok)
 	}
 
 	t.Setenv("CLAUDE_CODE_OAUTH_TOKEN", "")
 	cred, ok = existingLocalCredential()
-	if !ok || cred.EnvVar != "ANTHROPIC_API_KEY" || cred.Value != "api-key" {
-		t.Errorf("api key fallback: %+v ok=%v", cred, ok)
+	if !ok || cred.EnvVar != "ANTHROPIC_API_KEY" || cred.Value != "api-key" || !cred.Persist {
+		t.Errorf("api key fallback should persist: %+v ok=%v", cred, ok)
 	}
 }
 

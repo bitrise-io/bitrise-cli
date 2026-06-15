@@ -23,10 +23,10 @@ const sourceSetupToken = "claude setup-token"
 
 // forwardCred is a local Claude Code credential to forward into the session.
 type forwardCred struct {
-	EnvVar string // env var to set in the session (CLAUDE_CODE_OAUTH_TOKEN / ANTHROPIC_API_KEY)
-	Value  string // the token/key value
-	Source string // short human-readable origin, for logging
-	Minted bool   // true if freshly minted via setup-token (worth persisting)
+	EnvVar  string // env var to set in the session (CLAUDE_CODE_OAUTH_TOKEN / ANTHROPIC_API_KEY)
+	Value   string // the token/key value
+	Source  string // short human-readable origin, for logging
+	Persist bool   // whether to save it on the control plane for future sessions
 }
 
 // controlPlaneHasClaudeToken reports whether the user has a Claude Code token
@@ -52,12 +52,14 @@ func controlPlaneHasClaudeToken(ctx context.Context, svc *internalrde.Service) (
 // ok=false when nothing is found (the caller may then mint one).
 func existingLocalCredential() (forwardCred, bool) {
 	if v := os.Getenv(envOAuthToken); v != "" {
-		return forwardCred{EnvVar: envOAuthToken, Value: v, Source: "$" + envOAuthToken}, true
+		return forwardCred{EnvVar: envOAuthToken, Value: v, Source: "$" + envOAuthToken, Persist: true}, true
 	}
 	if v := os.Getenv(envAPIKey); v != "" {
-		return forwardCred{EnvVar: envAPIKey, Value: v, Source: "$" + envAPIKey}, true
+		return forwardCred{EnvVar: envAPIKey, Value: v, Source: "$" + envAPIKey, Persist: true}, true
 	}
 	if v, ok := credentialsFileToken(); ok {
+		// The credentials-file OAuth token is short-lived (subscription
+		// access token), so don't persist it on the control plane.
 		return forwardCred{EnvVar: envOAuthToken, Value: v, Source: credentialsFilePath()}, true
 	}
 	return forwardCred{}, false
@@ -78,7 +80,7 @@ func mintSetupToken(ctx context.Context) (forwardCred, bool) {
 	if token == "" {
 		return forwardCred{}, false
 	}
-	return forwardCred{EnvVar: envOAuthToken, Value: token, Source: sourceSetupToken, Minted: true}, true
+	return forwardCred{EnvVar: envOAuthToken, Value: token, Source: sourceSetupToken, Persist: true}, true
 }
 
 // lastNonEmptyLine returns the last non-blank, trimmed line of s — `claude

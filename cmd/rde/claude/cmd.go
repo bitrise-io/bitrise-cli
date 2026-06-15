@@ -221,9 +221,10 @@ future sessions don't need to mint again.`,
 				if ok {
 					claudeEnvVar, claudeEnvVal = cred.EnvVar, cred.Value
 					log.step("Forwarding local Claude Code credentials (%s from %s)", cred.EnvVar, cred.Source)
-					// Persist a freshly-minted token on the control plane so
-					// future sessions pick it up without minting again.
-					if cred.Minted {
+					// Persist durable creds (env token/key or a freshly minted
+					// token) on the control plane so future sessions pick them
+					// up without re-forwarding.
+					if cred.Persist {
 						if _, saveErr := svc.CreateSavedInput(ctx, internalrde.CreateSavedInputRequest{
 							Key: cred.EnvVar, Value: cred.Value, IsSecret: true,
 						}); saveErr != nil {
