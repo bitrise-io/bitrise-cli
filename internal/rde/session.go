@@ -425,6 +425,41 @@ func (s *Service) WaitForReady(ctx context.Context, workspaceID, sessionID strin
 	}
 }
 
+// WaitForSSHReady polls GetSession until the session's SSH endpoint is usable
+// — connection open and address + password populated — and returns the
+// resulting Session. A "running" status (what WaitForReady waits for) does not
+// guarantee SSH is up: the backend issues credentials a few seconds later, so
+// callers that want to dial in must wait on this too.
+//
+// If the session leaves the "running" state while waiting (e.g. it fails or is
+// terminated), it returns an error rather than spinning forever. Returns
+// context.Canceled when ctx is cancelled.
+func (s *Service) WaitForSSHReady(ctx context.Context, workspaceID, sessionID string, interval time.Duration) (Session, error) {
+	if s.client == nil {
+		return Session{}, errClient()
+	}
+	if interval <= 0 {
+		interval = 3 * time.Second
+	}
+	for {
+		sess, err := s.GetSession(ctx, workspaceID, sessionID)
+		if err != nil {
+			return Session{}, err
+		}
+		if sess.Status != "running" {
+			return Session{}, fmt.Errorf("session is no longer running (status: %q) while waiting for SSH", sess.Status)
+		}
+		if sess.SSHConnectionOpen && sess.SSHAddress != "" && sess.SSHPassword != "" {
+			return sess, nil
+		}
+		select {
+		case <-ctx.Done():
+			return Session{}, ctx.Err()
+		case <-time.After(interval):
+		}
+	}
+}
+
 // WaitForTerminated polls GetSession until the session leaves the
 // transitional teardown states ("terminating" / "draining") and returns the
 // resulting Session — normally "terminated" (or "failed"). The caller decides

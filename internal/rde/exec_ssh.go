@@ -16,6 +16,7 @@ import (
 
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/agent"
+	"golang.org/x/term"
 )
 
 // This file ports the MCP server's execute_ssh.go — same forced-interactive
@@ -217,6 +218,117 @@ func (c *sshClient) run(ctx context.Context, userCmd string) (ExecResult, error)
 
 func buildLoginShellCmd(userCmd string) string {
 	return "bash -i -l -c '" + strings.ReplaceAll(userCmd, "'", `'\''`) + "'"
+}
+
+// defaultTermType is used when $TERM is unset (e.g. some CI shells); a sane
+// 256-color default keeps the remote program's rendering correct.
+const defaultTermType = "xterm-256color"
+
+// runInteractive runs userCmd in a forced-interactive login bash shell on a
+// fresh SSH session, streaming the caller's stdin/stdout/stderr live and
+// blocking until the remote program exits. When stdin is a terminal, it
+// allocates a PTY, puts the local terminal into raw mode, and forwards
+// SIGWINCH so the remote program reflows on resize.
+//
+// Unlike run, output is NOT captured and there is no timeout — this is meant
+// for long-lived interactive programs. The `-i -l` shell is used for the same
+// reason as run (RDE warmup writes PATH to ~/.bashrc); callers typically pass
+// `exec <program>` so bash replaces itself with the program rather than
+// leaving an interactive shell in front of it.
+//
+// Returns the remote exit code (0 on clean exit), or -1 with an error on
+// dial/session failure or context cancellation.
+func (c *sshClient) runInteractive(ctx context.Context, userCmd string, stdin io.Reader, stdout, stderr io.Writer) (int, error) {
+	session, err := c.client.NewSession()
+	if err != nil {
+		return -1, fmt.Errorf("ssh new session: %w", err)
+	}
+	defer session.Close() //nolint:errcheck // run errors take precedence; nothing actionable on close failure
+
+	if c.localAgent != nil {
+		// Best-effort, same posture as run: a refusing remote sshd just means
+		// agent-backed auth inside the session is unavailable.
+		_ = agent.RequestAgentForwarding(session)
+	}
+
+	session.Stdin = stdin
+	session.Stdout = stdout
+	session.Stderr = stderr
+
+	// Allocate a PTY only when the local stdin is a real terminal. In a pipe
+	// or CI context there's no TTY to mirror, so we run without one (the
+	// remote program then sees a non-interactive stdin, which is correct).
+	if fd, ok := ttyFd(stdin); ok {
+		oldState, rawErr := term.MakeRaw(fd)
+		if rawErr != nil {
+			return -1, fmt.Errorf("set terminal raw mode: %w", rawErr)
+		}
+		defer func() { _ = term.Restore(fd, oldState) }()
+
+		w, h, sizeErr := term.GetSize(fd)
+		if sizeErr != nil {
+			// Fall back to a conventional 80x24 if the size can't be read; the
+			// SIGWINCH watcher will correct it on the first resize.
+			w, h = 80, 24
+		}
+
+		termType := os.Getenv("TERM")
+		if termType == "" {
+			termType = defaultTermType
+		}
+		modes := ssh.TerminalModes{
+			ssh.ECHO:          1,
+			ssh.TTY_OP_ISPEED: 14400,
+			ssh.TTY_OP_OSPEED: 14400,
+		}
+		if ptyErr := session.RequestPty(termType, h, w, modes); ptyErr != nil {
+			return -1, fmt.Errorf("request pty: %w", ptyErr)
+		}
+
+		stop := watchWindowResize(session, fd)
+		defer stop()
+	}
+
+	done := make(chan struct{})
+	go func() {
+		select {
+		case <-ctx.Done():
+			_ = session.Close()
+		case <-done:
+		}
+	}()
+	defer close(done)
+
+	runErr := session.Run(buildLoginShellCmd(userCmd))
+	if runErr == nil {
+		return 0, nil
+	}
+
+	if ctx.Err() != nil {
+		return -1, fmt.Errorf("ssh run cancelled: %w", ctx.Err())
+	}
+
+	var exitErr *ssh.ExitError
+	if errors.As(runErr, &exitErr) {
+		return exitErr.ExitStatus(), nil
+	}
+
+	return -1, fmt.Errorf("ssh run: %w", runErr)
+}
+
+// ttyFd returns the file descriptor of r when it is an *os.File backed by a
+// terminal. Kept local to internal/rde so the SSH layer doesn't take a
+// dependency on the cmd packages.
+func ttyFd(r io.Reader) (int, bool) {
+	f, ok := r.(*os.File)
+	if !ok {
+		return 0, false
+	}
+	fd := int(f.Fd()) //nolint:gosec // file descriptors are small ints, no overflow risk
+	if !term.IsTerminal(fd) {
+		return 0, false
+	}
+	return fd, true
 }
 
 // interactiveBashStartupNoise are the diagnostics `bash -i` writes to stderr
