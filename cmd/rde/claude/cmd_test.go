@@ -26,6 +26,42 @@ func TestGitSSHURL(t *testing.T) {
 	}
 }
 
+func TestSSHHostFromURL(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		in   string
+		want string
+	}{
+		{"ssh scp form", "git@github.com:org/repo.git", "github.com"},
+		{"ssh scheme", "ssh://git@github.com/org/repo.git", "github.com"},
+		{"https form", "https://gitlab.com/group/repo.git", "gitlab.com"},
+		{"https with user", "https://user@github.com/org/repo", "github.com"},
+		{"git scheme", "git://example.com/repo.git", "example.com"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := sshHostFromURL(tc.in); got != tc.want {
+				t.Errorf("sshHostFromURL(%q) = %q, want %q", tc.in, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestIsSSHCloneURL(t *testing.T) {
+	for _, tc := range []struct {
+		in   string
+		want bool
+	}{
+		{"git@github.com:org/repo.git", true},
+		{"ssh://git@github.com/org/repo.git", true},
+		{"https://github.com/org/repo.git", false},
+		{"git://example.com/repo.git", false},
+	} {
+		if got := isSSHCloneURL(tc.in); got != tc.want {
+			t.Errorf("isSSHCloneURL(%q) = %v, want %v", tc.in, got, tc.want)
+		}
+	}
+}
+
 func TestRepoDirFromURL(t *testing.T) {
 	for _, tc := range []struct {
 		name string

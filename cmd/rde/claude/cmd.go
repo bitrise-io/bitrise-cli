@@ -142,6 +142,10 @@ SSH form so the forwarded agent can authenticate.`,
 				return fmt.Errorf("waiting for SSH access: %w", err)
 			}
 
+			// The clone authenticates via the forwarded local SSH agent; make
+			// sure it has a key loaded before we dial in for the clone.
+			ensureAgentHasKey(ctx, progress, cloneURL)
+
 			// Clone the same repo + branch into the session over the
 			// forwarded SSH agent. Runs in its own interactive session so its
 			// output (git progress) streams live with no timeout.
