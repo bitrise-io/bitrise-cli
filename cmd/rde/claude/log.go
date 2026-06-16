@@ -61,3 +61,42 @@ func (l *stepLogger) done(format string, a ...any) {
 func (l *stepLogger) warn(format string, a ...any) {
 	_, _ = fmt.Fprintf(l.w, "  %s\n", l.s.Warn.Render(fmt.Sprintf(format, a...)))
 }
+
+// stepIndent is the prefix step lines use; indentWriter reuses it so streamed
+// remote output (e.g. git clone progress) lines up under its group.
+const stepIndent = "  "
+
+// indentWriter prefixes every line written through it with a fixed indent,
+// so a remote command's streamed output aligns with the logger's step lines.
+// It tracks line starts across writes and treats both "\n" and "\r" as line
+// boundaries, so carriage-return progress redraws (git's "Receiving objects…")
+// stay indented too. It is NOT suitable for full-screen TUIs that position the
+// cursor absolutely (e.g. Claude Code itself) — only for line-oriented output.
+type indentWriter struct {
+	w           io.Writer
+	prefix      string
+	atLineStart bool
+}
+
+// newIndentWriter wraps w so each output line is prefixed with stepIndent.
+func newIndentWriter(w io.Writer) *indentWriter {
+	return &indentWriter{w: w, prefix: stepIndent, atLineStart: true}
+}
+
+func (iw *indentWriter) Write(p []byte) (int, error) {
+	var buf []byte
+	for _, b := range p {
+		if iw.atLineStart && b != '\n' && b != '\r' {
+			buf = append(buf, iw.prefix...)
+			iw.atLineStart = false
+		}
+		buf = append(buf, b)
+		if b == '\n' || b == '\r' {
+			iw.atLineStart = true
+		}
+	}
+	if _, err := iw.w.Write(buf); err != nil {
+		return 0, err
+	}
+	return len(p), nil
+}

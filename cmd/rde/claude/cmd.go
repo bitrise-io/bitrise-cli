@@ -192,7 +192,10 @@ the in-session claude; once saved, future sessions reuse it.`,
 				log.step("Cloning %s (branch %s)…", repoDir, branch)
 			}
 			cloneCmd := buildCloneCommand(cloneURL, repoDir, branch, useDefaultBranch)
-			cloneCode, err := svc.ExecuteInteractive(ctx, workspaceID, sessionID, cloneCmd, os.Stdin, os.Stdout, os.Stderr)
+			// Indent the clone's streamed output so it lines up under the
+			// group. (The interactive Claude attach below streams raw — a
+			// full-screen TUI can't be column-shifted.)
+			cloneCode, err := svc.ExecuteInteractive(ctx, workspaceID, sessionID, cloneCmd, os.Stdin, newIndentWriter(os.Stdout), newIndentWriter(os.Stderr))
 			if err != nil {
 				return err
 			}

@@ -1,6 +1,41 @@
 package claude
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
+
+func TestIndentWriter(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		writes []string
+		want   string
+	}{
+		{"single line", []string{"hello\n"}, "  hello\n"},
+		{"multi line", []string{"a\nb\n"}, "  a\n  b\n"},
+		{"split across writes", []string{"hel", "lo\nwor", "ld\n"}, "  hello\n  world\n"},
+		{"carriage return progress", []string{"50%\r100%\n"}, "  50%\r  100%\n"},
+		{"crlf not double-indented", []string{"a\r\nb\r\n"}, "  a\r\n  b\r\n"},
+		{"trailing newline only indents next line lazily", []string{"x\n"}, "  x\n"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var sb strings.Builder
+			iw := newIndentWriter(&sb)
+			for _, w := range tc.writes {
+				n, err := iw.Write([]byte(w))
+				if err != nil {
+					t.Fatalf("Write(%q): %v", w, err)
+				}
+				if n != len(w) {
+					t.Errorf("Write(%q) = %d, want %d", w, n, len(w))
+				}
+			}
+			if got := sb.String(); got != tc.want {
+				t.Errorf("got  %q\nwant %q", got, tc.want)
+			}
+		})
+	}
+}
 
 func TestGitSSHURL(t *testing.T) {
 	for _, tc := range []struct {
