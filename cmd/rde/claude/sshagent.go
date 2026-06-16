@@ -59,10 +59,15 @@ func ensureAgentHasKey(ctx context.Context, log *stepLogger, cloneURL string) (c
 		return cleanup, forwardedAgentDesc(ctx)
 	}
 	log.step("Adding SSH key %s to the agent…", key)
+	// Indent ssh-add's output (e.g. "Identity added: …") under the group, like
+	// the clone. ssh-add writes prompts/results to stderr, so point stdout
+	// there too; using one shared writer makes exec serialize writes to it (no
+	// concurrent-write race on the indenter).
+	out := newIndentWriter(os.Stderr)
 	add := exec.CommandContext(ctx, "ssh-add", key) //nolint:gosec // G204: key is a local key-file path (from ssh -G or default files), passed as its own argv element — no shell, no injection
 	add.Stdin = os.Stdin
-	add.Stdout = os.Stderr // ssh-add writes prompts/results to stderr; keep stdout clean
-	add.Stderr = os.Stderr
+	add.Stdout = out
+	add.Stderr = out
 	_ = add.Run() // best-effort; the clone surfaces any remaining auth error
 	return cleanup, forwardedAgentDesc(ctx)
 }
