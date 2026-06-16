@@ -104,6 +104,8 @@ type CreateSessionRequest struct {
 	Name                    string
 	Description             string
 	TemplateID              string
+	Image                   string
+	MachineType             string
 	SessionInputs           []SessionInputValue
 	EnabledFeatureFlagNames []string
 	Cluster                 string
@@ -194,7 +196,8 @@ func (s *Service) ResolveSessionID(ctx context.Context, workspaceID, value strin
 	}
 }
 
-// CreateSession creates a session from a template.
+// CreateSession creates a session. Provide either a TemplateID or, for a
+// templateless session, an Image + MachineType.
 func (s *Service) CreateSession(ctx context.Context, workspaceID string, req CreateSessionRequest) (CreateSessionResult, error) {
 	if s.client == nil {
 		return CreateSessionResult{}, errClient()
@@ -212,6 +215,8 @@ func (s *Service) CreateSession(ctx context.Context, workspaceID string, req Cre
 		Name:                    req.Name,
 		Description:             req.Description,
 		TemplateID:              req.TemplateID,
+		Image:                   req.Image,
+		MachineType:             req.MachineType,
 		SessionInputs:           wireInputs,
 		EnabledFeatureFlagNames: req.EnabledFeatureFlagNames,
 		Cluster:                 req.Cluster,
@@ -415,6 +420,41 @@ func (s *Service) WaitForReady(ctx context.Context, workspaceID, sessionID strin
 		case "", "pending", "starting":
 			// still provisioning — keep polling
 		default:
+			return sess, nil
+		}
+		select {
+		case <-ctx.Done():
+			return Session{}, ctx.Err()
+		case <-time.After(interval):
+		}
+	}
+}
+
+// WaitForSSHReady polls GetSession until the session's SSH endpoint is usable
+// — connection open and address + password populated — and returns the
+// resulting Session. A "running" status (what WaitForReady waits for) does not
+// guarantee SSH is up: the backend issues credentials a few seconds later, so
+// callers that want to dial in must wait on this too.
+//
+// If the session leaves the "running" state while waiting (e.g. it fails or is
+// terminated), it returns an error rather than spinning forever. Returns
+// context.Canceled when ctx is cancelled.
+func (s *Service) WaitForSSHReady(ctx context.Context, workspaceID, sessionID string, interval time.Duration) (Session, error) {
+	if s.client == nil {
+		return Session{}, errClient()
+	}
+	if interval <= 0 {
+		interval = 3 * time.Second
+	}
+	for {
+		sess, err := s.GetSession(ctx, workspaceID, sessionID)
+		if err != nil {
+			return Session{}, err
+		}
+		if sess.Status != "running" {
+			return Session{}, fmt.Errorf("session is no longer running (status: %q) while waiting for SSH", sess.Status)
+		}
+		if sess.SSHConnectionOpen && sess.SSHAddress != "" && sess.SSHPassword != "" {
 			return sess, nil
 		}
 		select {

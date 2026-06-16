@@ -6,6 +6,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/bitrise-io/bitrise-cli/cmd/cmdutil"
+	rdeclaude "github.com/bitrise-io/bitrise-cli/cmd/rde/claude"
 	rdeimage "github.com/bitrise-io/bitrise-cli/cmd/rde/image"
 	rdemachinetype "github.com/bitrise-io/bitrise-cli/cmd/rde/machinetype"
 	rdesavedinput "github.com/bitrise-io/bitrise-cli/cmd/rde/savedinput"
@@ -34,6 +35,7 @@ Saved inputs are user-scoped — they do not require --workspace.`,
 	c.PersistentFlags().String(cmdutil.FlagWorkspace, "", "workspace ID (or set BITRISE_WORKSPACE_ID; defaults to default_workspace_id)")
 
 	c.AddCommand(
+		rdeclaude.NewCmd(),
 		rdesession.NewCmd(),
 		rdetemplate.NewCmd(),
 		rdesavedinput.NewCmd(),

@@ -16,6 +16,7 @@ import (
 
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/agent"
+	"golang.org/x/term"
 )
 
 // This file ports the MCP server's execute_ssh.go — same forced-interactive
@@ -58,6 +59,59 @@ type sshClient struct {
 }
 
 const sshHandshakeTimeout = 15 * time.Second
+
+const (
+	// sshDialReadyTimeout bounds how long dialSSHWithRetry keeps retrying a
+	// connection that's refused/unreachable — the SSH port may not accept
+	// connections for a few seconds after the session reports SSH-ready.
+	sshDialReadyTimeout  = 2 * time.Minute
+	sshDialRetryInterval = 2 * time.Second
+)
+
+// dialSSHWithRetry dials t, retrying on transient connection failures
+// (connection refused, reset, unreachable, timeout, early EOF) until
+// sshDialReadyTimeout elapses. Non-transient failures — notably authentication
+// — return immediately so a real misconfiguration fails fast.
+func dialSSHWithRetry(ctx context.Context, t sshTarget) (*sshClient, error) {
+	dialCtx, cancel := context.WithTimeout(ctx, sshDialReadyTimeout)
+	defer cancel()
+
+	var lastErr error
+	for {
+		client, err := dialSSH(dialCtx, t)
+		if err == nil {
+			return client, nil
+		}
+		if !isRetryableDialErr(err) {
+			return nil, err
+		}
+		lastErr = err
+		select {
+		case <-dialCtx.Done():
+			return nil, fmt.Errorf("ssh not reachable after %s: %w", sshDialReadyTimeout, lastErr)
+		case <-time.After(sshDialRetryInterval):
+		}
+	}
+}
+
+// isRetryableDialErr reports whether err is a transient connection-level
+// failure worth retrying. Network errors (connection refused/reset, host
+// unreachable, timeouts — all surfaced as *net.OpError / net.Error) and an
+// early io.EOF qualify; SSH auth/handshake errors do not.
+func isRetryableDialErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	var opErr *net.OpError
+	if errors.As(err, &opErr) {
+		return true
+	}
+	var netErr net.Error
+	if errors.As(err, &netErr) {
+		return true
+	}
+	return errors.Is(err, io.EOF)
+}
 
 func dialSSH(ctx context.Context, t sshTarget) (*sshClient, error) {
 	if t.Host == "" {
@@ -217,6 +271,171 @@ func (c *sshClient) run(ctx context.Context, userCmd string) (ExecResult, error)
 
 func buildLoginShellCmd(userCmd string) string {
 	return "bash -i -l -c '" + strings.ReplaceAll(userCmd, "'", `'\''`) + "'"
+}
+
+// defaultTermType is used when $TERM is unset (e.g. some CI shells); a sane
+// 256-color default keeps the remote program's rendering correct.
+const defaultTermType = "xterm-256color"
+
+// runInteractive runs userCmd in a forced-interactive login bash shell on a
+// fresh SSH session, streaming the caller's stdin/stdout/stderr live and
+// blocking until the remote program exits. When stdin is a terminal, it
+// allocates a PTY, puts the local terminal into raw mode, and forwards
+// SIGWINCH so the remote program reflows on resize.
+//
+// Unlike run, output is NOT captured and there is no timeout — this is meant
+// for long-lived interactive programs. The `-i -l` shell is used for the same
+// reason as run (RDE warmup writes PATH to ~/.bashrc); callers typically pass
+// `exec <program>` so bash replaces itself with the program rather than
+// leaving an interactive shell in front of it.
+//
+// Returns the remote exit code (0 on clean exit), or -1 with an error on
+// dial/session failure or context cancellation.
+func (c *sshClient) runInteractive(ctx context.Context, userCmd string, stdin io.Reader, stdout, stderr io.Writer) (int, error) {
+	session, err := c.client.NewSession()
+	if err != nil {
+		return -1, fmt.Errorf("ssh new session: %w", err)
+	}
+	defer session.Close() //nolint:errcheck // run errors take precedence; nothing actionable on close failure
+
+	if c.localAgent != nil {
+		// Best-effort, same posture as run: a refusing remote sshd just means
+		// agent-backed auth inside the session is unavailable.
+		_ = agent.RequestAgentForwarding(session)
+	}
+
+	session.Stdin = stdin
+	session.Stdout = stdout
+	session.Stderr = stderr
+
+	// Allocate a PTY only when the local stdin is a real terminal. In a pipe
+	// or CI context there's no TTY to mirror, so we run without one (the
+	// remote program then sees a non-interactive stdin, which is correct).
+	if fd, ok := ttyFd(stdin); ok {
+		oldState, rawErr := term.MakeRaw(fd)
+		if rawErr != nil {
+			return -1, fmt.Errorf("set terminal raw mode: %w", rawErr)
+		}
+		defer func() { _ = term.Restore(fd, oldState) }()
+
+		w, h, sizeErr := term.GetSize(fd)
+		if sizeErr != nil {
+			// Fall back to a conventional 80x24 if the size can't be read; the
+			// SIGWINCH watcher will correct it on the first resize.
+			w, h = 80, 24
+		}
+
+		termType := os.Getenv("TERM")
+		if termType == "" {
+			termType = defaultTermType
+		}
+		modes := ssh.TerminalModes{
+			ssh.ECHO:          1,
+			ssh.TTY_OP_ISPEED: 14400,
+			ssh.TTY_OP_OSPEED: 14400,
+		}
+		if ptyErr := session.RequestPty(termType, h, w, modes); ptyErr != nil {
+			return -1, fmt.Errorf("request pty: %w", ptyErr)
+		}
+
+		stop := watchWindowResize(session, fd)
+		defer stop()
+	}
+
+	done := make(chan struct{})
+	go func() {
+		select {
+		case <-ctx.Done():
+			_ = session.Close()
+		case <-done:
+		}
+	}()
+	defer close(done)
+
+	// Detect a dropped connection quickly instead of waiting for the OS TCP
+	// timeout (which can take minutes): keepAlive closes the client on the
+	// first unanswered probe, which unblocks the Run below.
+	go c.keepAlive(done)
+
+	runErr := session.Run(buildLoginShellCmd(userCmd))
+	if runErr == nil {
+		return 0, nil
+	}
+
+	if ctx.Err() != nil {
+		return -1, fmt.Errorf("ssh run cancelled: %w", ctx.Err())
+	}
+
+	var exitErr *ssh.ExitError
+	if errors.As(runErr, &exitErr) {
+		return exitErr.ExitStatus(), nil
+	}
+
+	// No exit status/signal (e.g. *ssh.ExitMissingError) or any other non-exit
+	// failure means the channel dropped under us — the connection was lost.
+	return -1, fmt.Errorf("%w: %v", ErrConnectionLost, runErr)
+}
+
+const (
+	// sshKeepAliveInterval is how often a keepalive probe is sent;
+	// sshKeepAliveTimeout is how long to wait for its reply before declaring
+	// the connection dead. Together they bound drop detection to roughly
+	// interval+timeout (≈5–10s).
+	sshKeepAliveInterval = 5 * time.Second
+	sshKeepAliveTimeout  = 5 * time.Second
+)
+
+// keepAlive sends periodic keepalive requests over the SSH transport. On the
+// first probe that errors or goes unanswered within sshKeepAliveTimeout it
+// assumes the connection is dead and closes the client, which unblocks an
+// in-flight session.Run (surfaced as ErrConnectionLost). It stops when done is
+// closed (normal end of the run).
+func (c *sshClient) keepAlive(done <-chan struct{}) {
+	ticker := time.NewTicker(sshKeepAliveInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-done:
+			return
+		case <-ticker.C:
+		}
+
+		// SendRequest blocks on the reply; the buffered channel lets the
+		// goroutine exit even if we stop waiting on a timeout.
+		reply := make(chan error, 1)
+		go func() {
+			_, _, err := c.client.SendRequest("keepalive@openssh.com", true, nil)
+			reply <- err
+		}()
+
+		select {
+		case <-done:
+			return
+		case err := <-reply:
+			if err == nil {
+				continue
+			}
+		case <-time.After(sshKeepAliveTimeout):
+		}
+
+		_ = c.client.Close() // unblocks session.Run; deferred Close is idempotent
+		return
+	}
+}
+
+// ttyFd returns the file descriptor of r when it is an *os.File backed by a
+// terminal. Kept local to internal/rde so the SSH layer doesn't take a
+// dependency on the cmd packages.
+func ttyFd(r io.Reader) (int, bool) {
+	f, ok := r.(*os.File)
+	if !ok {
+		return 0, false
+	}
+	fd := int(f.Fd()) //nolint:gosec // file descriptors are small ints, no overflow risk
+	if !term.IsTerminal(fd) {
+		return 0, false
+	}
+	return fd, true
 }
 
 // interactiveBashStartupNoise are the diagnostics `bash -i` writes to stderr
