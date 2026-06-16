@@ -100,11 +100,16 @@ type AutoMappedInput struct {
 	SavedInputID    string `json:"savedInputId"`
 }
 
-// CreateSessionRequest is the POST body for creating a session.
+// CreateSessionRequest is the POST body for creating a session. TemplateID is
+// optional: omit it (and supply Image + MachineType) to create a session
+// without a template. When a template is given, Image / MachineType optionally
+// override the template's defaults for this session.
 type CreateSessionRequest struct {
 	Name                    string              `json:"name"`
 	Description             string              `json:"description,omitempty"`
-	TemplateID              string              `json:"templateId"`
+	TemplateID              string              `json:"templateId,omitempty"`
+	Image                   string              `json:"image,omitempty"`
+	MachineType             string              `json:"machineType,omitempty"`
 	SessionInputs           []SessionInputValue `json:"sessionInputs,omitempty"`
 	EnabledFeatureFlagNames []string            `json:"enabledFeatureFlagNames,omitempty"`
 	Cluster                 string              `json:"cluster,omitempty"`

@@ -104,6 +104,8 @@ type CreateSessionRequest struct {
 	Name                    string
 	Description             string
 	TemplateID              string
+	Image                   string
+	MachineType             string
 	SessionInputs           []SessionInputValue
 	EnabledFeatureFlagNames []string
 	Cluster                 string
@@ -194,7 +196,8 @@ func (s *Service) ResolveSessionID(ctx context.Context, workspaceID, value strin
 	}
 }
 
-// CreateSession creates a session from a template.
+// CreateSession creates a session. Provide either a TemplateID or, for a
+// templateless session, an Image + MachineType.
 func (s *Service) CreateSession(ctx context.Context, workspaceID string, req CreateSessionRequest) (CreateSessionResult, error) {
 	if s.client == nil {
 		return CreateSessionResult{}, errClient()
@@ -212,6 +215,8 @@ func (s *Service) CreateSession(ctx context.Context, workspaceID string, req Cre
 		Name:                    req.Name,
 		Description:             req.Description,
 		TemplateID:              req.TemplateID,
+		Image:                   req.Image,
+		MachineType:             req.MachineType,
 		SessionInputs:           wireInputs,
 		EnabledFeatureFlagNames: req.EnabledFeatureFlagNames,
 		Cluster:                 req.Cluster,

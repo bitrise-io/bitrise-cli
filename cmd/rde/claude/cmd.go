@@ -20,8 +20,12 @@ import (
 	internalrde "github.com/bitrise-io/bitrise-cli/internal/rde"
 )
 
-// templateName is the RDE template this command always provisions from.
-const templateName = "szabi linux empty"
+// The command provisions a templateless session from a fixed image + machine
+// type, so there's no template to resolve or keep in sync.
+const (
+	sessionImage       = "linux-bitvirt-2026"
+	sessionMachineType = "g2.linux.amd-zen5.8c-32g"
+)
 
 // NewCmd returns the `bitrise-cli rde claude` command.
 func NewCmd() *cobra.Command {
@@ -30,8 +34,8 @@ func NewCmd() *cobra.Command {
 	c := &cobra.Command{
 		Use:   "claude",
 		Short: "Create an ephemeral RDE session and attach to Claude Code",
-		Long: `Create a fresh RDE session from the "` + templateName + `" template, wait for it
-to start, then SSH in and drop you directly into Claude Code (not a shell).
+		Long: `Create a fresh RDE session on the "` + sessionImage + `" image, wait for it to
+start, then SSH in and drop you directly into Claude Code (not a shell).
 
 Run this from inside a git repository: the session clones the same repository
 and branch you're on (via 'git clone') and starts Claude Code inside that
@@ -88,11 +92,6 @@ the in-session claude; once saved, future sessions reuse it.`,
 			}
 			svc := internalrde.NewService(client)
 
-			templateID, err := svc.ResolveTemplateID(ctx, workspaceID, templateName)
-			if err != nil {
-				return err
-			}
-
 			name, err := generateSessionName()
 			if err != nil {
 				return err
@@ -112,8 +111,9 @@ the in-session claude; once saved, future sessions reuse it.`,
 			log.group("Session")
 			log.step("Creating session %q…", name)
 			res, err := svc.CreateSession(ctx, workspaceID, internalrde.CreateSessionRequest{
-				Name:       name,
-				TemplateID: templateID,
+				Name:        name,
+				Image:       sessionImage,
+				MachineType: sessionMachineType,
 				// Map the Claude Code token saved input in so provisioning
 				// installs claude + tmux and the session is authenticated.
 				MapSavedToSessionInputs: claudeAuthReady,

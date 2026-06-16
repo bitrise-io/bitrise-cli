@@ -4,8 +4,8 @@ Create an ephemeral RDE session and attach to Claude Code
 
 ### Synopsis
 
-Create a fresh RDE session from the "szabi linux empty" template, wait for it
-to start, then SSH in and drop you directly into Claude Code (not a shell).
+Create a fresh RDE session on the "linux-bitvirt-2026" image, wait for it to
+start, then SSH in and drop you directly into Claude Code (not a shell).
 
 Run this from inside a git repository: the session clones the same repository
 and branch you're on (via 'git clone') and starts Claude Code inside that

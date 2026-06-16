@@ -106,6 +106,32 @@ func TestCreateSession_BodyAndResponse(t *testing.T) {
 	}
 }
 
+func TestCreateSession_TemplatelessOmitsTemplateID(t *testing.T) {
+	rs := newRecordingServer(t, `{"session":{"id":"new","name":"dev"}}`)
+
+	if _, _, err := rs.client().CreateSession(context.Background(), "ws-1", CreateSessionRequest{
+		Name:        "dev",
+		Image:       "linux-bitvirt-2026",
+		MachineType: "g2.linux.amd-zen5.8c-32g",
+	}); err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+
+	var sent map[string]any
+	if err := json.Unmarshal(rs.lastBody, &sent); err != nil {
+		t.Fatalf("unmarshal sent body: %v", err)
+	}
+	if _, ok := sent["templateId"]; ok {
+		t.Errorf("templateId should be omitted, body = %s", rs.lastBody)
+	}
+	if sent["image"] != "linux-bitvirt-2026" {
+		t.Errorf("image = %v, want linux-bitvirt-2026", sent["image"])
+	}
+	if sent["machineType"] != "g2.linux.amd-zen5.8c-32g" {
+		t.Errorf("machineType = %v, want g2.linux.amd-zen5.8c-32g", sent["machineType"])
+	}
+}
+
 func TestUpdateSession_OmitsUnsetPointerFields(t *testing.T) {
 	rs := newRecordingServer(t, `{"session":{"id":"s1","name":"renamed"}}`)
 
