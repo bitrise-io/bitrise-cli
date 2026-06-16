@@ -1,5 +1,5 @@
 // Package claude wires the `bitrise-cli rde claude` command: spin up an
-// ephemeral RDE session and attach straight into Claude Code.
+// RDE session and attach straight into Claude Code.
 package claude
 
 import (
@@ -34,7 +34,7 @@ func NewCmd() *cobra.Command {
 
 	c := &cobra.Command{
 		Use:   "claude",
-		Short: "Create an ephemeral RDE session and attach to Claude Code",
+		Short: "Create an RDE session and attach to Claude Code",
 		Long: `Create a fresh RDE session on the "` + sessionImage + `" image, wait for it to
 start, then SSH in and drop you directly into Claude Code (not a shell).
 
@@ -43,9 +43,9 @@ and branch you're on (via 'git clone') and starts Claude Code inside that
 clone. Only the pushed remote state of the branch is cloned — local
 uncommitted or unpushed changes are not transferred.
 
-The session is single-use: when you exit Claude Code, the session is
-terminated automatically. Each invocation creates a new, uniquely named
-session (claude-<id>).
+When you exit Claude Code, the session is terminated automatically (its VM is
+torn down), but the session is preserved and can be restored later. Each
+invocation creates a new, uniquely named session (claude-<id>).
 
 A local SSH agent ($SSH_AUTH_SOCK), if present, is forwarded into the session
 so the clone (and git-over-SSH inside the session) uses your local keys. If the
@@ -136,8 +136,9 @@ the in-session claude; once saved, future sessions reuse it.`,
 			}
 			sessionID := res.Session.ID
 
-			// Single-use session: tear it down on every exit path, including
-			// PTY errors and Ctrl-C. A fresh context is used because
+			// Terminate the session on every exit path, including PTY errors
+			// and Ctrl-C. Terminating stops the VM but preserves the session so
+			// it can be restored later. A fresh context is used because
 			// cmd.Context() may already be cancelled by the time we get here.
 			defer func() {
 				log.group("Cleanup")

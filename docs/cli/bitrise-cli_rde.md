@@ -41,7 +41,7 @@ Saved inputs are user-scoped — they do not require --workspace.
 ### SEE ALSO
 
 * [bitrise-cli](bitrise-cli.md)	 - Bitrise platform CLI
-* [bitrise-cli rde claude](bitrise-cli_rde_claude.md)	 - Create an ephemeral RDE session and attach to Claude Code
+* [bitrise-cli rde claude](bitrise-cli_rde_claude.md)	 - Create an RDE session and attach to Claude Code
 * [bitrise-cli rde image](bitrise-cli_rde_image.md)	 - List machine images available to the workspace
 * [bitrise-cli rde machine-type](bitrise-cli_rde_machine-type.md)	 - List machine types compatible with a given image
 * [bitrise-cli rde saved-input](bitrise-cli_rde_saved-input.md)	 - Manage saved inputs (reusable credentials/values)

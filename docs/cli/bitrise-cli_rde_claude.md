@@ -1,6 +1,6 @@
 ## bitrise-cli rde claude
 
-Create an ephemeral RDE session and attach to Claude Code
+Create an RDE session and attach to Claude Code
 
 ### Synopsis
 
@@ -12,9 +12,9 @@ and branch you're on (via 'git clone') and starts Claude Code inside that
 clone. Only the pushed remote state of the branch is cloned — local
 uncommitted or unpushed changes are not transferred.
 
-The session is single-use: when you exit Claude Code, the session is
-terminated automatically. Each invocation creates a new, uniquely named
-session (claude-<id>).
+When you exit Claude Code, the session is terminated automatically (its VM is
+torn down), but the session is preserved and can be restored later. Each
+invocation creates a new, uniquely named session (claude-<id>).
 
 A local SSH agent ($SSH_AUTH_SOCK), if present, is forwarded into the session
 so the clone (and git-over-SSH inside the session) uses your local keys. If the
