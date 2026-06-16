@@ -47,12 +47,12 @@ so the clone (and git-over-SSH inside the session) uses your local keys. If the
 repo's origin is an HTTPS GitHub/GitLab/Bitbucket URL, it's rewritten to its
 SSH form so the forwarded agent can authenticate.
 
-Unless a Claude Code token is already configured on the control plane, your
-local Claude Code credentials are forwarded so the in-session claude is logged
-in. The credential is taken from $CLAUDE_CODE_OAUTH_TOKEN or $ANTHROPIC_API_KEY,
-then ~/.claude/.credentials.json; if none is found, 'claude setup-token' is run
-to mint one (browser auth) and the result is saved on the control plane so
-future sessions don't need to mint again.`,
+Unless a Claude Code token is already configured on the control plane, a local
+credential is saved there before the session is created — taken from
+$CLAUDE_CODE_OAUTH_TOKEN or $ANTHROPIC_API_KEY, then ~/.claude/.credentials.json,
+or minted with 'claude setup-token' (browser auth). The control plane uses that
+token to install Claude Code and tmux during provisioning and to authenticate
+the in-session claude; once saved, future sessions reuse it.`,
 		Example: `  bitrise-cli rde claude --workspace WORKSPACE_ID`,
 		Args:    cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -100,22 +100,23 @@ future sessions don't need to mint again.`,
 
 			log := newStepLogger(cmd)
 
+			// ── Claude Code auth ───────────────────────────────────────────
+			// Ensure a Claude Code token exists on the control plane *before*
+			// creating the session: the backend installs claude + tmux during
+			// provisioning only when the token saved input is present, and maps
+			// it into the session as an env var so claude is authenticated.
+			log.group("Claude Code auth")
+			claudeAuthReady := ensureClaudeAuth(ctx, svc, log)
+
 			// ── Session ────────────────────────────────────────────────────
 			log.group("Session")
-
-			// If the control plane already has a Claude Code token (saved
-			// input), map it into the session and skip forwarding the local
-			// one. Best-effort: on a failed lookup, treat as absent and forward.
-			controlPlaneToken, cpErr := controlPlaneHasClaudeToken(ctx, svc)
-			if cpErr != nil {
-				controlPlaneToken = false
-			}
-
 			log.step("Creating session %q…", name)
 			res, err := svc.CreateSession(ctx, workspaceID, internalrde.CreateSessionRequest{
-				Name:                    name,
-				TemplateID:              templateID,
-				MapSavedToSessionInputs: controlPlaneToken,
+				Name:       name,
+				TemplateID: templateID,
+				// Map the Claude Code token saved input in so provisioning
+				// installs claude + tmux and the session is authenticated.
+				MapSavedToSessionInputs: claudeAuthReady,
 			})
 			if err != nil {
 				return err
@@ -202,45 +203,14 @@ future sessions don't need to mint again.`,
 			log.done("Repository cloned")
 
 			// ── Claude Code ────────────────────────────────────────────────
+			// Auth was provisioned up front (token saved input → session env
+			// var), so just start claude — no credential injection here.
 			log.group("Claude Code")
-
-			// Forward local Claude Code auth so the in-session claude is logged
-			// in — unless the control plane already provides a token.
-			var claudeEnvVar, claudeEnvVal string
-			if controlPlaneToken {
-				log.step("Auth: control plane token")
-			} else {
-				cred, ok := existingLocalCredential()
-				if !ok {
-					// Nothing local — mint a long-lived token (interactive browser auth).
-					log.step("No local credentials; minting one with 'claude setup-token'…")
-					cred, ok = mintSetupToken(ctx)
-				}
-				if ok {
-					claudeEnvVar, claudeEnvVal = cred.EnvVar, cred.Value
-					log.step("Auth: forwarded %s (from %s)", cred.EnvVar, cred.Source)
-					// Persist durable creds (env token/key or a freshly minted
-					// token) on the control plane so future sessions pick them
-					// up without re-forwarding.
-					if cred.Persist {
-						if _, saveErr := svc.CreateSavedInput(ctx, internalrde.CreateSavedInputRequest{
-							Key: cred.EnvVar, Value: cred.Value, IsSecret: true,
-						}); saveErr != nil {
-							log.warn("Failed to save the token on the control plane (%v); it won't persist for next time.", saveErr)
-						} else {
-							log.step("Saved the token on the control plane for future sessions")
-						}
-					}
-				} else {
-					log.warn("Auth: none found — you may need to log in inside the session.")
-				}
-			}
-
 			log.step("Starting…")
 			// Start claude inside a tmux session (in the cloned repo) so it
 			// survives a disconnect and can be reattached later; the user still
 			// lands directly in claude, not a shell.
-			claudeCmd := buildClaudeCommand(repoDir, claudeEnvVar, claudeEnvVal)
+			claudeCmd := buildClaudeCommand(repoDir)
 			exitCode, err := svc.ExecuteInteractive(ctx, workspaceID, sessionID, claudeCmd, os.Stdin, os.Stdout, os.Stderr)
 			if errors.Is(err, internalrde.ErrConnectionLost) {
 				// The connection dropped but claude keeps running in tmux on
@@ -254,6 +224,10 @@ future sessions don't need to mint again.`,
 			}
 			if exitCode != 0 {
 				cmdutil.SilenceRootErrors(cmd)
+				if exitCode == 127 {
+					// 127 = "command not found" from the login shell.
+					return fmt.Errorf("could not start Claude Code: 'tmux' or 'claude' is not installed on the session")
+				}
 				return fmt.Errorf("claude exited with status %d", exitCode)
 			}
 			return nil
@@ -308,24 +282,17 @@ func buildCloneCommand(cloneURL, repoDir, branch string, useDefaultBranch bool) 
 
 // buildClaudeCommand returns the remote shell command that starts Claude Code
 // inside repoDir, running it in a tmux session so it survives an SSH
-// disconnect and can be reattached later.
+// disconnect and can be reattached later. Auth comes from the session's
+// environment (the control-plane token saved input mapped in as an env var),
+// so nothing is injected here.
 //
 //   - `tmux new-session -A -s claude`: attach to the "claude" session if it
-//     already exists, else create it. (Reattach support to come.)
+//     already exists, else create it.
 //   - `-c <repoDir>`: the pane starts in the cloned repo.
 //   - `exec claude`: the pane's shell becomes claude, so the tmux session ends
 //     when claude exits.
-//
-// When envVar is non-empty, the forwarded credential is exported first; the
-// tmux server (started by this login-interactive bash) and its panes inherit
-// it along with PATH. The value is shell-quoted; the var name is a fixed
-// identifier.
-func buildClaudeCommand(repoDir, envVar, envVal string) string {
-	tmux := "tmux new-session -A -s claude -c " + cmdutil.ShellQuote(repoDir) + " " + cmdutil.ShellQuote("exec claude")
-	if envVar == "" {
-		return tmux
-	}
-	return "export " + envVar + "=" + cmdutil.ShellQuote(envVal) + " && " + tmux
+func buildClaudeCommand(repoDir string) string {
+	return "tmux new-session -A -s claude -c " + cmdutil.ShellQuote(repoDir) + " " + cmdutil.ShellQuote("exec claude")
 }
 
 // buildReattachCommand reattaches to the running "claude" tmux session after a
@@ -333,6 +300,39 @@ func buildClaudeCommand(repoDir, envVar, envVal string) string {
 // exited, tmux exits non-zero and we stop rather than starting claude over.
 func buildReattachCommand() string {
 	return "tmux attach-session -t claude"
+}
+
+// ensureClaudeAuth makes sure a Claude Code token is configured on the control
+// plane (a CLAUDE_CODE_OAUTH_TOKEN / ANTHROPIC_API_KEY saved input). When it's
+// missing, it resolves a local credential — env var, ~/.claude/.credentials.json,
+// or a freshly minted `claude setup-token` (browser auth) — and saves it. The
+// returned bool reports whether the token is present (and so should be mapped
+// into the session, which is what makes the backend install claude + tmux).
+// Best-effort: on failure it warns and returns false, letting the run continue.
+func ensureClaudeAuth(ctx context.Context, svc *internalrde.Service, log *stepLogger) bool {
+	if has, err := controlPlaneHasClaudeToken(ctx, svc); err == nil && has {
+		log.step("Using the Claude Code token already on the control plane")
+		return true
+	}
+
+	cred, ok := existingLocalCredential()
+	if !ok {
+		log.step("No token on the control plane or locally; minting one with 'claude setup-token'…")
+		cred, ok = mintSetupToken(ctx)
+	}
+	if !ok {
+		log.warn("No Claude Code credentials available; the session won't have Claude Code preinstalled.")
+		return false
+	}
+
+	if _, err := svc.CreateSavedInput(ctx, internalrde.CreateSavedInputRequest{
+		Key: cred.EnvVar, Value: cred.Value, IsSecret: true,
+	}); err != nil {
+		log.warn("Failed to save the Claude Code token on the control plane (%v).", err)
+		return false
+	}
+	log.step("Saved %s on the control plane (from %s)", cred.EnvVar, cred.Source)
+	return true
 }
 
 const (

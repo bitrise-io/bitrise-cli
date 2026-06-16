@@ -63,13 +63,13 @@ func TestIsSSHCloneURL(t *testing.T) {
 }
 
 func TestBuildClaudeCommand(t *testing.T) {
-	if got, want := buildClaudeCommand("repo", "", ""),
+	if got, want := buildClaudeCommand("repo"),
 		"tmux new-session -A -s claude -c repo 'exec claude'"; got != want {
-		t.Errorf("no cred:\n got  %q\n want %q", got, want)
+		t.Errorf("got  %q\n want %q", got, want)
 	}
-	if got, want := buildClaudeCommand("repo", "CLAUDE_CODE_OAUTH_TOKEN", "sk-tok en"),
-		"export CLAUDE_CODE_OAUTH_TOKEN='sk-tok en' && tmux new-session -A -s claude -c repo 'exec claude'"; got != want {
-		t.Errorf("with cred:\n got  %q\n want %q", got, want)
+	if got, want := buildClaudeCommand("my repo"),
+		"tmux new-session -A -s claude -c 'my repo' 'exec claude'"; got != want {
+		t.Errorf("quoted dir:\n got  %q\n want %q", got, want)
 	}
 }
 
@@ -92,23 +92,31 @@ func TestExistingLocalCredentialEnv(t *testing.T) {
 	t.Setenv("CLAUDE_CODE_OAUTH_TOKEN", "oauth-tok")
 	t.Setenv("ANTHROPIC_API_KEY", "api-key")
 	cred, ok := existingLocalCredential()
-	if !ok || cred.EnvVar != "CLAUDE_CODE_OAUTH_TOKEN" || cred.Value != "oauth-tok" || !cred.Persist {
-		t.Errorf("oauth env should win and persist: %+v ok=%v", cred, ok)
+	if !ok || cred.EnvVar != "CLAUDE_CODE_OAUTH_TOKEN" || cred.Value != "oauth-tok" {
+		t.Errorf("oauth env should win: %+v ok=%v", cred, ok)
 	}
 
 	t.Setenv("CLAUDE_CODE_OAUTH_TOKEN", "")
 	cred, ok = existingLocalCredential()
-	if !ok || cred.EnvVar != "ANTHROPIC_API_KEY" || cred.Value != "api-key" || !cred.Persist {
-		t.Errorf("api key fallback should persist: %+v ok=%v", cred, ok)
+	if !ok || cred.EnvVar != "ANTHROPIC_API_KEY" || cred.Value != "api-key" {
+		t.Errorf("api key fallback: %+v ok=%v", cred, ok)
 	}
 }
 
-func TestLastNonEmptyLine(t *testing.T) {
-	if got := lastNonEmptyLine("setup instructions\n\nsk-ant-oat-123\n\n"); got != "sk-ant-oat-123" {
-		t.Errorf("got %q, want sk-ant-oat-123", got)
+func TestExtractToken(t *testing.T) {
+	// Token surrounded by escape sequences, with terminal-restore codes as the
+	// trailing output (the case that previously got saved as the "token").
+	withEscapes := "\x1b[?2004hPaste here:\x1b[0m\nsk-ant-oat01-abc_DEF-123.xyz\n\x1b[>4m\x1b[<u\x1b[?1004l\x1b[?2031l\x1b[?2004l"
+	if got := extractToken(withEscapes); got != "sk-ant-oat01-abc_DEF-123.xyz" {
+		t.Errorf("with escapes: got %q", got)
 	}
-	if got := lastNonEmptyLine("   \n  \n"); got != "" {
-		t.Errorf("blank input: got %q, want empty", got)
+	// Pure escape-sequence garbage must not be mistaken for a token.
+	if got := extractToken("\x1b[>4m\x1b[<u\x1b[?1004l\x1b[?2031l\x1b[?2004l"); got != "" {
+		t.Errorf("escape-only: got %q, want empty", got)
+	}
+	// Fallback: a clean token-shaped final line with no sk-ant prefix.
+	if got := extractToken("info\nABCDEF0123456789abcdefXYZ\n"); got != "ABCDEF0123456789abcdefXYZ" {
+		t.Errorf("fallback: got %q", got)
 	}
 }
 

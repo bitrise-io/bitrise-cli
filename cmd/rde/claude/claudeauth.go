@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	internalrde "github.com/bitrise-io/bitrise-cli/internal/rde"
@@ -21,12 +22,11 @@ const (
 // sourceSetupToken labels a credential freshly minted by `claude setup-token`.
 const sourceSetupToken = "claude setup-token"
 
-// forwardCred is a local Claude Code credential to forward into the session.
+// forwardCred is a local Claude Code credential to save on the control plane.
 type forwardCred struct {
-	EnvVar  string // env var to set in the session (CLAUDE_CODE_OAUTH_TOKEN / ANTHROPIC_API_KEY)
-	Value   string // the token/key value
-	Source  string // short human-readable origin, for logging
-	Persist bool   // whether to save it on the control plane for future sessions
+	EnvVar string // saved-input key (CLAUDE_CODE_OAUTH_TOKEN / ANTHROPIC_API_KEY)
+	Value  string // the token/key value
+	Source string // short human-readable origin, for logging
 }
 
 // controlPlaneHasClaudeToken reports whether the user has a Claude Code token
@@ -52,14 +52,12 @@ func controlPlaneHasClaudeToken(ctx context.Context, svc *internalrde.Service) (
 // ok=false when nothing is found (the caller may then mint one).
 func existingLocalCredential() (forwardCred, bool) {
 	if v := os.Getenv(envOAuthToken); v != "" {
-		return forwardCred{EnvVar: envOAuthToken, Value: v, Source: "$" + envOAuthToken, Persist: true}, true
+		return forwardCred{EnvVar: envOAuthToken, Value: v, Source: "$" + envOAuthToken}, true
 	}
 	if v := os.Getenv(envAPIKey); v != "" {
-		return forwardCred{EnvVar: envAPIKey, Value: v, Source: "$" + envAPIKey, Persist: true}, true
+		return forwardCred{EnvVar: envAPIKey, Value: v, Source: "$" + envAPIKey}, true
 	}
 	if v, ok := credentialsFileToken(); ok {
-		// The credentials-file OAuth token is short-lived (subscription
-		// access token), so don't persist it on the control plane.
 		return forwardCred{EnvVar: envOAuthToken, Value: v, Source: credentialsFilePath()}, true
 	}
 	return forwardCred{}, false
@@ -76,15 +74,51 @@ func mintSetupToken(ctx context.Context) (forwardCred, bool) {
 	if err != nil {
 		return forwardCred{}, false
 	}
-	token := lastNonEmptyLine(string(out))
+	token := extractToken(string(out))
 	if token == "" {
 		return forwardCred{}, false
 	}
-	return forwardCred{EnvVar: envOAuthToken, Value: token, Source: sourceSetupToken, Persist: true}, true
+	return forwardCred{EnvVar: envOAuthToken, Value: token, Source: sourceSetupToken}, true
 }
 
-// lastNonEmptyLine returns the last non-blank, trimmed line of s — `claude
-// setup-token` prints the token as its final output line.
+var (
+	// ansiSeqRe matches the terminal escape sequences (CSI and OSC) that
+	// `claude setup-token` interleaves with its output.
+	ansiSeqRe = regexp.MustCompile(`\x1b\[[0-?]*[ -/]*[@-~]|\x1b\][^\x07]*\x07`)
+	// tokenRe matches an Anthropic token by its stable prefix.
+	tokenRe = regexp.MustCompile(`sk-ant-[A-Za-z0-9._-]{10,}`)
+	// fallbackTokenRe accepts a lone token-shaped line if the prefix ever
+	// changes — strict enough to reject stray escape-sequence fragments.
+	fallbackTokenRe = regexp.MustCompile(`^[A-Za-z0-9._-]{20,}$`)
+)
+
+// extractToken pulls the OAuth token out of `claude setup-token` output, which
+// interleaves the token with terminal escape sequences (so the naive "last
+// line" is often a terminal-restore sequence like ESC[?2004l). It strips ANSI
+// and control sequences, then matches the token by its sk-ant- prefix, falling
+// back to a single token-shaped line.
+func extractToken(out string) string {
+	clean := ansiSeqRe.ReplaceAllString(out, "")
+	clean = strings.Map(func(r rune) rune {
+		if r == '\n' || r == '\t' {
+			return r
+		}
+		if r < 0x20 || r == 0x7f { // drop remaining control chars (incl. lone ESC)
+			return -1
+		}
+		return r
+	}, clean)
+
+	if m := tokenRe.FindString(clean); m != "" {
+		return m
+	}
+	if line := lastNonEmptyLine(clean); fallbackTokenRe.MatchString(line) {
+		return line
+	}
+	return ""
+}
+
+// lastNonEmptyLine returns the last non-blank, trimmed line of s.
 func lastNonEmptyLine(s string) string {
 	lines := strings.Split(s, "\n")
 	for i := len(lines) - 1; i >= 0; i-- {
