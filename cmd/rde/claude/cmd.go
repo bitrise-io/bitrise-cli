@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"os/signal"
 	"strings"
 	"time"
 
@@ -60,7 +61,14 @@ the in-session claude; once saved, future sessions reuse it.`,
 		Example: `  bitrise-cli rde claude --workspace WORKSPACE_ID`,
 		Args:    cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			ctx := cmd.Context()
+			// Make the command interrupt-aware: Ctrl-C cancels ctx, which kills
+			// any child we launched (e.g. 'claude setup-token') and lets the
+			// deferred session cleanup run instead of hard-killing the process.
+			// (During the interactive Claude attach the terminal is in raw mode,
+			// so Ctrl-C is delivered to the remote claude, not to us — as
+			// intended.)
+			ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt)
+			defer stop()
 
 			// Resolve the local repo + branch FIRST so a non-repo cwd fails
 			// before we create (and would have to tear down) a session.
@@ -104,8 +112,12 @@ the in-session claude; once saved, future sessions reuse it.`,
 			// creating the session: the backend installs claude + tmux during
 			// provisioning only when the token saved input is present, and maps
 			// it into the session as an env var so claude is authenticated.
+			// Without a token the session would be useless for this command, so
+			// a failure here aborts before any VM is created.
 			log.group("Claude Code auth")
-			claudeAuthReady := ensureClaudeAuth(ctx, svc, log)
+			if err := ensureClaudeAuth(ctx, svc, log); err != nil {
+				return err
+			}
 
 			// ── Session ────────────────────────────────────────────────────
 			log.group("Session")
@@ -114,9 +126,10 @@ the in-session claude; once saved, future sessions reuse it.`,
 				Name:        name,
 				Image:       sessionImage,
 				MachineType: sessionMachineType,
-				// Map the Claude Code token saved input in so provisioning
-				// installs claude + tmux and the session is authenticated.
-				MapSavedToSessionInputs: claudeAuthReady,
+				// Auth is guaranteed present by now, so map the token saved
+				// input in: provisioning installs claude + tmux and the session
+				// is authenticated.
+				MapSavedToSessionInputs: true,
 			})
 			if err != nil {
 				return err
@@ -308,14 +321,24 @@ func buildReattachCommand() string {
 // ensureClaudeAuth makes sure a Claude Code token is configured on the control
 // plane (a CLAUDE_CODE_OAUTH_TOKEN / ANTHROPIC_API_KEY saved input). When it's
 // missing, it resolves a local credential — env var, ~/.claude/.credentials.json,
-// or a freshly minted `claude setup-token` (browser auth) — and saves it. The
-// returned bool reports whether the token is present (and so should be mapped
-// into the session, which is what makes the backend install claude + tmux).
-// Best-effort: on failure it warns and returns false, letting the run continue.
-func ensureClaudeAuth(ctx context.Context, svc *internalrde.Service, log *stepLogger) bool {
-	if has, err := controlPlaneHasClaudeToken(ctx, svc); err == nil && has {
+// or a freshly minted `claude setup-token` (browser auth) — and saves it.
+//
+// A token is mandatory: it's what makes the backend install claude + tmux and
+// authenticate the in-session claude, so the session is useless without one.
+// Any failure (control plane unreachable, no credential found, setup-token
+// cancelled/declined, save failed, or the run interrupted) returns an error so
+// the caller aborts before creating a VM.
+func ensureClaudeAuth(ctx context.Context, svc *internalrde.Service, log *stepLogger) error {
+	has, err := controlPlaneHasClaudeToken(ctx, svc)
+	if err != nil {
+		// We can't tell whether a token is configured. The same API is needed
+		// to save the token and create the session, so abort with a clear
+		// message rather than detouring through an unexpected setup-token flow.
+		return fmt.Errorf("check Claude Code token on the control plane: %w", err)
+	}
+	if has {
 		log.step("Using the Claude Code token already on the control plane")
-		return true
+		return nil
 	}
 
 	cred, ok := existingLocalCredential()
@@ -324,18 +347,22 @@ func ensureClaudeAuth(ctx context.Context, svc *internalrde.Service, log *stepLo
 		cred, ok = mintSetupToken(ctx)
 	}
 	if !ok {
-		log.warn("No Claude Code credentials available; the session won't have Claude Code preinstalled.")
-		return false
+		// A cancelled/interrupted run surfaces as the context error so the
+		// user sees "interrupted" rather than a misleading "no token" message.
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		return fmt.Errorf("no Claude Code token available ('claude setup-token' did not return one); not creating a session. " +
+			"Set $CLAUDE_CODE_OAUTH_TOKEN or $ANTHROPIC_API_KEY, log in locally, or configure a token on the control plane, then retry")
 	}
 
 	if _, err := svc.CreateSavedInput(ctx, internalrde.CreateSavedInputRequest{
 		Key: cred.EnvVar, Value: cred.Value, IsSecret: true,
 	}); err != nil {
-		log.warn("Failed to save the Claude Code token on the control plane (%v).", err)
-		return false
+		return fmt.Errorf("save Claude Code token on the control plane: %w", err)
 	}
 	log.step("Saved %s on the control plane (from %s)", cred.EnvVar, cred.Source)
-	return true
+	return nil
 }
 
 const (
