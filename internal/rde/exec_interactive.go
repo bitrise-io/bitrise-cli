@@ -2,9 +2,17 @@ package rde
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 )
+
+// ErrConnectionLost marks an interactive run that ended because the connection
+// to the session dropped (network failure, dropped SSH channel) rather than
+// the remote program exiting. Callers can match it with errors.Is to decide
+// whether to reconnect. A program inside a survivable wrapper (e.g. tmux) keeps
+// running on the session, so reattaching resumes it.
+var ErrConnectionLost = errors.New("connection to the session was lost")
 
 // ExecuteInteractive attaches the caller's terminal to command running on the
 // session over SSH and blocks until it exits, returning its exit code. Unlike
@@ -23,6 +31,11 @@ func (s *Service) ExecuteInteractive(ctx context.Context, workspaceID, sessionID
 	}
 	sess, err := s.GetSession(ctx, workspaceID, sessionID)
 	if err != nil {
+		// A network-level failure reaching the API (e.g. during an outage) is
+		// recoverable — surface it as a lost connection so callers can retry.
+		if isRetryableDialErr(err) {
+			return -1, fmt.Errorf("%w: %v", ErrConnectionLost, err)
+		}
 		return -1, fmt.Errorf("fetch session: %w", err)
 	}
 	if sess.Status != "running" {
@@ -47,6 +60,12 @@ func (s *Service) ExecuteInteractive(ctx context.Context, workspaceID, sessionID
 	// actually accepts connections, so the first attempts can be refused.
 	client, err := dialSSHWithRetry(ctx, target)
 	if err != nil {
+		// A transient connection failure (the dial-retry budget elapsed while
+		// the port/network was down) is recoverable; an auth/handshake failure
+		// is not.
+		if isRetryableDialErr(err) {
+			return -1, fmt.Errorf("%w: %v", ErrConnectionLost, err)
+		}
 		return -1, err
 	}
 	defer client.Close() //nolint:errcheck // run errors take precedence; nothing actionable on close failure

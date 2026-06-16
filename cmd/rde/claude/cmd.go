@@ -237,11 +237,18 @@ future sessions don't need to mint again.`,
 			}
 
 			log.step("Starting…")
-			// cd into the clone, then `exec claude` so the login-interactive
-			// bash replaces itself with Claude Code — the user lands directly
-			// in claude (inside the repo), not a shell.
+			// Start claude inside a tmux session (in the cloned repo) so it
+			// survives a disconnect and can be reattached later; the user still
+			// lands directly in claude, not a shell.
 			claudeCmd := buildClaudeCommand(repoDir, claudeEnvVar, claudeEnvVal)
 			exitCode, err := svc.ExecuteInteractive(ctx, workspaceID, sessionID, claudeCmd, os.Stdin, os.Stdout, os.Stderr)
+			if errors.Is(err, internalrde.ErrConnectionLost) {
+				// The connection dropped but claude keeps running in tmux on
+				// the session — reattach instead of tearing it down.
+				log.group("Reconnecting")
+				log.warn("Connection lost; Claude Code is still running in tmux on the session.")
+				exitCode, err = reattachWithRetry(ctx, svc, log, workspaceID, sessionID)
+			}
 			if err != nil {
 				return err
 			}
@@ -300,16 +307,60 @@ func buildCloneCommand(cloneURL, repoDir, branch string, useDefaultBranch bool) 
 }
 
 // buildClaudeCommand returns the remote shell command that starts Claude Code
-// inside repoDir. When envVar is non-empty, it exports the forwarded credential
-// first so the in-session claude is authenticated. The value is shell-quoted;
-// the var name is a fixed identifier. `exec` replaces the login-interactive
-// bash with claude, so the token drops out of the VM's process list.
+// inside repoDir, running it in a tmux session so it survives an SSH
+// disconnect and can be reattached later.
+//
+//   - `tmux new-session -A -s claude`: attach to the "claude" session if it
+//     already exists, else create it. (Reattach support to come.)
+//   - `-c <repoDir>`: the pane starts in the cloned repo.
+//   - `exec claude`: the pane's shell becomes claude, so the tmux session ends
+//     when claude exits.
+//
+// When envVar is non-empty, the forwarded credential is exported first; the
+// tmux server (started by this login-interactive bash) and its panes inherit
+// it along with PATH. The value is shell-quoted; the var name is a fixed
+// identifier.
 func buildClaudeCommand(repoDir, envVar, envVal string) string {
-	cd := "cd " + cmdutil.ShellQuote(repoDir) + " && exec claude"
+	tmux := "tmux new-session -A -s claude -c " + cmdutil.ShellQuote(repoDir) + " " + cmdutil.ShellQuote("exec claude")
 	if envVar == "" {
-		return cd
+		return tmux
 	}
-	return "export " + envVar + "=" + cmdutil.ShellQuote(envVal) + " && " + cd
+	return "export " + envVar + "=" + cmdutil.ShellQuote(envVal) + " && " + tmux
+}
+
+// buildReattachCommand reattaches to the running "claude" tmux session after a
+// dropped connection. It does NOT recreate the session: if claude already
+// exited, tmux exits non-zero and we stop rather than starting claude over.
+func buildReattachCommand() string {
+	return "tmux attach-session -t claude"
+}
+
+const (
+	reconnectInterval = 3 * time.Second
+	reconnectTimeout  = 5 * time.Minute
+)
+
+// reattachWithRetry keeps reattaching to the session's tmux after the
+// connection drops, until claude exits cleanly, the retry budget elapses, or
+// the context is cancelled. Each attempt's dial is itself retried inside
+// ExecuteInteractive, so a brief outage resolves on the next attempt.
+func reattachWithRetry(ctx context.Context, svc *internalrde.Service, log *stepLogger, workspaceID, sessionID string) (int, error) {
+	deadline := time.Now().Add(reconnectTimeout)
+	for attempt := 1; ; attempt++ {
+		log.step("Reattaching to Claude Code (attempt %d)…", attempt)
+		code, err := svc.ExecuteInteractive(ctx, workspaceID, sessionID, buildReattachCommand(), os.Stdin, os.Stdout, os.Stderr)
+		if !errors.Is(err, internalrde.ErrConnectionLost) {
+			return code, err // clean exit, real exit code, or a fatal error
+		}
+		if time.Now().After(deadline) {
+			return -1, fmt.Errorf("gave up reconnecting after %s: %w", reconnectTimeout, err)
+		}
+		select {
+		case <-ctx.Done():
+			return -1, ctx.Err()
+		case <-time.After(reconnectInterval):
+		}
+	}
 }
 
 // sshRewriteHosts are the hosts whose HTTPS clone URLs we rewrite to SSH form,

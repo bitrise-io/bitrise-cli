@@ -352,6 +352,11 @@ func (c *sshClient) runInteractive(ctx context.Context, userCmd string, stdin io
 	}()
 	defer close(done)
 
+	// Detect a dropped connection quickly instead of waiting for the OS TCP
+	// timeout (which can take minutes): keepAlive closes the client on the
+	// first unanswered probe, which unblocks the Run below.
+	go c.keepAlive(done)
+
 	runErr := session.Run(buildLoginShellCmd(userCmd))
 	if runErr == nil {
 		return 0, nil
@@ -366,7 +371,56 @@ func (c *sshClient) runInteractive(ctx context.Context, userCmd string, stdin io
 		return exitErr.ExitStatus(), nil
 	}
 
-	return -1, fmt.Errorf("ssh run: %w", runErr)
+	// No exit status/signal (e.g. *ssh.ExitMissingError) or any other non-exit
+	// failure means the channel dropped under us — the connection was lost.
+	return -1, fmt.Errorf("%w: %v", ErrConnectionLost, runErr)
+}
+
+const (
+	// sshKeepAliveInterval is how often a keepalive probe is sent;
+	// sshKeepAliveTimeout is how long to wait for its reply before declaring
+	// the connection dead. Together they bound drop detection to roughly
+	// interval+timeout (≈5–10s).
+	sshKeepAliveInterval = 5 * time.Second
+	sshKeepAliveTimeout  = 5 * time.Second
+)
+
+// keepAlive sends periodic keepalive requests over the SSH transport. On the
+// first probe that errors or goes unanswered within sshKeepAliveTimeout it
+// assumes the connection is dead and closes the client, which unblocks an
+// in-flight session.Run (surfaced as ErrConnectionLost). It stops when done is
+// closed (normal end of the run).
+func (c *sshClient) keepAlive(done <-chan struct{}) {
+	ticker := time.NewTicker(sshKeepAliveInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-done:
+			return
+		case <-ticker.C:
+		}
+
+		// SendRequest blocks on the reply; the buffered channel lets the
+		// goroutine exit even if we stop waiting on a timeout.
+		reply := make(chan error, 1)
+		go func() {
+			_, _, err := c.client.SendRequest("keepalive@openssh.com", true, nil)
+			reply <- err
+		}()
+
+		select {
+		case <-done:
+			return
+		case err := <-reply:
+			if err == nil {
+				continue
+			}
+		case <-time.After(sshKeepAliveTimeout):
+		}
+
+		_ = c.client.Close() // unblocks session.Run; deferred Close is idempotent
+		return
+	}
 }
 
 // ttyFd returns the file descriptor of r when it is an *os.File backed by a

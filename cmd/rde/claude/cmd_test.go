@@ -64,11 +64,11 @@ func TestIsSSHCloneURL(t *testing.T) {
 
 func TestBuildClaudeCommand(t *testing.T) {
 	if got, want := buildClaudeCommand("repo", "", ""),
-		"cd repo && exec claude"; got != want {
+		"tmux new-session -A -s claude -c repo 'exec claude'"; got != want {
 		t.Errorf("no cred:\n got  %q\n want %q", got, want)
 	}
 	if got, want := buildClaudeCommand("repo", "CLAUDE_CODE_OAUTH_TOKEN", "sk-tok en"),
-		"export CLAUDE_CODE_OAUTH_TOKEN='sk-tok en' && cd repo && exec claude"; got != want {
+		"export CLAUDE_CODE_OAUTH_TOKEN='sk-tok en' && tmux new-session -A -s claude -c repo 'exec claude'"; got != want {
 		t.Errorf("with cred:\n got  %q\n want %q", got, want)
 	}
 }
