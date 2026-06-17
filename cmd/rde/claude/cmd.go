@@ -19,6 +19,7 @@ import (
 	"github.com/bitrise-io/bitrise-cli/cmd/cmdutil"
 	internalapp "github.com/bitrise-io/bitrise-cli/internal/app"
 	internalrde "github.com/bitrise-io/bitrise-cli/internal/rde"
+	"github.com/bitrise-io/bitrise-cli/internal/rde/localsession"
 )
 
 // The command provisions a templateless session from a fixed image + machine
@@ -30,10 +31,14 @@ const (
 
 // NewCmd returns the `bitrise-cli rde claude` command.
 func NewCmd() *cobra.Command {
-	var waitTimeout time.Duration
+	var (
+		waitTimeout    time.Duration
+		resume         bool
+		continueLatest bool
+	)
 
 	c := &cobra.Command{
-		Use:   "claude",
+		Use:   "claude [SESSION_ID]",
 		Short: "Create an RDE session and attach to Claude Code",
 		Long: `Create a fresh RDE session on the "` + sessionImage + `" image, wait for it to
 start, then SSH in and drop you directly into Claude Code (not a shell).
@@ -47,6 +52,18 @@ When you exit Claude Code, the session is terminated automatically (its VM is
 torn down), but the session is preserved and can be restored later. Each
 invocation creates a new, uniquely named session (claude-<id>).
 
+Resume a previous session instead of creating one:
+
+  --continue        resume the most recent session started from this repo
+  --resume          pick a previous session for this repo from a list
+  --resume SESSION  resume a specific session by ID (or name)
+
+Resuming reconnects to the session if it's still running, otherwise restores it
+and continues the same Claude Code conversation. Sessions are tracked locally
+per repository as you use them; while a session is live, its AI-generated title
+and a "repo @ branch (#PR)" description are kept up to date both locally and on
+the session itself.
+
 A local SSH agent ($SSH_AUTH_SOCK), if present, is forwarded into the session
 so the clone (and git-over-SSH inside the session) uses your local keys. If the
 repo's origin is an HTTPS GitHub/GitLab/Bitbucket URL, it's rewritten to its
@@ -58,9 +75,11 @@ $CLAUDE_CODE_OAUTH_TOKEN or $ANTHROPIC_API_KEY, then ~/.claude/.credentials.json
 or minted with 'claude setup-token' (browser auth). The control plane uses that
 token to install Claude Code and tmux during provisioning and to authenticate
 the in-session claude; once saved, future sessions reuse it.`,
-		Example: `  bitrise-cli rde claude --workspace WORKSPACE_ID`,
-		Args:    cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, _ []string) error {
+		Example: `  bitrise-cli rde claude --workspace WORKSPACE_ID
+  bitrise-cli rde claude --continue
+  bitrise-cli rde claude --resume`,
+		Args: cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
 			// Make the command interrupt-aware: Ctrl-C cancels ctx, which kills
 			// any child we launched (e.g. 'claude setup-token') and lets the
 			// deferred session cleanup run instead of hard-killing the process.
@@ -70,189 +89,290 @@ the in-session claude; once saved, future sessions reuse it.`,
 			ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt)
 			defer stop()
 
-			// Resolve the local repo + branch FIRST so a non-repo cwd fails
-			// before we create (and would have to tear down) a session.
-			detector := internalapp.ExecGitDetector{}
-			originURL, err := detector.RemoteURL(ctx)
-			if err != nil {
-				return fmt.Errorf("detect git remote: %w", err)
+			// A positional argument implies resume-by-ID (fresh runs take no
+			// args), so any of --continue, --resume, or an explicit SESSION_ID
+			// routes to the resume flow.
+			target := ""
+			if len(args) == 1 {
+				target = args[0]
 			}
-			if originURL == "" {
-				return fmt.Errorf("current directory is not a git repository (or has no 'origin' remote); rde claude clones the current repo into the session")
+			if continueLatest || resume || target != "" {
+				return runResume(ctx, cmd, resumeOptions{
+					target:         target,
+					continueLatest: continueLatest,
+					waitTimeout:    waitTimeout,
+				})
 			}
-			branch, err := detector.CurrentBranch(ctx)
-			if err != nil {
-				return fmt.Errorf("detect git branch: %w", err)
-			}
-			if branch == "" {
-				return fmt.Errorf("could not determine the current git branch (detached HEAD?); check out a branch before running rde claude")
-			}
-			cloneURL := gitSSHURL(originURL)
-			repoDir := repoDirFromURL(originURL)
-
-			workspaceID, err := cmdutil.ResolveWorkspaceID(cmd)
-			if err != nil {
-				return err
-			}
-			client, err := cmdutil.NewRDEClient(cmd)
-			if err != nil {
-				return err
-			}
-			svc := internalrde.NewService(client)
-
-			name, err := generateSessionName()
-			if err != nil {
-				return err
-			}
-
-			log := newStepLogger(cmd)
-
-			// ── Claude Code auth ───────────────────────────────────────────
-			// Ensure a Claude Code token exists on the control plane *before*
-			// creating the session: the backend installs claude + tmux during
-			// provisioning only when the token saved input is present, and maps
-			// it into the session as an env var so claude is authenticated.
-			// Without a token the session would be useless for this command, so
-			// a failure here aborts before any VM is created.
-			log.group("Claude Code auth")
-			if err := ensureClaudeAuth(ctx, svc, log); err != nil {
-				return err
-			}
-
-			// ── Session ────────────────────────────────────────────────────
-			log.group("Session")
-			log.step("Creating session %q…", name)
-			res, err := svc.CreateSession(ctx, workspaceID, internalrde.CreateSessionRequest{
-				Name:        name,
-				Image:       sessionImage,
-				MachineType: sessionMachineType,
-				// Auth is guaranteed present by now, so map the token saved
-				// input in: provisioning installs claude + tmux and the session
-				// is authenticated.
-				MapSavedToSessionInputs: true,
-			})
-			if err != nil {
-				return err
-			}
-			sessionID := res.Session.ID
-
-			// Terminate the session on every exit path, including PTY errors
-			// and Ctrl-C. Terminating stops the VM but preserves the session so
-			// it can be restored later. A fresh context is used because
-			// cmd.Context() may already be cancelled by the time we get here.
-			defer func() {
-				log.group("Cleanup")
-				log.step("Terminating session %q…", name)
-				termCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-				defer cancel()
-				if _, termErr := svc.TerminateSession(termCtx, workspaceID, sessionID); termErr != nil {
-					log.warn("Failed to terminate session %q: %v", sessionID, termErr)
-					return
-				}
-				log.done("Session terminated")
-			}()
-
-			log.step("Waiting for it to start (timeout %s)…", waitTimeout)
-			// The whole startup wait — reaching "running" and then SSH
-			// credentials being issued — shares one timeout budget.
-			waitCtx, cancel := context.WithTimeout(ctx, waitTimeout)
-			defer cancel()
-
-			ready, err := svc.WaitForReady(waitCtx, workspaceID, sessionID, 0)
-			if err != nil {
-				return fmt.Errorf("waiting for session: %w", err)
-			}
-			if ready.Status != "running" {
-				cmdutil.SilenceRootErrors(cmd)
-				return fmt.Errorf("session ended provisioning with status %q (expected running)", ready.Status)
-			}
-
-			// "running" does not mean SSH is reachable yet — the backend
-			// issues credentials a few seconds later. Wait for them before
-			// dialing in.
-			log.step("Waiting for remote access…")
-			if _, err := svc.WaitForSSHReady(waitCtx, workspaceID, sessionID, 0); err != nil {
-				return fmt.Errorf("waiting for SSH access: %w", err)
-			}
-			log.done("Session ready")
-
-			// ── Repository ─────────────────────────────────────────────────
-			log.group("Repository")
-
-			// The clone authenticates via the forwarded local SSH agent; make
-			// sure an agent is running with a key loaded before we dial in.
-			// cleanupAgent kills a temporary agent we may have started; it
-			// must outlive the claude session, so defer it to command exit.
-			cleanupAgent, repoAuth := ensureAgentHasKey(ctx, log, cloneURL)
-			defer cleanupAgent()
-			log.step("Auth: %s", repoAuth)
-
-			// Clone the same repo + branch into the session over the
-			// forwarded SSH agent. Runs in its own interactive session so its
-			// output (git progress) streams live with no timeout.
-			// StrictHostKeyChecking=accept-new avoids a host-key prompt that
-			// would otherwise hang the non-interactive clone.
-			//
-			// If the current branch hasn't been pushed (not on the remote),
-			// fall back to cloning the remote's default branch.
-			useDefaultBranch := false
-			if found, determined := remoteHasBranch(ctx, branch); determined && !found {
-				useDefaultBranch = true
-			}
-			if useDefaultBranch {
-				log.warn("Branch %q is not on the remote; cloning the default branch instead.", branch)
-				log.step("Cloning %s (default branch)…", repoDir)
-			} else {
-				log.step("Cloning %s (branch %s)…", repoDir, branch)
-			}
-			cloneCmd := buildCloneCommand(cloneURL, repoDir, branch, useDefaultBranch)
-			// Indent the clone's streamed output so it lines up under the
-			// group. (The interactive Claude attach below streams raw — a
-			// full-screen TUI can't be column-shifted.)
-			cloneCode, err := svc.ExecuteInteractive(ctx, workspaceID, sessionID, cloneCmd, os.Stdin, newIndentWriter(os.Stdout), newIndentWriter(os.Stderr))
-			if err != nil {
-				return err
-			}
-			if cloneCode != 0 {
-				cmdutil.SilenceRootErrors(cmd)
-				return fmt.Errorf("git clone failed (status %d)", cloneCode)
-			}
-			log.done("Repository cloned")
-
-			// ── Claude Code ────────────────────────────────────────────────
-			// Auth was provisioned up front (token saved input → session env
-			// var), so just start claude — no credential injection here.
-			log.group("Claude Code")
-			log.step("Starting…")
-			// Start claude inside a tmux session (in the cloned repo) so it
-			// survives a disconnect and can be reattached later; the user still
-			// lands directly in claude, not a shell.
-			claudeCmd := buildClaudeCommand(repoDir)
-			exitCode, err := svc.ExecuteInteractive(ctx, workspaceID, sessionID, claudeCmd, os.Stdin, os.Stdout, os.Stderr)
-			if errors.Is(err, internalrde.ErrConnectionLost) {
-				// The connection dropped but claude keeps running in tmux on
-				// the session — reattach instead of tearing it down.
-				log.group("Reconnecting")
-				log.warn("Connection lost; Claude Code is still running in tmux on the session.")
-				exitCode, err = reattachWithRetry(ctx, svc, log, workspaceID, sessionID)
-			}
-			if err != nil {
-				return err
-			}
-			if exitCode != 0 {
-				cmdutil.SilenceRootErrors(cmd)
-				if exitCode == 127 {
-					// 127 = "command not found" from the login shell.
-					return fmt.Errorf("could not start Claude Code: 'tmux' or 'claude' is not installed on the session")
-				}
-				return fmt.Errorf("claude exited with status %d", exitCode)
-			}
-			return nil
+			return runFresh(ctx, cmd, waitTimeout)
 		},
 	}
 
 	c.Flags().DurationVar(&waitTimeout, "wait-timeout", 10*time.Minute, "max time to wait for the session to start (uses Go duration syntax: 30s, 5m, 1h)")
+	c.Flags().BoolVar(&resume, "resume", false, "resume a previous session for this repo; with no SESSION_ID, pick one from a list")
+	c.Flags().BoolVar(&continueLatest, "continue", false, "resume the most recent session started from this repo")
+	c.MarkFlagsMutuallyExclusive("resume", "continue")
 	return c
+}
+
+// runFresh creates a new RDE session and attaches to a fresh Claude Code
+// session inside it.
+func runFresh(ctx context.Context, cmd *cobra.Command, waitTimeout time.Duration) error {
+	// Resolve the local repo + branch FIRST so a non-repo cwd fails
+	// before we create (and would have to tear down) a session.
+	detector := internalapp.ExecGitDetector{}
+	originURL, err := detector.RemoteURL(ctx)
+	if err != nil {
+		return fmt.Errorf("detect git remote: %w", err)
+	}
+	if originURL == "" {
+		return fmt.Errorf("current directory is not a git repository (or has no 'origin' remote); rde claude clones the current repo into the session")
+	}
+	branch, err := detector.CurrentBranch(ctx)
+	if err != nil {
+		return fmt.Errorf("detect git branch: %w", err)
+	}
+	if branch == "" {
+		return fmt.Errorf("could not determine the current git branch (detached HEAD?); check out a branch before running rde claude")
+	}
+	cloneURL := gitSSHURL(originURL)
+	repoDir := repoDirFromURL(originURL)
+	repoPath := repoRootPath(ctx)
+
+	workspaceID, err := cmdutil.ResolveWorkspaceID(cmd)
+	if err != nil {
+		return err
+	}
+	client, err := cmdutil.NewRDEClient(cmd)
+	if err != nil {
+		return err
+	}
+	svc := internalrde.NewService(client)
+
+	name, err := generateSessionName()
+	if err != nil {
+		return err
+	}
+	// Generate the Claude session ID up front so we can store it, find its
+	// transcript to read the AI title, and resume it later.
+	claudeSessionID, err := generateClaudeSessionID()
+	if err != nil {
+		return err
+	}
+
+	log := newStepLogger(cmd)
+
+	// ── Claude Code auth ───────────────────────────────────────────
+	// Ensure a Claude Code token exists on the control plane *before*
+	// creating the session: the backend installs claude + tmux during
+	// provisioning only when the token saved input is present, and maps
+	// it into the session as an env var so claude is authenticated.
+	// Without a token the session would be useless for this command, so
+	// a failure here aborts before any VM is created.
+	log.group("Claude Code auth")
+	if err := ensureClaudeAuth(ctx, svc, log); err != nil {
+		return err
+	}
+
+	// ── Session ────────────────────────────────────────────────────
+	log.group("Session")
+	log.step("Creating session %q…", name)
+	res, err := svc.CreateSession(ctx, workspaceID, internalrde.CreateSessionRequest{
+		Name:        name,
+		Image:       sessionImage,
+		MachineType: sessionMachineType,
+		// Auth is guaranteed present by now, so map the token saved
+		// input in: provisioning installs claude + tmux and the session
+		// is authenticated.
+		MapSavedToSessionInputs: true,
+	})
+	if err != nil {
+		return err
+	}
+	sessionID := res.Session.ID
+
+	// Persist a local record immediately so the session is resumable even if
+	// this process dies abruptly (e.g. laptop sleep, SIGKILL) before the
+	// metadata monitor enriches it. Best-effort: a failure only costs resume.
+	rec := localsession.Record{
+		RDESessionID:    sessionID,
+		WorkspaceID:     workspaceID,
+		Name:            name,
+		ClaudeSessionID: claudeSessionID,
+		Repo:            originURL,
+		RepoPath:        repoPath,
+		Branch:          branch,
+		RemoteRepoDir:   repoDir,
+		LastStatus:      "running",
+	}
+	if err := localsession.Save(rec); err != nil {
+		log.warn("Could not save local session record (resume may be unavailable): %v", err)
+	}
+
+	// Terminate the session on every exit path, including PTY errors
+	// and Ctrl-C. Terminating stops the VM but preserves the session so
+	// it can be restored later.
+	defer terminateOnExit(svc, log, workspaceID, sessionID, name)()
+
+	log.step("Waiting for it to start (timeout %s)…", waitTimeout)
+	// The whole startup wait — reaching "running" and then SSH
+	// credentials being issued — shares one timeout budget.
+	waitCtx, cancel := context.WithTimeout(ctx, waitTimeout)
+	defer cancel()
+
+	ready, err := svc.WaitForReady(waitCtx, workspaceID, sessionID, 0)
+	if err != nil {
+		return fmt.Errorf("waiting for session: %w", err)
+	}
+	if ready.Status != "running" {
+		cmdutil.SilenceRootErrors(cmd)
+		return fmt.Errorf("session ended provisioning with status %q (expected running)", ready.Status)
+	}
+
+	// "running" does not mean SSH is reachable yet — the backend
+	// issues credentials a few seconds later. Wait for them before
+	// dialing in.
+	log.step("Waiting for remote access…")
+	if _, err := svc.WaitForSSHReady(waitCtx, workspaceID, sessionID, 0); err != nil {
+		return fmt.Errorf("waiting for SSH access: %w", err)
+	}
+	log.done("Session ready")
+
+	// ── Repository ─────────────────────────────────────────────────
+	log.group("Repository")
+
+	// The clone authenticates via the forwarded local SSH agent; make
+	// sure an agent is running with a key loaded before we dial in.
+	// cleanupAgent kills a temporary agent we may have started; it
+	// must outlive the claude session, so defer it to command exit.
+	cleanupAgent, repoAuth := ensureAgentHasKey(ctx, log, cloneURL)
+	defer cleanupAgent()
+	log.step("Auth: %s", repoAuth)
+
+	// Clone the same repo + branch into the session over the
+	// forwarded SSH agent. Runs in its own interactive session so its
+	// output (git progress) streams live with no timeout.
+	// StrictHostKeyChecking=accept-new avoids a host-key prompt that
+	// would otherwise hang the non-interactive clone.
+	//
+	// If the current branch hasn't been pushed (not on the remote),
+	// fall back to cloning the remote's default branch.
+	useDefaultBranch := false
+	if found, determined := remoteHasBranch(ctx, branch); determined && !found {
+		useDefaultBranch = true
+	}
+	if useDefaultBranch {
+		log.warn("Branch %q is not on the remote; cloning the default branch instead.", branch)
+		log.step("Cloning %s (default branch)…", repoDir)
+	} else {
+		log.step("Cloning %s (branch %s)…", repoDir, branch)
+	}
+	cloneCmd := buildCloneCommand(cloneURL, repoDir, branch, useDefaultBranch)
+	// Indent the clone's streamed output so it lines up under the
+	// group. (The interactive Claude attach below streams raw — a
+	// full-screen TUI can't be column-shifted.)
+	cloneCode, err := svc.ExecuteInteractive(ctx, workspaceID, sessionID, cloneCmd, os.Stdin, newIndentWriter(os.Stdout), newIndentWriter(os.Stderr))
+	if err != nil {
+		return err
+	}
+	if cloneCode != 0 {
+		cmdutil.SilenceRootErrors(cmd)
+		return fmt.Errorf("git clone failed (status %d)", cloneCode)
+	}
+	log.done("Repository cloned")
+
+	// ── Claude Code ────────────────────────────────────────────────
+	// Auth was provisioned up front (token saved input → session env
+	// var), so just start claude — no credential injection here.
+	log.group("Claude Code")
+	log.step("Starting…")
+	// Start claude inside a tmux session (in the cloned repo) so it
+	// survives a disconnect and can be reattached later; the user still
+	// lands directly in claude, not a shell.
+	exitCode, err := attachClaude(ctx, svc, log, attachParams{
+		workspaceID:     workspaceID,
+		sessionID:       sessionID,
+		claudeSessionID: claudeSessionID,
+		claudeCmd:       buildClaudeCommand(repoDir, claudeSessionID),
+		record:          rec,
+		describe:        newDescriber(repoSlugFromURL(originURL), branch),
+	})
+	if err != nil {
+		return err
+	}
+	return claudeExitError(cmd, exitCode)
+}
+
+// attachParams bundles what attachClaude needs to run the interactive Claude
+// session and keep the session's metadata up to date.
+type attachParams struct {
+	workspaceID     string
+	sessionID       string
+	claudeSessionID string
+	claudeCmd       string
+	record          localsession.Record
+	describe        func(context.Context) string
+}
+
+// attachClaude starts the metadata monitor for the session and runs the
+// interactive Claude command, reattaching on a dropped connection. It returns
+// Claude's exit code. The monitor is cancelled when this returns.
+func attachClaude(ctx context.Context, svc *internalrde.Service, log *stepLogger, p attachParams) (int, error) {
+	// The monitor reads the AI title from the session and pushes name +
+	// description updates to the local store and the API. Tie it to a child
+	// context so it stops as soon as the interactive session ends.
+	monCtx, monCancel := context.WithCancel(ctx)
+	defer monCancel()
+	mon := &internalrde.ClaudeMetadataMonitor{
+		Service:         svc,
+		WorkspaceID:     p.workspaceID,
+		SessionID:       p.sessionID,
+		ClaudeSessionID: p.claudeSessionID,
+		Interval:        internalrde.DefaultMetadataInterval,
+		Record:          p.record,
+		Describe:        p.describe,
+	}
+	go mon.Run(monCtx)
+
+	exitCode, err := svc.ExecuteInteractive(ctx, p.workspaceID, p.sessionID, p.claudeCmd, os.Stdin, os.Stdout, os.Stderr)
+	if errors.Is(err, internalrde.ErrConnectionLost) {
+		// The connection dropped but claude keeps running in tmux on the
+		// session — reattach instead of tearing it down.
+		log.group("Reconnecting")
+		log.warn("Connection lost; Claude Code is still running in tmux on the session.")
+		exitCode, err = reattachWithRetry(ctx, svc, log, p.workspaceID, p.sessionID)
+	}
+	return exitCode, err
+}
+
+// claudeExitError maps Claude's exit code to a user-facing error (nil on 0).
+func claudeExitError(cmd *cobra.Command, exitCode int) error {
+	if exitCode == 0 {
+		return nil
+	}
+	cmdutil.SilenceRootErrors(cmd)
+	if exitCode == 127 {
+		// 127 = "command not found" from the login shell.
+		return fmt.Errorf("could not start Claude Code: 'tmux' or 'claude' is not installed on the session")
+	}
+	return fmt.Errorf("claude exited with status %d", exitCode)
+}
+
+// terminateOnExit returns a cleanup that terminates the session. Terminating
+// stops the VM but preserves the session so it can be restored later. A fresh
+// context is used because the command context may already be cancelled (e.g.
+// Ctrl-C) by the time cleanup runs.
+func terminateOnExit(svc *internalrde.Service, log *stepLogger, workspaceID, sessionID, name string) func() {
+	return func() {
+		log.group("Cleanup")
+		log.step("Terminating session %q…", name)
+		termCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		if _, err := svc.TerminateSession(termCtx, workspaceID, sessionID); err != nil {
+			log.warn("Failed to terminate session %q: %v", sessionID, err)
+			return
+		}
+		log.done("Session terminated")
+	}
 }
 
 // generateSessionName returns a unique "claude-<hex>" session name. There is
@@ -306,10 +426,27 @@ func buildCloneCommand(cloneURL, repoDir, branch string, useDefaultBranch bool) 
 //   - `tmux new-session -A -s claude`: attach to the "claude" session if it
 //     already exists, else create it.
 //   - `-c <repoDir>`: the pane starts in the cloned repo.
-//   - `exec claude`: the pane's shell becomes claude, so the tmux session ends
-//     when claude exits.
-func buildClaudeCommand(repoDir string) string {
-	return "tmux new-session -A -s claude -c " + cmdutil.ShellQuote(repoDir) + " " + cmdutil.ShellQuote("exec claude")
+//   - `exec claude --session-id <id>`: the pane's shell becomes claude (so the
+//     tmux session ends when claude exits), started with a known session ID so
+//     we can locate its transcript and resume it later.
+func buildClaudeCommand(repoDir, claudeSessionID string) string {
+	return buildTmuxClaudeCommand(repoDir, "exec claude --session-id "+claudeSessionID)
+}
+
+// buildResumeCommand is buildClaudeCommand's resume counterpart: it resumes the
+// existing Claude conversation (`claude --resume <id>`) in repoDir. The `-A`
+// flag means that if the "claude" tmux session is still alive (the VM was never
+// torn down — e.g. after a laptop sleep), tmux reattaches to the live claude
+// and the command is ignored; only on a fresh VM (after a restore) does it run
+// `claude --resume`.
+func buildResumeCommand(repoDir, claudeSessionID string) string {
+	return buildTmuxClaudeCommand(repoDir, "exec claude --resume "+claudeSessionID)
+}
+
+// buildTmuxClaudeCommand wraps a claude invocation in the shared tmux launcher.
+// inner must be a single shell command (run via the shell so `exec` works).
+func buildTmuxClaudeCommand(repoDir, inner string) string {
+	return "tmux new-session -A -s claude -c " + cmdutil.ShellQuote(repoDir) + " " + cmdutil.ShellQuote(inner)
 }
 
 // buildReattachCommand reattaches to the running "claude" tmux session after a

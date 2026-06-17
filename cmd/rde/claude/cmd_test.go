@@ -98,13 +98,20 @@ func TestIsSSHCloneURL(t *testing.T) {
 }
 
 func TestBuildClaudeCommand(t *testing.T) {
-	if got, want := buildClaudeCommand("repo"),
-		"tmux new-session -A -s claude -c repo 'exec claude'"; got != want {
+	if got, want := buildClaudeCommand("repo", "sid-1"),
+		"tmux new-session -A -s claude -c repo 'exec claude --session-id sid-1'"; got != want {
 		t.Errorf("got  %q\n want %q", got, want)
 	}
-	if got, want := buildClaudeCommand("my repo"),
-		"tmux new-session -A -s claude -c 'my repo' 'exec claude'"; got != want {
+	if got, want := buildClaudeCommand("my repo", "sid-1"),
+		"tmux new-session -A -s claude -c 'my repo' 'exec claude --session-id sid-1'"; got != want {
 		t.Errorf("quoted dir:\n got  %q\n want %q", got, want)
+	}
+}
+
+func TestBuildResumeCommand(t *testing.T) {
+	if got, want := buildResumeCommand("repo", "sid-1"),
+		"tmux new-session -A -s claude -c repo 'exec claude --resume sid-1'"; got != want {
+		t.Errorf("got  %q\n want %q", got, want)
 	}
 }
 

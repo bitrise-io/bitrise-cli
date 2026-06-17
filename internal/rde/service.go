@@ -6,12 +6,22 @@
 package rde
 
 import (
+	"errors"
 	"fmt"
+	"net/http"
 	"strings"
 	"time"
 
 	rdeapi "github.com/bitrise-io/bitrise-cli/bitriseapi/rde"
 )
+
+// IsNotFound reports whether err is an RDE API 404 — the resource was deleted
+// or never existed. Callers use it to distinguish a gone session from a
+// transient failure.
+func IsNotFound(err error) bool {
+	apiErr, ok := errors.AsType[*rdeapi.APIError](err)
+	return ok && apiErr.StatusCode == http.StatusNotFound
+}
 
 // Service exposes RDE operations to the cmd layer.
 type Service struct {

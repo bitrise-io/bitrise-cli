@@ -47,6 +47,20 @@ type Session struct {
 	UpdatedAt            *time.Time `json:"updated_at,omitempty"`
 }
 
+// Resumable reports whether `rde claude` can resume this session: a running
+// session can be reattached, and a terminated/stopped/failed one can be
+// restored as long as its persistent disk is still available. Transitional
+// states settle into one of those, so they're treated as resumable too — the
+// resume flow waits them out.
+func (s Session) Resumable() bool {
+	switch s.Status {
+	case "terminated", "stopped", "failed":
+		return s.PersistentDiskStatus != DiskStatusUnavailable
+	default:
+		return true
+	}
+}
+
 // SessionTemplateSnapshot is the CLI shape of the template config captured
 // at session creation. Mirrors the wire type but with snake_case tags and
 // without the masked secret bag.
