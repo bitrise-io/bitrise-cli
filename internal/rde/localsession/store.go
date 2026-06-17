@@ -40,7 +40,6 @@ type Record struct {
 	RepoPath        string    `json:"repo_path,omitempty"` // local repo root; the project key
 	Branch          string    `json:"branch,omitempty"`
 	RemoteRepoDir   string    `json:"remote_repo_dir,omitempty"` // dir Claude runs in on the session
-	LastStatus      string    `json:"last_status,omitempty"`
 	CreatedAt       time.Time `json:"created_at"`
 	UpdatedAt       time.Time `json:"updated_at"`
 }

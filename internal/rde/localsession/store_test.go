@@ -37,7 +37,6 @@ func TestSaveLoadRoundTrip(t *testing.T) {
 		RepoPath:        repoPath,
 		Branch:          "feature",
 		RemoteRepoDir:   "repo",
-		LastStatus:      "running",
 	}
 	if err := Save(rec); err != nil {
 		t.Fatalf("Save: %v", err)

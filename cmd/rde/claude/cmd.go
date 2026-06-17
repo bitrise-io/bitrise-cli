@@ -202,7 +202,6 @@ func runFresh(ctx context.Context, cmd *cobra.Command, waitTimeout time.Duration
 		RepoPath:        repoPath,
 		Branch:          branch,
 		RemoteRepoDir:   repoDir,
-		LastStatus:      "running",
 	}
 	if err := localsession.Save(rec); err != nil {
 		log.warn("Could not save local session record (resume may be unavailable): %v", err)
