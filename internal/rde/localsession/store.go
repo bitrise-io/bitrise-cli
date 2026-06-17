@@ -4,13 +4,17 @@
 // Records are grouped by the local repository they were started from, mirroring
 // how Claude Code organizes its own transcripts by project:
 //
-//	<config-dir>/rde/projects/<encoded-repo-path>/<rde-session-id>.json
+//	<config-dir>/rde/projects/<encoded-repo-path>/sessions/<rde-session-id>.json
 //
 // where <config-dir> is the bitrise config directory (see internal/config.Dir).
 // One file per `rde claude` invocation. The record is written immediately at
 // session creation (so an abrupt stop still leaves something resumable) and
 // enriched over the session's life by the metadata monitor with the
 // AI-generated title and description.
+//
+// Session records live in their own "sessions" subdirectory so other
+// per-project state (e.g. prefs.json, see prefs.go) can sit beside it without
+// the readers here having to distinguish them.
 package localsession
 
 import (
@@ -62,14 +66,26 @@ func projectsDir() (string, error) {
 	return filepath.Join(dir, "rde", "projects"), nil
 }
 
-// projectDir returns the directory holding records for the given local repo
-// path. The key encodes the path into a single filesystem-safe segment.
+// projectDir returns the per-project root for the given local repo path. The
+// key encodes the path into a single filesystem-safe segment. It holds the
+// sessions/ subdirectory and any other per-project state (e.g. prefs.json).
 func projectDir(repoPath string) (string, error) {
 	root, err := projectsDir()
 	if err != nil {
 		return "", err
 	}
 	return filepath.Join(root, projectKey(repoPath)), nil
+}
+
+// sessionsDir returns the directory holding the session records for the given
+// local repo path. Records live under their own subdirectory so sibling
+// per-project files (prefs.json) can't be mistaken for sessions.
+func sessionsDir(repoPath string) (string, error) {
+	dir, err := projectDir(repoPath)
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, "sessions"), nil
 }
 
 // projectKey encodes a local repo path into one filesystem-safe segment by
@@ -113,7 +129,7 @@ func Save(rec Record) error {
 	}
 	rec.UpdatedAt = now
 
-	dir, err := projectDir(rec.RepoPath)
+	dir, err := sessionsDir(rec.RepoPath)
 	if err != nil {
 		return err
 	}
@@ -163,7 +179,7 @@ func writeFileAtomic(dir, name string, data []byte) error {
 // Load returns the record for the given repo + RDE session ID. A missing
 // record returns os.ErrNotExist.
 func Load(repoPath, rdeSessionID string) (Record, error) {
-	dir, err := projectDir(repoPath)
+	dir, err := sessionsDir(repoPath)
 	if err != nil {
 		return Record{}, err
 	}
@@ -171,11 +187,11 @@ func Load(repoPath, rdeSessionID string) (Record, error) {
 }
 
 // ListByProject returns every record for the given local repo, newest-updated
-// first. A missing project directory is not an error — it returns an empty
+// first. A missing sessions directory is not an error — it returns an empty
 // slice. Unparseable files are skipped so one corrupt record can't hide the
 // rest.
 func ListByProject(repoPath string) ([]Record, error) {
-	dir, err := projectDir(repoPath)
+	dir, err := sessionsDir(repoPath)
 	if err != nil {
 		return nil, err
 	}
@@ -219,7 +235,7 @@ func Latest(repoPath string) (Record, bool, error) {
 // Remove deletes the record for the given repo + RDE session ID. A missing
 // record is not an error.
 func Remove(repoPath, rdeSessionID string) error {
-	dir, err := projectDir(repoPath)
+	dir, err := sessionsDir(repoPath)
 	if err != nil {
 		return err
 	}

@@ -12,7 +12,8 @@ import (
 
 // prefsFileName is the per-project file holding the last image / machine type
 // chosen for `rde claude`, so the next run in the same repo can preselect them.
-// It sits alongside the session records under <config-dir>/rde/projects/<key>/.
+// It sits at the per-project root <config-dir>/rde/projects/<key>/prefs.json,
+// beside the sessions/ subdirectory that holds the session records.
 const prefsFileName = "prefs.json"
 
 // Prefs is the remembered `rde claude` selection for one local repo. Values are

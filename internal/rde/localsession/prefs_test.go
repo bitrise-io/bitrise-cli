@@ -57,6 +57,37 @@ func TestLoadPrefsMissingIsZeroValue(t *testing.T) {
 	}
 }
 
+// TestPrefsNotListedAsSession guards against the prefs file (which lives in the
+// same per-project directory and also ends in .json) being parsed as a phantom
+// session by the resume readers.
+func TestPrefsNotListedAsSession(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	repoPath := "/work/repo"
+
+	if err := SavePrefs(repoPath, Prefs{Image: "a", MachineType: "x"}); err != nil {
+		t.Fatalf("SavePrefs: %v", err)
+	}
+	if err := Save(Record{RDESessionID: "sess-1", RepoPath: repoPath, Name: "claude-1"}); err != nil {
+		t.Fatalf("Save record: %v", err)
+	}
+
+	recs, err := ListByProject(repoPath)
+	if err != nil {
+		t.Fatalf("ListByProject: %v", err)
+	}
+	if len(recs) != 1 || recs[0].RDESessionID != "sess-1" {
+		t.Fatalf("ListByProject = %+v, want exactly the real session sess-1", recs)
+	}
+
+	latest, ok, err := Latest(repoPath)
+	if err != nil {
+		t.Fatalf("Latest: %v", err)
+	}
+	if !ok || latest.RDESessionID != "sess-1" {
+		t.Errorf("Latest = %+v (ok=%v), want sess-1", latest, ok)
+	}
+}
+
 func TestSavePrefsValidation(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	if err := SavePrefs("", Prefs{Image: "a"}); err == nil {

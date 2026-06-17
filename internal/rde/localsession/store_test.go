@@ -74,7 +74,7 @@ func TestFilePerms(t *testing.T) {
 	if err := Save(Record{RDESessionID: "s", RepoPath: repoPath}); err != nil {
 		t.Fatalf("Save: %v", err)
 	}
-	dir, _ := projectDir(repoPath)
+	dir, _ := sessionsDir(repoPath)
 	di, err := os.Stat(dir)
 	if err != nil {
 		t.Fatalf("stat dir: %v", err)
