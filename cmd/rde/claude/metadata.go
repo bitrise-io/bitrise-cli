@@ -26,9 +26,9 @@ func generateClaudeSessionID() (string, error) {
 }
 
 // newDescriber returns a function that builds the session description from the
-// local repo context: "owner/repo @ branch (#PR)". It's a function (not a
-// fixed string) because the PR number can appear after the session starts, so
-// the metadata monitor re-evaluates it each tick.
+// local repo context: "owner/repo @ branch" with the pull-request URL on its
+// own line. It's a function (not a fixed string) because the PR can appear
+// after the session starts, so the metadata monitor re-evaluates it each tick.
 func newDescriber(repoSlug, branch string) func(context.Context) string {
 	return func(ctx context.Context) string {
 		return buildDescription(repoSlug, branch, ghPRURL(ctx, branch))

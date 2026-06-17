@@ -35,8 +35,9 @@ type ClaudeMetadataMonitor struct {
 	Record localsession.Record
 
 	// Describe returns the current session description (e.g.
-	// "owner/repo @ branch (#123)"). Called each tick because parts of it (a
-	// pull-request number) can appear after the session starts. May be nil.
+	// "owner/repo @ branch" with the pull-request URL on its own line). Called
+	// each tick because parts of it (the pull request) can appear after the
+	// session starts. May be nil.
 	Describe func(context.Context) string
 
 	// Debug, if set, receives diagnostic messages about skipped/failed updates.

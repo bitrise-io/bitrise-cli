@@ -49,9 +49,12 @@ type Session struct {
 
 // Resumable reports whether `rde claude` can resume this session: a running
 // session can be reattached, and a terminated/stopped/failed one can be
-// restored as long as its persistent disk is still available. Transitional
-// states settle into one of those, so they're treated as resumable too — the
-// resume flow waits them out.
+// restored as long as its persistent disk is still available. Any other
+// (transitional) state is reported resumable optimistically — it's an
+// in-flight status that should settle into one of the above. Whether the
+// session can actually be resumed at that moment is decided by the resume flow,
+// which reattaches a running session, restores a terminated/stopped/failed one,
+// and asks the user to retry shortly for anything still in flight.
 func (s Session) Resumable() bool {
 	switch s.Status {
 	case "terminated", "stopped", "failed":
