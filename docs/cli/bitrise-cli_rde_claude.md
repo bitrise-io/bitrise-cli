@@ -16,6 +16,18 @@ When you exit Claude Code, the session is terminated automatically (its VM is
 torn down), but the session is preserved and can be restored later. Each
 invocation creates a new, uniquely named session (claude-<id>).
 
+Resume a previous session instead of creating one:
+
+  --continue        resume the most recent session started from this repo
+  --resume          pick a previous session for this repo from a list
+  --resume SESSION  resume a specific session by ID (or name)
+
+Resuming reconnects to the session if it's still running, otherwise restores it
+and continues the same Claude Code conversation. Sessions are tracked locally
+per repository as you use them; while a session is live, its AI-generated title
+and a "repo @ branch" description (with the pull-request URL) are kept up to
+date both locally and on the session itself.
+
 A local SSH agent ($SSH_AUTH_SOCK), if present, is forwarded into the session
 so the clone (and git-over-SSH inside the session) uses your local keys. If the
 repo's origin is an HTTPS GitHub/GitLab/Bitbucket URL, it's rewritten to its
@@ -29,19 +41,23 @@ token to install Claude Code and tmux during provisioning and to authenticate
 the in-session claude; once saved, future sessions reuse it.
 
 ```
-bitrise-cli rde claude [flags]
+bitrise-cli rde claude [SESSION_ID] [flags]
 ```
 
 ### Examples
 
 ```
   bitrise-cli rde claude --workspace WORKSPACE_ID
+  bitrise-cli rde claude --continue
+  bitrise-cli rde claude --resume
 ```
 
 ### Options
 
 ```
+      --continue                resume the most recent session started from this repo
   -h, --help                    help for claude
+      --resume                  resume a previous session for this repo; with no SESSION_ID, pick one from a list
       --wait-timeout duration   max time to wait for the session to start (uses Go duration syntax: 30s, 5m, 1h) (default 10m0s)
 ```
 

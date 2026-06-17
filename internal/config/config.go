@@ -89,9 +89,11 @@ func (c *Config) UnmarshalYAML(value *yaml.Node) error {
 // and CLI flags).
 const DirFileName = ".bitrise-cli.yml"
 
-// Path returns the absolute path to the global config file (whether or not
-// it exists). Honors XDG_CONFIG_HOME, falling back to ~/.config.
-func Path() (string, error) {
+// Dir returns the absolute path to the bitrise config directory — the parent
+// of the global config file. Honors XDG_CONFIG_HOME, falling back to
+// ~/.config/bitrise. Other CLI state (e.g. the rde local session store under
+// rde/projects/) lives here alongside config.yaml.
+func Dir() (string, error) {
 	base := os.Getenv("XDG_CONFIG_HOME")
 	if base == "" {
 		home, err := os.UserHomeDir()
@@ -100,7 +102,17 @@ func Path() (string, error) {
 		}
 		base = filepath.Join(home, ".config")
 	}
-	return filepath.Join(base, "bitrise", "config.yaml"), nil
+	return filepath.Join(base, "bitrise"), nil
+}
+
+// Path returns the absolute path to the global config file (whether or not
+// it exists). Honors XDG_CONFIG_HOME, falling back to ~/.config.
+func Path() (string, error) {
+	dir, err := Dir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, "config.yaml"), nil
 }
 
 // Load reads and validates the config file. A missing file is not an error —
