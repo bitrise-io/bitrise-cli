@@ -127,26 +127,35 @@ func Save(rec Record) error {
 	}
 	data = append(data, '\n')
 
-	final := filepath.Join(dir, rec.RDESessionID+".json")
-	tmp, err := os.CreateTemp(dir, rec.RDESessionID+".*.tmp")
+	if err := writeFileAtomic(dir, rec.RDESessionID+".json", data); err != nil {
+		return fmt.Errorf("save session record: %w", err)
+	}
+	return nil
+}
+
+// writeFileAtomic writes data to dir/name via a temp file + rename, so a reader
+// never sees a half-written file. The file is 0600; callers create dir 0700.
+// The temp file keeps a ".tmp" suffix so it's ignored by the ".json" readers.
+func writeFileAtomic(dir, name string, data []byte) error {
+	tmp, err := os.CreateTemp(dir, name+".*.tmp")
 	if err != nil {
-		return fmt.Errorf("create temp session record: %w", err)
+		return fmt.Errorf("create temp file: %w", err)
 	}
 	tmpName := tmp.Name()
 	defer os.Remove(tmpName) //nolint:errcheck // best-effort cleanup if rename already moved it
 	if err := tmp.Chmod(0o600); err != nil {
 		tmp.Close() //nolint:errcheck,gosec // returning the chmod error; close failure is secondary
-		return fmt.Errorf("chmod temp session record: %w", err)
+		return fmt.Errorf("chmod temp file: %w", err)
 	}
 	if _, err := tmp.Write(data); err != nil {
 		tmp.Close() //nolint:errcheck,gosec // returning the write error; close failure is secondary
-		return fmt.Errorf("write session record: %w", err)
+		return fmt.Errorf("write temp file: %w", err)
 	}
 	if err := tmp.Close(); err != nil {
-		return fmt.Errorf("close session record: %w", err)
+		return fmt.Errorf("close temp file: %w", err)
 	}
-	if err := os.Rename(tmpName, final); err != nil {
-		return fmt.Errorf("save session record: %w", err)
+	if err := os.Rename(tmpName, filepath.Join(dir, name)); err != nil {
+		return fmt.Errorf("install file: %w", err)
 	}
 	return nil
 }
