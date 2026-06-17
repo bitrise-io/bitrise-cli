@@ -31,13 +31,14 @@ func generateClaudeSessionID() (string, error) {
 // the metadata monitor re-evaluates it each tick.
 func newDescriber(repoSlug, branch string) func(context.Context) string {
 	return func(ctx context.Context) string {
-		return buildDescription(repoSlug, branch, ghPRNumber(ctx, branch))
+		return buildDescription(repoSlug, branch, ghPRURL(ctx, branch))
 	}
 }
 
-// buildDescription assembles the "owner/repo @ branch (#PR)" description from
-// its parts, omitting any that are empty.
-func buildDescription(repoSlug, branch, pr string) string {
+// buildDescription assembles the session description: "owner/repo @ branch"
+// with the pull-request URL on its own line. Empty parts are omitted. The URL
+// is kept bare so URL-detecting UIs render it as a link.
+func buildDescription(repoSlug, branch, prURL string) string {
 	desc := repoSlug
 	if branch != "" {
 		if desc != "" {
@@ -46,16 +47,20 @@ func buildDescription(repoSlug, branch, pr string) string {
 			desc = branch
 		}
 	}
-	if pr != "" {
-		desc += " (#" + pr + ")"
+	if prURL != "" {
+		if desc != "" {
+			desc += "\n" + prURL
+		} else {
+			desc = prURL
+		}
 	}
 	return strings.TrimSpace(desc)
 }
 
-// ghPRNumber returns the open pull-request number for branch, best-effort via
+// ghPRURL returns the URL of the open pull request for branch, best-effort via
 // the `gh` CLI. Returns "" when gh isn't installed, isn't authenticated, or the
 // branch has no associated PR.
-func ghPRNumber(ctx context.Context, branch string) string {
+func ghPRURL(ctx context.Context, branch string) string {
 	if branch == "" {
 		return ""
 	}
@@ -63,15 +68,11 @@ func ghPRNumber(ctx context.Context, branch string) string {
 		return ""
 	}
 	//nolint:gosec // G204: branch comes from the local repo's checked-out HEAD, passed as its own argv element — no shell, no injection
-	out, err := exec.CommandContext(ctx, "gh", "pr", "view", branch, "--json", "number", "-q", ".number").Output()
+	out, err := exec.CommandContext(ctx, "gh", "pr", "view", branch, "--json", "url", "-q", ".url").Output()
 	if err != nil {
 		return ""
 	}
-	n := strings.TrimSpace(string(out))
-	if n == "" || n == "0" {
-		return ""
-	}
-	return n
+	return strings.TrimSpace(string(out))
 }
 
 // repoRootPath returns the absolute path of the current repo's root (the

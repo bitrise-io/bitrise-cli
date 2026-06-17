@@ -27,16 +27,17 @@ func TestRepoSlugFromURL(t *testing.T) {
 
 func TestBuildDescription(t *testing.T) {
 	for _, tc := range []struct {
-		slug, branch, pr, want string
+		slug, branch, prURL, want string
 	}{
 		{"org/repo", "main", "", "org/repo @ main"},
-		{"org/repo", "main", "7", "org/repo @ main (#7)"},
+		{"org/repo", "main", "https://example.com/pull/7", "org/repo @ main\nhttps://example.com/pull/7"},
 		{"org/repo", "", "", "org/repo"},
 		{"", "main", "", "main"},
+		{"", "", "https://example.com/pull/7", "https://example.com/pull/7"},
 		{"", "", "", ""},
 	} {
-		if got := buildDescription(tc.slug, tc.branch, tc.pr); got != tc.want {
-			t.Errorf("buildDescription(%q,%q,%q) = %q, want %q", tc.slug, tc.branch, tc.pr, got, tc.want)
+		if got := buildDescription(tc.slug, tc.branch, tc.prURL); got != tc.want {
+			t.Errorf("buildDescription(%q,%q,%q) = %q, want %q", tc.slug, tc.branch, tc.prURL, got, tc.want)
 		}
 	}
 }

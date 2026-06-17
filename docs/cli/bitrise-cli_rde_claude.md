@@ -25,8 +25,8 @@ Resume a previous session instead of creating one:
 Resuming reconnects to the session if it's still running, otherwise restores it
 and continues the same Claude Code conversation. Sessions are tracked locally
 per repository as you use them; while a session is live, its AI-generated title
-and a "repo @ branch (#PR)" description are kept up to date both locally and on
-the session itself.
+and a "repo @ branch" description (with the pull-request URL) are kept up to
+date both locally and on the session itself.
 
 A local SSH agent ($SSH_AUTH_SOCK), if present, is forwarded into the session
 so the clone (and git-over-SSH inside the session) uses your local keys. If the
