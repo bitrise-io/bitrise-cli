@@ -41,9 +41,9 @@ func NewCmd() *cobra.Command {
 		Long: `Create a fresh RDE session, wait for it to start, then SSH in and drop you
 directly into Claude Code (not a shell).
 
-You pick the image first, then a machine type compatible with it (like the RDE
-web UI). Your choice is remembered per repository and preselected next time, so
-you can just press Enter. Pass --image / --machine-type to skip the prompts
+You pick the image first, then a machine type compatible with it. Your choice
+is remembered per repository and preselected next time, so you can just press
+Enter. Pass --image / --machine-type to skip the prompts
 (useful for scripts); when stdin isn't a terminal the remembered or default
 selection is used without prompting.
 
