@@ -1,6 +1,7 @@
 ---
 name: rde-host
 description: Act on the user's local machine from inside this remote session. Use whenever the user asks for something that has to happen on their own computer rather than in the session — for example seeing something visual from the session on their own screen, or getting a file onto their machine. The actions actually available in this session are listed in the body below; only those work.
+allowed-tools: Bash(cat ~/.config/rde/host-bridge.json *) Bash(curl *)
 ---
 
 # Acting on the user's local machine

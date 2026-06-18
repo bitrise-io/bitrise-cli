@@ -145,6 +145,17 @@ func TestHostBridgeSkillHeaderHasFrontmatter(t *testing.T) {
 	if !strings.Contains(hostBridgeSkillHeader, "description:") {
 		t.Error("skill header is missing the description frontmatter that drives auto-invocation")
 	}
+	// The skill pre-approves the two commands it tells Claude to run, so the
+	// bridge call doesn't prompt. Guard both so neither silently regresses.
+	for _, want := range []string{
+		"allowed-tools:",
+		"Bash(cat ~/.config/rde/host-bridge.json *)",
+		"Bash(curl *)",
+	} {
+		if !strings.Contains(hostBridgeSkillHeader, want) {
+			t.Errorf("skill header is missing pre-approval rule %q", want)
+		}
+	}
 }
 
 func TestBuildSkillComposesOnlyRegisteredActions(t *testing.T) {
