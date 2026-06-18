@@ -7,7 +7,7 @@ A CLI tool to manage all Bitrise platform resources â€” CI, RM, RDE, and more â€
 ### Quick install (recommended)
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/bitrise-io/bitrise-cli/main/install.sh | bash
+curl -fsSL https://app.bitrise.io/cli/install.sh | bash
 ```
 
 This downloads the latest release for your OS and architecture, verifies its
