@@ -475,10 +475,24 @@ func buildClaudeCommand(repoDir, claudeSessionID string) string {
 // existing Claude conversation (`claude --resume <id>`) in repoDir. The `-A`
 // flag means that if the "claude" tmux session is still alive (the VM was never
 // torn down — e.g. after a laptop sleep), tmux reattaches to the live claude
-// and the command is ignored; only on a fresh VM (after a restore) does it run
-// `claude --resume`.
+// and the command is ignored; only on a fresh VM (after a restore) does the
+// inner command run.
+//
+// Claude Code only persists a session once its conversation starts, so a
+// session that was created but never talked to has no transcript and
+// `claude --resume <id>` fails ("No conversation found"). The inner command
+// guards against that: it resumes only when the transcript exists, otherwise it
+// starts fresh under the SAME session ID — so the metadata monitor and any
+// later resume keep working. The transcript glob matches the file claude writes
+// on the first message (the same path readAITitleCommand reads).
 func buildResumeCommand(repoDir, claudeSessionID string) string {
-	return buildTmuxClaudeCommand(repoDir, "exec claude --resume "+claudeSessionID)
+	id := claudeSessionID
+	inner := fmt.Sprintf(
+		"if ls ~/.claude/projects/*/%s.jsonl >/dev/null 2>&1; "+
+			"then exec claude --resume %s; "+
+			"else exec claude --session-id %s; fi",
+		id, id, id)
+	return buildTmuxClaudeCommand(repoDir, inner)
 }
 
 // buildTmuxClaudeCommand wraps a claude invocation in the shared tmux launcher.

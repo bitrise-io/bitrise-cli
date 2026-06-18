@@ -109,9 +109,18 @@ func TestBuildClaudeCommand(t *testing.T) {
 }
 
 func TestBuildResumeCommand(t *testing.T) {
-	if got, want := buildResumeCommand("repo", "sid-1"),
-		"tmux new-session -A -s claude -c repo 'exec claude --resume sid-1'"; got != want {
-		t.Errorf("got  %q\n want %q", got, want)
+	got := buildResumeCommand("repo", "sid-1")
+	// Resumes when the transcript exists, else starts fresh under the same ID
+	// (a session created but never talked to has no transcript to resume).
+	for _, want := range []string{
+		"tmux new-session -A -s claude -c repo ",
+		"if ls ~/.claude/projects/*/sid-1.jsonl >/dev/null 2>&1;",
+		"then exec claude --resume sid-1;",
+		"else exec claude --session-id sid-1;",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("buildResumeCommand missing %q\n got %q", want, got)
+		}
 	}
 }
 
