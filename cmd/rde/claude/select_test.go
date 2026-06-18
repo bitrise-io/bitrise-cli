@@ -79,6 +79,32 @@ func TestResolveDefault_ImageSwitchFallsBackToFirst(t *testing.T) {
 	}
 }
 
+func TestMoveToFront(t *testing.T) {
+	cases := map[string]struct {
+		in   []string
+		idx  int
+		want []string
+	}{
+		"middle moves to front, rest order kept": {in: []string{"a", "b", "c", "d"}, idx: 2, want: []string{"c", "a", "b", "d"}},
+		"last moves to front":                    {in: []string{"a", "b", "c"}, idx: 2, want: []string{"c", "a", "b"}},
+		"already first is unchanged":             {in: []string{"a", "b", "c"}, idx: 0, want: []string{"a", "b", "c"}},
+		"out of range is unchanged":              {in: []string{"a", "b"}, idx: 5, want: []string{"a", "b"}},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			got := moveToFront(tc.in, tc.idx)
+			if len(got) != len(tc.want) {
+				t.Fatalf("moveToFront(%v, %d) = %v, want %v", tc.in, tc.idx, got, tc.want)
+			}
+			for i := range tc.want {
+				if got[i] != tc.want[i] {
+					t.Fatalf("moveToFront(%v, %d) = %v, want %v", tc.in, tc.idx, got, tc.want)
+				}
+			}
+		})
+	}
+}
+
 func TestIndexOf(t *testing.T) {
 	names := []string{"a", "b", "c"}
 	if indexOf(names, "b") != 1 {

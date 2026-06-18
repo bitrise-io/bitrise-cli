@@ -87,11 +87,28 @@ func chooseOne(ctx context.Context, cmd *cobra.Command, log *stepLogger, noun, l
 		log.step("Using default %s (stdin is not a terminal): %s", noun, options[defaultIdx])
 		return options[defaultIdx], nil
 	}
-	idx, err := promptChoice(ctx, cmd, label, options, defaultIdx)
+	// Surface the default at the top of the list so it's easy to recognize as
+	// the press-Enter choice, then prompt with it preselected at position 1.
+	ordered := moveToFront(options, defaultIdx)
+	idx, err := promptChoice(ctx, cmd, label, ordered, 0)
 	if err != nil {
 		return "", err
 	}
-	return options[idx], nil
+	return ordered[idx], nil
+}
+
+// moveToFront returns options with the element at idx moved to the front,
+// preserving the relative order of the rest. idx must be a valid index; idx 0
+// (or out of range) returns options unchanged.
+func moveToFront(options []string, idx int) []string {
+	if idx <= 0 || idx >= len(options) {
+		return options
+	}
+	out := make([]string, 0, len(options))
+	out = append(out, options[idx])
+	out = append(out, options[:idx]...)
+	out = append(out, options[idx+1:]...)
+	return out
 }
 
 // promptChoice renders a numbered list of options to stderr and reads a
