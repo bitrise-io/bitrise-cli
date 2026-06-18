@@ -147,17 +147,22 @@ func TestHostBridgeSkillHeaderHasFrontmatter(t *testing.T) {
 	}
 	// The skill pre-approves the two commands it tells Claude to run, so the
 	// bridge call doesn't prompt. Guard both so neither silently regresses.
-	// cat is pre-approved broadly: a path-scoped rule failed to match the actual
-	// command (the running shell expands ~ to an absolute path, which a literal
-	// ~ pattern doesn't line up with), so the skill allows cat outright.
+	// Read access to the bridge config is granted with a scoped Read() rule
+	// (cat is a built-in read-only command, so the only gate is file access).
 	for _, want := range []string{
 		"allowed-tools:",
-		"Bash(cat *)",
+		"Read(~/.config/rde/**)",
 		"Bash(curl *)",
 	} {
 		if !strings.Contains(hostBridgeSkillHeader, want) {
 			t.Errorf("skill header is missing pre-approval rule %q", want)
 		}
+	}
+	// Guard against re-broadening to a blanket cat rule: combined with the broad
+	// curl, that would be a silent read-any-file-and-exfiltrate path. Read access
+	// must stay scoped via the Read() rule above.
+	if strings.Contains(hostBridgeSkillHeader, "Bash(cat") {
+		t.Error("skill must not pre-approve cat as a Bash rule; read access is granted via the scoped Read() rule")
 	}
 }
 
