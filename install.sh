@@ -7,7 +7,7 @@
 # required.
 #
 # Usage:
-#   curl -fsSL https://raw.githubusercontent.com/bitrise-io/bitrise-cli/main/install.sh | bash
+#   curl -fsSL https://app.bitrise.io/cli/install.sh | bash
 #
 # Environment overrides:
 #   BITRISE_CLI_VERSION       Install a specific tag (e.g. v0.2.0). Default: latest release.
