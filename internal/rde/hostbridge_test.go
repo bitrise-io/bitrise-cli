@@ -141,14 +141,43 @@ func TestHostBridgeHandlerCapsRequestBody(t *testing.T) {
 	}
 }
 
-func TestHostBridgeSkillReferencesActions(t *testing.T) {
-	// The embedded skill is static; this guards it from drifting out of sync with
-	// the routes the bridge actually serves.
-	if !strings.Contains(hostBridgeSkill, ActionOpenVNC) {
-		t.Errorf("embedded skill does not mention action %q", ActionOpenVNC)
+func TestHostBridgeSkillHeaderHasFrontmatter(t *testing.T) {
+	if !strings.Contains(hostBridgeSkillHeader, "description:") {
+		t.Error("skill header is missing the description frontmatter that drives auto-invocation")
 	}
-	if !strings.Contains(hostBridgeSkill, "description:") {
-		t.Error("embedded skill is missing the description frontmatter that drives auto-invocation")
+}
+
+func TestBuildSkillComposesOnlyRegisteredActions(t *testing.T) {
+	// The skill must describe exactly the registered actions and nothing else, so
+	// a session never advertises a capability it lacks.
+	b := &HostBridge{Actions: map[string]HostAction{
+		"alpha": {SkillSection: "## alpha\nsection-alpha"},
+	}}
+	skill := b.buildSkill()
+	if !strings.Contains(skill, hostBridgeSkillHeader[:40]) {
+		t.Error("composed skill does not start from the shared header")
+	}
+	if !strings.Contains(skill, "section-alpha") {
+		t.Error("composed skill is missing the registered action's section")
+	}
+	if strings.Contains(skill, "section-beta") {
+		t.Error("composed skill leaked an unregistered action's section")
+	}
+}
+
+func TestBuildSkillIsOrderedAndSkipsEmptySections(t *testing.T) {
+	b := &HostBridge{Actions: map[string]HostAction{
+		"zebra":   {SkillSection: "## zebra"},
+		"alpha":   {SkillSection: "## alpha"},
+		"noskill": {SkillSection: ""},
+	}}
+	skill := b.buildSkill()
+	ai, zi := strings.Index(skill, "## alpha"), strings.Index(skill, "## zebra")
+	if ai < 0 || zi < 0 || ai > zi {
+		t.Errorf("sections not present in name order (alpha=%d zebra=%d)", ai, zi)
+	}
+	if strings.Contains(skill, "noskill") {
+		t.Error("an action with an empty section should contribute nothing")
 	}
 }
 

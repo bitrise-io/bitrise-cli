@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	rdeapi "github.com/bitrise-io/bitrise-cli/bitriseapi/rde"
@@ -32,8 +33,15 @@ func newTestService(t *testing.T, h http.Handler) *internalrde.Service {
 func TestLocalHostActions_OffersOpenVNCWhenSessionHasVNC(t *testing.T) {
 	svc := newTestService(t, sessionResponse("vnc://host.example:5900"))
 	actions := localHostActions(context.Background(), svc, "ws-1", "s-1")
-	if _, ok := actions[internalrde.ActionOpenVNC]; !ok {
+	action, ok := actions[internalrde.ActionOpenVNC]
+	if !ok {
 		t.Fatal("expected open-vnc action for a VNC-capable session")
+	}
+	// The action must ship a skill section, and it must reference its own route —
+	// otherwise the composed skill would document an endpoint that doesn't exist
+	// (or omit one that does).
+	if !strings.Contains(action.SkillSection, internalrde.ActionOpenVNC) {
+		t.Errorf("open-vnc skill section does not mention the %q route", internalrde.ActionOpenVNC)
 	}
 }
 

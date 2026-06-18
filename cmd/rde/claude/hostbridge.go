@@ -2,6 +2,7 @@ package claude
 
 import (
 	"context"
+	_ "embed"
 	"fmt"
 	"net/http"
 
@@ -12,6 +13,14 @@ import (
 // openVNCURL hands a vnc:// URL to the OS viewer. A package var so tests can
 // assert what the open-vnc action would launch without opening anything.
 var openVNCURL = cmdutil.OpenVNCURL
+
+// openVNCSkillSection documents the open-vnc action in the provisioned skill.
+// It is appended to the bridge's shared skill header only when the action is
+// registered (i.e. on sessions that expose VNC), so it never advertises VNC on
+// a session that has none.
+//
+//go:embed skills/open-vnc.md
+var openVNCSkillSection string
 
 // newHostBridge builds the host bridge for the session with the given allowlist
 // of local actions. A pure constructor — the action set (and the decision of
@@ -40,7 +49,10 @@ func newHostBridge(svc *internalrde.Service, workspaceID, sessionID string, acti
 func localHostActions(ctx context.Context, svc *internalrde.Service, workspaceID, sessionID string) map[string]internalrde.HostAction {
 	actions := map[string]internalrde.HostAction{}
 	if hasVNC, err := svc.SessionExposesVNC(ctx, workspaceID, sessionID); err == nil && hasVNC {
-		actions[internalrde.ActionOpenVNC] = internalrde.HostAction{Handle: openVNCAction(svc, workspaceID, sessionID)}
+		actions[internalrde.ActionOpenVNC] = internalrde.HostAction{
+			Handle:       openVNCAction(svc, workspaceID, sessionID),
+			SkillSection: openVNCSkillSection,
+		}
 	}
 	return actions
 }

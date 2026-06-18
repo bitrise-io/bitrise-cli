@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -44,18 +45,29 @@ const (
 	bridgeMaxRequestBody = 64 << 10
 )
 
+// hostBridgeSkillHeader is the shared preamble of the provisioned skill: the
+// frontmatter plus the bridge mechanics (read the control file, POST with the
+// token). Each registered action appends its own section, so the skill always
+// describes exactly the actions available in this session — and nothing else.
+//
 //go:embed hostbridge_skill.md
-var hostBridgeSkill string
+var hostBridgeSkillHeader string
 
 // HostAction is one entry in the bridge's allowlist. It is a struct, not a bare
-// func, so future actions can carry metadata (for example a confirmation policy
-// for side-effecting actions like a future file download) without reshaping the
-// allowlist or every existing action.
+// func, so an action can carry metadata alongside its handler without reshaping
+// the allowlist or every existing action.
 type HostAction struct {
 	// Handle runs the action and returns a JSON-marshalable result. ctx is
 	// bounded by bridgeActionTimeout; r exposes the request for actions that take
 	// parameters (open-vnc takes none).
 	Handle func(ctx context.Context, r *http.Request) (any, error)
+
+	// SkillSection is the Markdown section appended to the skill header to tell
+	// Claude when and how to use this action. Only sections for registered
+	// actions are written, so the skill never advertises a capability the
+	// session lacks. (Reserved for future metadata too, e.g. a confirmation
+	// policy for side-effecting actions like a file download.)
+	SkillSection string
 }
 
 // HostBridge exposes a fixed allowlist of "host actions" to the Claude Code
@@ -285,7 +297,33 @@ func (b *HostBridge) writeSkill(ctx context.Context) error {
 	if c == nil {
 		return fmt.Errorf("host bridge: no connection")
 	}
-	return remoteWriteFile(ctx, c, hostBridgeSkillDir, hostBridgeSkillFile, hostBridgeSkill, false)
+	return remoteWriteFile(ctx, c, hostBridgeSkillDir, hostBridgeSkillFile, b.buildSkill(), false)
+}
+
+// buildSkill assembles the SKILL.md for this session: the shared header plus the
+// section of each registered action (ordered by action name for a stable
+// result). Because only registered actions contribute, the skill describes
+// exactly what this session can do — e.g. a Linux session without VNC never
+// gets the open-vnc section.
+func (b *HostBridge) buildSkill() string {
+	names := make([]string, 0, len(b.Actions))
+	for name := range b.Actions {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	var sb strings.Builder
+	sb.WriteString(strings.TrimRight(hostBridgeSkillHeader, "\n"))
+	for _, name := range names {
+		section := strings.TrimSpace(b.Actions[name].SkillSection)
+		if section == "" {
+			continue
+		}
+		sb.WriteString("\n\n")
+		sb.WriteString(section)
+	}
+	sb.WriteString("\n")
+	return sb.String()
 }
 
 // writeControlFile drops the bridge URL and bearer token into a 0600 file the

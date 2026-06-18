@@ -1,39 +1,35 @@
 ---
 name: rde-host
-description: Run an action on the user's local machine from inside this remote session — currently, open a VNC viewer on their screen showing this session's desktop. Use when the user asks to see the desktop, screen, GUI, simulator, emulator, or browser running in the session, or whenever a visual result is worth showing them directly.
+description: Act on the user's local machine from inside this remote session. Use whenever the user asks for something that has to happen on their own computer rather than in the session — for example seeing something visual from the session on their own screen, or getting a file onto their machine. The actions actually available in this session are listed in the body below; only those work.
 ---
 
 # Acting on the user's local machine
 
 This session can reach the user's local machine through a small "host bridge".
-You cannot show a GUI to the user by opening it here — their screen is on their
-own machine, not in this session. To show them something visual, ask the host
-bridge to open a VNC viewer locally; it connects back to this session's desktop.
+You cannot affect the user's machine by running things here — their screen,
+files, and apps live on their own computer, not in this session. To do something
+there, call the host bridge.
 
-## Opening a VNC viewer on the user's machine
+Before each call, read the bridge address and token. The port can change if the
+connection reconnects, so **read the file every time** rather than reusing an
+old value:
 
-1. Read the bridge address and token. They live in a file and the port can
-   change if the connection reconnects, so **read the file every time** rather
-   than remembering an old value:
+```bash
+cat ~/.config/rde/host-bridge.json
+```
 
-   ```bash
-   cat ~/.config/rde/host-bridge.json
-   ```
+It contains `{"url": "...", "token": "..."}`. If the file does not exist, the
+host bridge is not available in this session — tell the user and stop.
 
-   It contains `{"url": "...", "token": "..."}`. If the file does not exist, the
-   host bridge is not available in this session — tell the user you can't open a
-   viewer on their machine, and stop.
+Then POST to the action you want, authenticating with the token, using the `url`
+and `token` you just read:
 
-2. POST to the `open-vnc` action using those values:
+```bash
+curl -sS -X POST "$URL/<action>" -H "Authorization: Bearer $TOKEN"
+```
 
-   ```bash
-   curl -fsS -X POST "$URL/open-vnc" -H "Authorization: Bearer $TOKEN"
-   ```
+Report what the bridge returns — on a non-2xx response the body explains what
+went wrong.
 
-   where `$URL` and `$TOKEN` are the `url` and `token` you just read.
-
-3. On success the response is `{"opened": true, ...}` and a VNC viewer opens on
-   the user's machine. Let them know it should now be on their screen. On a
-   non-2xx response, report what the bridge returned.
-
-Only these documented actions are available — the bridge ignores anything else.
+Only the actions listed below are available in this session. The bridge ignores
+anything else, so do not assume an action exists unless it appears here.
