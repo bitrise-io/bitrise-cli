@@ -6,11 +6,14 @@ package resolve
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/bitrise-io/bitrise-cli/bitriseapi"
 	"github.com/bitrise-io/bitrise-cli/internal/cache"
+	"github.com/bitrise-io/bitrise-cli/internal/config"
 )
 
 // Resolver maps display names to API slugs for apps and workspaces.
@@ -69,6 +72,38 @@ func (r *Resolver) WorkspaceSlug(ctx context.Context, value string) (string, err
 		}
 		return "", fmt.Errorf("workspace name %q is ambiguous (matches %d workspaces: %v) — pass a workspace ID instead", value, len(matches), slugs)
 	}
+}
+
+// SoleWorkspace returns the user's workspace when they have exactly one. With
+// zero or 2+ workspaces it returns a friendly error, since no default can be
+// picked unambiguously. This is the single definition of the "exactly one
+// workspace" rule and its guidance message: both the --workspace fallback
+// (cmdutil.ResolveWorkspaceID) and `app create`'s auto-detect route through it.
+func SoleWorkspace(orgs []bitriseapi.Organization) (bitriseapi.Organization, error) {
+	switch len(orgs) {
+	case 0:
+		return bitriseapi.Organization{}, errors.New("no workspaces found for this account — create one in the Bitrise dashboard, or pass --workspace")
+	case 1:
+		return orgs[0], nil
+	default:
+		slugs := make([]string, 0, len(orgs))
+		for _, o := range orgs {
+			slugs = append(slugs, o.Slug)
+		}
+		sort.Strings(slugs)
+		return bitriseapi.Organization{}, fmt.Errorf("multiple workspaces available — pass --workspace, set %s, or run 'bitrise-cli config set %s <id>'. Available: %s",
+			config.EnvWorkspaceID, config.KeyDefaultWorkspaceID, strings.Join(slugs, ", "))
+	}
+}
+
+// DefaultWorkspace fetches the user's workspaces (GET /organizations) and
+// returns the only one. See SoleWorkspace for the zero/multiple cases.
+func (r *Resolver) DefaultWorkspace(ctx context.Context) (bitriseapi.Organization, error) {
+	orgs, err := r.client.Organizations(ctx)
+	if err != nil {
+		return bitriseapi.Organization{}, fmt.Errorf("list workspaces: %w", err)
+	}
+	return SoleWorkspace(orgs)
 }
 
 // ResolveApp is like AppSlug but returns the full bitriseapi.App when value

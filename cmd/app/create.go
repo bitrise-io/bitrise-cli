@@ -42,8 +42,9 @@ Auto-detection from the current git repo:
 Workspace:
   --workspace is required if you belong to multiple workspaces.
   Otherwise it falls back to:
-    1. default_workspace_id from config
-    2. auto-detect when your account has exactly one workspace
+    1. BITRISE_WORKSPACE_ID environment variable
+    2. default_workspace_id from config
+    3. auto-detect when your account has exactly one workspace
 
 bitrise.yml handling:
   --bitrise-yml PATH   upload that file as the app's config
@@ -73,13 +74,13 @@ commands (build trigger, build list, ...) target it without --app.`,
 				return err
 			}
 
-			// Resolve org from flag → config (auto-detect happens inside
-			// the service when both are empty).
+			// Resolve org from flag → BITRISE_WORKSPACE_ID env → config
+			// (auto-detect happens inside the service when all are empty).
 			resolvedOrg := orgSlug
-			orgFromConfig := false
+			orgFromDefault := false
 			if resolvedOrg == "" {
-				resolvedOrg = config.FromContext(ctx).OrgSlug
-				orgFromConfig = resolvedOrg != ""
+				resolvedOrg = config.FromContext(ctx).WorkspaceID
+				orgFromDefault = resolvedOrg != ""
 			}
 
 			// Resolve bitrise.yml: explicit path > ./bitrise.yml > none.
@@ -88,8 +89,9 @@ commands (build trigger, build list, ...) target it without --app.`,
 				return err
 			}
 
-			// Friendly stderr breadcrumbs (silenced by -q).
-			if !cmdutil.IsQuiet(cmd) {
+			// Friendly stderr breadcrumbs (silenced by -q, and by JSON output
+			// so scripts/CI don't get human hint noise on stderr).
+			if !cmdutil.IsQuiet(cmd) && format == output.Human {
 				ew := cmdutil.NewErrWriter(cmd.ErrOrStderr())
 				if gitURLDetected {
 					ew.F("Detected repo URL from git: %s\n", resolvedRepoURL)
@@ -97,8 +99,8 @@ commands (build trigger, build list, ...) target it without --app.`,
 				if gitBranchDetected {
 					ew.F("Detected branch from git: %s\n", resolvedBranch)
 				}
-				if orgFromConfig {
-					ew.F("Using workspace from config: %s\n", resolvedOrg)
+				if orgFromDefault {
+					ew.F("Using default workspace: %s\n", resolvedOrg)
 				}
 				switch yamlSource {
 				case yamlSourceFlag:
