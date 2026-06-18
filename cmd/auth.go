@@ -108,7 +108,7 @@ clear).`,
 			case emailLogin != "":
 				return runEmailLogin(cmd, emailLogin, passwordStdin)
 			case withToken:
-				return runTokenLogin(cmd, true)
+				return runTokenLogin(cmd)
 			case passwordStdin:
 				return fmt.Errorf("--password-stdin requires --email (token login reads the token, not a password)")
 			case cmdutil.IsTerminal(cmd.InOrStdin()):
@@ -117,7 +117,7 @@ clear).`,
 			default:
 				// Non-interactive stdin (CI, pipes): read a token from stdin so
 				// `echo "$TOKEN" | bitrise-cli auth login` keeps working.
-				return runTokenLogin(cmd, true)
+				return runTokenLogin(cmd)
 			}
 		},
 	}
@@ -140,8 +140,11 @@ clear).`,
 	return c
 }
 
-func runTokenLogin(cmd *cobra.Command, withToken bool) error {
-	tok, err := cmdutil.ReadSecretInput(cmd.InOrStdin(), cmd.ErrOrStderr(), "Paste your Bitrise token: ", withToken)
+// runTokenLogin saves a token read from stdin — a pipe, or --with-token. Token
+// login never prompts: a bare interactive `auth login` defaults to OAuth, so
+// the token always arrives on stdin, never via an interactive paste prompt.
+func runTokenLogin(cmd *cobra.Command) error {
+	tok, err := cmdutil.ReadSecretInput(cmd.InOrStdin(), cmd.ErrOrStderr(), "", true)
 	if err != nil {
 		return err
 	}
