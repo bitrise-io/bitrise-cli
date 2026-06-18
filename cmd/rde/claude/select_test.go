@@ -118,6 +118,60 @@ func TestIndexOf(t *testing.T) {
 	}
 }
 
+func TestReuseSummary(t *testing.T) {
+	if got := reuseSummary("osx-26-edge", "g2.mac.m2pro.4c-6g"); got != "osx-26-edge · g2.mac.m2pro.4c-6g · 4 vCPU · 6 GB" {
+		t.Errorf("reuseSummary with specs = %q", got)
+	}
+	// A machine name without a parseable spec tail omits the hint.
+	if got := reuseSummary("linux-bitvirt-2026", "g2.mac"); got != "linux-bitvirt-2026 · g2.mac" {
+		t.Errorf("reuseSummary without specs = %q", got)
+	}
+}
+
+func TestBuildReuseMenu(t *testing.T) {
+	const summary = "img · mt"
+	for _, tc := range []struct {
+		name         string
+		multiImage   bool
+		multiMachine bool
+		wantTitles   []string
+		wantActions  []reuseAction
+	}{
+		{"both changeable", true, true,
+			[]string{"Use this setup", "Change image", "Change machine type"},
+			[]reuseAction{reuseUse, reuseChangeImage, reuseChangeMachine}},
+		{"single machine type hides machine row", true, false,
+			[]string{"Use this setup", "Change image"},
+			[]reuseAction{reuseUse, reuseChangeImage}},
+		{"single image hides image row", false, true,
+			[]string{"Use this setup", "Change machine type"},
+			[]reuseAction{reuseUse, reuseChangeMachine}},
+		{"single of both → reuse only", false, false,
+			[]string{"Use this setup"},
+			[]reuseAction{reuseUse}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			items, actions := buildReuseMenu(tc.multiImage, tc.multiMachine, summary)
+			if len(items) != len(tc.wantTitles) {
+				t.Fatalf("items = %d, want %d", len(items), len(tc.wantTitles))
+			}
+			for i, want := range tc.wantTitles {
+				if items[i].Title != want {
+					t.Errorf("items[%d].Title = %q, want %q", i, items[i].Title, want)
+				}
+			}
+			if items[0].Desc != summary {
+				t.Errorf("reuse row Desc = %q, want %q", items[0].Desc, summary)
+			}
+			for i, want := range tc.wantActions {
+				if actions[i] != want {
+					t.Errorf("actions[%d] = %d, want %d", i, actions[i], want)
+				}
+			}
+		})
+	}
+}
+
 func TestMachineSpecHint(t *testing.T) {
 	for _, tc := range []struct {
 		name string
