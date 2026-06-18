@@ -86,14 +86,37 @@ func SoleWorkspace(orgs []bitriseapi.Organization) (bitriseapi.Organization, err
 	case 1:
 		return orgs[0], nil
 	default:
-		slugs := make([]string, 0, len(orgs))
-		for _, o := range orgs {
-			slugs = append(slugs, o.Slug)
-		}
-		sort.Strings(slugs)
-		return bitriseapi.Organization{}, fmt.Errorf("multiple workspaces available — pass --workspace, set %s, or run 'bitrise-cli config set %s <id>'. Available: %s",
-			config.EnvWorkspaceID, config.KeyDefaultWorkspaceID, strings.Join(slugs, ", "))
+		return bitriseapi.Organization{}, fmt.Errorf("multiple workspaces available — pass --workspace, set %s, or run 'bitrise-cli config set %s <id>'. Available:\n%s",
+			config.EnvWorkspaceID, config.KeyDefaultWorkspaceID, workspaceList(orgs))
 	}
+}
+
+// workspaceList renders workspaces one per indented line as "name (id)",
+// sorted by name so a user can scan for the one they recognize and copy its
+// ID. Workspaces the API returned without a name fall back to the bare ID and
+// sort last. The bare ID is always present so it can be passed to --workspace
+// or config set default_workspace_id.
+func workspaceList(orgs []bitriseapi.Organization) string {
+	sorted := append([]bitriseapi.Organization(nil), orgs...)
+	sort.Slice(sorted, func(i, j int) bool {
+		ni, nj := sorted[i].Name, sorted[j].Name
+		if (ni == "") != (nj == "") {
+			return ni != "" // named workspaces first
+		}
+		if !strings.EqualFold(ni, nj) {
+			return strings.ToLower(ni) < strings.ToLower(nj)
+		}
+		return sorted[i].Slug < sorted[j].Slug
+	})
+	lines := make([]string, len(sorted))
+	for i, o := range sorted {
+		if o.Name != "" {
+			lines[i] = fmt.Sprintf("  %s (%s)", o.Name, o.Slug)
+		} else {
+			lines[i] = "  " + o.Slug
+		}
+	}
+	return strings.Join(lines, "\n")
 }
 
 // DefaultWorkspace fetches the user's workspaces (GET /organizations) and
