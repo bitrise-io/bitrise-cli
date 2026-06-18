@@ -147,20 +147,17 @@ func TestHostBridgeSkillHeaderHasFrontmatter(t *testing.T) {
 	}
 	// The skill pre-approves the two commands it tells Claude to run, so the
 	// bridge call doesn't prompt. Guard both so neither silently regresses.
-	// The cat rule must NOT use a space before "*": that form requires a
-	// trailing argument and so misses the bare "cat <file>" command the skill
-	// runs (the bug we hit). The no-space form matches both bare and piped.
+	// cat is pre-approved broadly: a path-scoped rule failed to match the actual
+	// command (the running shell expands ~ to an absolute path, which a literal
+	// ~ pattern doesn't line up with), so the skill allows cat outright.
 	for _, want := range []string{
 		"allowed-tools:",
-		"Bash(cat ~/.config/rde/host-bridge.json*)",
+		"Bash(cat *)",
 		"Bash(curl *)",
 	} {
 		if !strings.Contains(hostBridgeSkillHeader, want) {
 			t.Errorf("skill header is missing pre-approval rule %q", want)
 		}
-	}
-	if strings.Contains(hostBridgeSkillHeader, "host-bridge.json *)") {
-		t.Error("cat rule uses a space before * — that form misses the no-argument command")
 	}
 }
 
