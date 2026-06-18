@@ -297,7 +297,7 @@ type waitModel struct {
 // bitrisePurple is the Bitrise brand purple, used for the spinner and the
 // build URL in the status bar. lipgloss downsamples to 256/16-color
 // automatically when the terminal can't render truecolor.
-const bitrisePurple = lipgloss.Color("#7B61FF")
+const bitrisePurple = style.BrandColor
 
 func newWaitModel(b internalbuild.Build) waitModel {
 	sp := spinner.New()

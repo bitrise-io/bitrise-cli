@@ -1,13 +1,10 @@
 package claude
 
 import (
-	"bufio"
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"os"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -15,6 +12,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/bitrise-io/bitrise-cli/cmd/cmdutil"
+	"github.com/bitrise-io/bitrise-cli/cmd/cmdutil/picker"
 	internalrde "github.com/bitrise-io/bitrise-cli/internal/rde"
 	"github.com/bitrise-io/bitrise-cli/internal/rde/localsession"
 )
@@ -235,6 +233,26 @@ func statusLabel(rs recordStatus) string {
 	}
 }
 
+// statusTone maps a recordStatus to a picker color tone, mirroring the session
+// status palette: running→green, deleted/failed→red, unrestorable→amber, and
+// everything else (stopped/terminated/unknown)→grey.
+func statusTone(rs recordStatus) picker.Tone {
+	switch {
+	case rs.status == "":
+		return picker.ToneDim // status unknown
+	case rs.status == "deleted":
+		return picker.ToneDanger
+	case !rs.resumable:
+		return picker.ToneWarn // "… · unrestorable"
+	case rs.status == "running":
+		return picker.ToneSuccess
+	case rs.status == "failed":
+		return picker.ToneDanger
+	default:
+		return picker.ToneDim
+	}
+}
+
 // fetchStatuses looks up every record's live status concurrently (bounded), so
 // the picker shows status without paying N sequential round-trips. Results are
 // index-aligned with recs; a slow API degrades to "status unknown" rather than
@@ -288,11 +306,11 @@ func findRecord(repoPath, target string) (localsession.Record, error) {
 	}
 }
 
-// pickRecord renders the repo's recorded sessions to stderr and reads a
-// selection from stdin. Enter resumes the most recent (the first row); typing
-// "q", EOF (Ctrl-D), or Ctrl-C (which cancels ctx) backs out with
-// errResumeCancelled. It errors (rather than hanging) when stdin isn't a
-// terminal.
+// pickRecord shows the repo's recorded sessions in an interactive picker, with
+// each row's live status fetched in parallel for display. The cursor starts on
+// the most recent (records are newest-first), so Enter resumes it; Esc, "q", or
+// Ctrl-C back out with errResumeCancelled. It errors (rather than hanging) when
+// stdin/stderr isn't a terminal.
 func pickRecord(ctx context.Context, cmd *cobra.Command, getter sessionStatusGetter, repoPath string) (localsession.Record, error) {
 	recs, err := localsession.ListByProject(repoPath)
 	if err != nil {
@@ -301,7 +319,7 @@ func pickRecord(ctx context.Context, cmd *cobra.Command, getter sessionStatusGet
 	if len(recs) == 0 {
 		return localsession.Record{}, errNoSessions
 	}
-	if !cmdutil.IsTerminal(os.Stdin) {
+	if !cmdutil.IsTerminal(os.Stdin) || !cmdutil.WriterIsTTY(cmd.ErrOrStderr()) {
 		return localsession.Record{}, fmt.Errorf("--resume needs a SESSION_ID when input is not a terminal; pass 'rde claude --resume <id>'")
 	}
 
@@ -311,58 +329,32 @@ func pickRecord(ctx context.Context, cmd *cobra.Command, getter sessionStatusGet
 	// just-in-time check confirms it for real.
 	statuses := fetchStatuses(ctx, getter, recs)
 
-	ew := cmdutil.NewErrWriter(cmd.ErrOrStderr())
-	ew.Ln("Select a session to resume:")
+	items := make([]picker.Item, len(recs))
 	for i, r := range recs {
-		ew.F("  %d) %s  (%s)\n", i+1, describeRecord(r), statusLabel(statuses[i]))
-	}
-	ew.F("Session to resume (1-%d) [1], or q to cancel: ", len(recs))
-	if ew.Err != nil {
-		return localsession.Record{}, ew.Err
-	}
-
-	line, err := readLine(ctx, os.Stdin)
-	if err != nil {
-		// Ctrl-C (ctx cancelled) or Ctrl-D (EOF) → treat as cancel.
-		if errors.Is(err, context.Canceled) || errors.Is(err, io.EOF) {
-			return localsession.Record{}, errResumeCancelled
+		items[i] = picker.Item{
+			Title:  describeRecord(r),
+			Status: statusLabel(statuses[i]),
+			Tone:   statusTone(statuses[i]),
 		}
+	}
+	// The cursor starts on the newest session (row 0); the resume list can grow
+	// long, so enable type-to-filter on the title/branch.
+	idx, err := picker.Select(ctx, picker.Config{
+		Prompt:     "Select a session to resume",
+		Items:      items,
+		Cursor:     0,
+		DefaultIdx: 0,
+		Filter:     true,
+		In:         os.Stdin,
+		Out:        cmd.ErrOrStderr(),
+	})
+	if errors.Is(err, picker.ErrCancelled) {
+		return localsession.Record{}, errResumeCancelled
+	}
+	if err != nil {
 		return localsession.Record{}, err
 	}
-	line = strings.TrimSpace(line)
-	switch strings.ToLower(line) {
-	case "q", "quit", "exit":
-		return localsession.Record{}, errResumeCancelled
-	case "":
-		// Enter resumes the most recent (records are newest-first).
-		return recs[0], nil
-	}
-	n, err := strconv.Atoi(line)
-	if err != nil || n < 1 || n > len(recs) {
-		return localsession.Record{}, fmt.Errorf("invalid selection %q", line)
-	}
-	return recs[n-1], nil
-}
-
-// readLine reads one line from r, abandoning the read if ctx is cancelled (so a
-// trapped Ctrl-C unblocks the resume picker). The reader goroutine is left
-// blocked on the OS read; it's reaped when the process exits.
-func readLine(ctx context.Context, r io.Reader) (string, error) {
-	type result struct {
-		line string
-		err  error
-	}
-	ch := make(chan result, 1)
-	go func() {
-		line, err := bufio.NewReader(r).ReadString('\n')
-		ch <- result{line, err}
-	}()
-	select {
-	case <-ctx.Done():
-		return "", ctx.Err()
-	case res := <-ch:
-		return res.line, res.err
-	}
+	return recs[idx], nil
 }
 
 // describeRecord is a one-line summary for the picker: title, branch, and how

@@ -4,14 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"os"
-	"strconv"
+	"regexp"
 	"strings"
 
 	"github.com/spf13/cobra"
 
 	"github.com/bitrise-io/bitrise-cli/cmd/cmdutil"
+	"github.com/bitrise-io/bitrise-cli/cmd/cmdutil/picker"
 	internalrde "github.com/bitrise-io/bitrise-cli/internal/rde"
 	"github.com/bitrise-io/bitrise-cli/internal/rde/localsession"
 )
@@ -44,7 +44,7 @@ func selectImageAndMachineType(ctx context.Context, cmd *cobra.Command, svc *int
 	}
 	imageNames, backendDefaultImage := uniqueImageNames(images)
 
-	image, err := chooseOne(ctx, cmd, log, "image", "Select an image", imageNames, prefs.Image, backendDefaultImage, flagImage)
+	image, err := chooseOne(ctx, cmd, log, "image", "Select an image", imageNames, prefs.Image, backendDefaultImage, flagImage, nil)
 	if err != nil {
 		return "", "", err
 	}
@@ -58,7 +58,7 @@ func selectImageAndMachineType(ctx context.Context, cmd *cobra.Command, svc *int
 	}
 	mtNames, backendDefaultMT := uniqueMachineTypeNames(mts)
 
-	machineType, err := chooseOne(ctx, cmd, log, "machine type", "Select a machine type", mtNames, prefs.MachineType, backendDefaultMT, flagMachineType)
+	machineType, err := chooseOne(ctx, cmd, log, "machine type", "Select a machine type", mtNames, prefs.MachineType, backendDefaultMT, flagMachineType, machineSpecHint)
 	if err != nil {
 		return "", "", err
 	}
@@ -66,11 +66,13 @@ func selectImageAndMachineType(ctx context.Context, cmd *cobra.Command, svc *int
 }
 
 // chooseOne resolves a single selection. An explicit flag is validated against
-// the options and used as-is; a single option is auto-selected; a non-terminal
-// stdin uses the resolved default without prompting; otherwise it shows an
-// interactive numbered picker. noun is used in messages ("image"); label heads
-// the picker. options must be non-empty.
-func chooseOne(ctx context.Context, cmd *cobra.Command, log *stepLogger, noun, label string, options []string, prefName, backendDefault, flag string) (string, error) {
+// the options and used as-is; a single option is auto-selected; a
+// non-interactive stdin/stderr uses the resolved default without prompting;
+// otherwise it shows the interactive picker. noun is used in messages
+// ("image"); label heads the picker. descFn, when non-nil, derives an optional
+// dim secondary hint for each row (used for machine-type specs). options must
+// be non-empty.
+func chooseOne(ctx context.Context, cmd *cobra.Command, log *stepLogger, noun, label string, options []string, prefName, backendDefault, flag string, descFn func(string) string) (string, error) {
 	if flag != "" {
 		if indexOf(options, flag) < 0 {
 			return "", fmt.Errorf("%s %q is not available; choose one of: %s", noun, flag, strings.Join(options, ", "))
@@ -83,18 +85,57 @@ func chooseOne(ctx context.Context, cmd *cobra.Command, log *stepLogger, noun, l
 		return options[0], nil
 	}
 	defaultIdx := resolveDefault(options, prefName, backendDefault)
-	if !cmdutil.IsTerminal(os.Stdin) {
+	// The picker reads keys from stdin and draws to stderr, so both must be a
+	// terminal; otherwise fall back to the default without prompting.
+	if !cmdutil.IsTerminal(os.Stdin) || !cmdutil.WriterIsTTY(cmd.ErrOrStderr()) {
 		log.step("Using default %s (stdin is not a terminal): %s", noun, options[defaultIdx])
 		return options[defaultIdx], nil
 	}
-	// Surface the default at the top of the list so it's easy to recognize as
-	// the press-Enter choice, then prompt with it preselected at position 1.
+	// Surface the default at the top of the list so it's the obvious
+	// press-Enter choice, with the cursor and "(default)" badge on row 1.
 	ordered := moveToFront(options, defaultIdx)
-	idx, err := promptChoice(ctx, cmd, label, ordered, 0)
+	items := make([]picker.Item, len(ordered))
+	for i, opt := range ordered {
+		items[i] = picker.Item{Title: opt}
+		if descFn != nil {
+			items[i].Desc = descFn(opt)
+		}
+	}
+	idx, err := picker.Select(ctx, picker.Config{
+		Prompt:     label,
+		Items:      items,
+		Cursor:     0,
+		DefaultIdx: 0,
+		In:         os.Stdin,
+		Out:        cmd.ErrOrStderr(),
+	})
+	if errors.Is(err, picker.ErrCancelled) {
+		return "", errSelectionCancelled
+	}
 	if err != nil {
 		return "", err
 	}
 	return ordered[idx], nil
+}
+
+// machineSpecRe matches the "<vCPU>c-<RAM>g" tail of a machine-type name.
+var machineSpecRe = regexp.MustCompile(`^(\d+)c-(\d+)g$`)
+
+// machineSpecHint derives a "<n> vCPU · <m> GB" hint from a machine-type name
+// by parsing its last '.'-separated segment (e.g. "g2.mac.m2pro.4c-6g" →
+// "4c-6g" → "4 vCPU · 6 GB"). Returns "" when the segment doesn't match the
+// "<n>c-<m>g" shape (e.g. "g2.mac"), so an unrecognized name simply shows no
+// hint rather than a wrong one.
+func machineSpecHint(name string) string {
+	seg := name
+	if i := strings.LastIndex(name, "."); i >= 0 {
+		seg = name[i+1:]
+	}
+	m := machineSpecRe.FindStringSubmatch(seg)
+	if m == nil {
+		return ""
+	}
+	return fmt.Sprintf("%s vCPU · %s GB", m[1], m[2])
 }
 
 // moveToFront returns options with the element at idx moved to the front,
@@ -109,48 +150,6 @@ func moveToFront(options []string, idx int) []string {
 	out = append(out, options[:idx]...)
 	out = append(out, options[idx+1:]...)
 	return out
-}
-
-// promptChoice renders a numbered list of options to stderr and reads a
-// selection from stdin. Enter accepts the default (defaultIdx); a number 1-N
-// picks that option; "q", EOF (Ctrl-D), or Ctrl-C (which cancels ctx) back out
-// with errSelectionCancelled. Returns the chosen index. Mirrors the resume
-// picker (resume.go pickRecord).
-func promptChoice(ctx context.Context, cmd *cobra.Command, label string, options []string, defaultIdx int) (int, error) {
-	ew := cmdutil.NewErrWriter(cmd.ErrOrStderr())
-	ew.F("%s:\n", label)
-	for i, opt := range options {
-		marker := ""
-		if i == defaultIdx {
-			marker = "  (default)"
-		}
-		ew.F("  %d) %s%s\n", i+1, opt, marker)
-	}
-	ew.F("Choice (1-%d) [%d], or q to cancel: ", len(options), defaultIdx+1)
-	if ew.Err != nil {
-		return 0, ew.Err
-	}
-
-	line, err := readLine(ctx, os.Stdin)
-	if err != nil {
-		// Ctrl-C (ctx cancelled) or Ctrl-D (EOF) → treat as cancel.
-		if errors.Is(err, context.Canceled) || errors.Is(err, io.EOF) {
-			return 0, errSelectionCancelled
-		}
-		return 0, err
-	}
-	line = strings.TrimSpace(line)
-	switch strings.ToLower(line) {
-	case "q", "quit", "exit":
-		return 0, errSelectionCancelled
-	case "":
-		return defaultIdx, nil
-	}
-	n, err := strconv.Atoi(line)
-	if err != nil || n < 1 || n > len(options) {
-		return 0, fmt.Errorf("invalid selection %q", line)
-	}
-	return n - 1, nil
 }
 
 // resolveDefault returns the index in names to preselect, applying the

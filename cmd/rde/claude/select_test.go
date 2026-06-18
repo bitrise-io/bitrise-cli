@@ -117,3 +117,21 @@ func TestIndexOf(t *testing.T) {
 		t.Error("absent target should be -1")
 	}
 }
+
+func TestMachineSpecHint(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		want string
+	}{
+		{"g2.mac.m2pro.4c-6g", "4 vCPU · 6 GB"},
+		{"g2.linux.amd-zen5.8c-32g", "8 vCPU · 32 GB"},
+		{"8c-16g", "8 vCPU · 16 GB"}, // bare segment, no dots
+		{"g2.mac", ""},               // last segment "mac" doesn't match
+		{"g2.linux.bad", ""},
+		{"", ""},
+	} {
+		if got := machineSpecHint(tc.name); got != tc.want {
+			t.Errorf("machineSpecHint(%q) = %q, want %q", tc.name, got, tc.want)
+		}
+	}
+}
