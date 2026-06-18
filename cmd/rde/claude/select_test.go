@@ -118,12 +118,29 @@ func TestIndexOf(t *testing.T) {
 	}
 }
 
+func TestImageLabel(t *testing.T) {
+	for in, want := range map[string]string{
+		"linux-bitvirt-2026":   "Ubuntu 24.04",
+		"linux-docker-bitvirt": "Ubuntu 24.04 (Docker)",
+		"osx-tahoe-26":         "macOS Tahoe (Xcode 26)",
+		"osx-sonoma-15":        "macOS Sonoma (Xcode 15)",
+		"osx-27-edge":          "Edge (Xcode 27)",
+		"some-future-image":    "some-future-image", // unmapped → raw name
+	} {
+		if got := imageLabel(in); got != want {
+			t.Errorf("imageLabel(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
 func TestReuseSummary(t *testing.T) {
-	if got := reuseSummary("osx-26-edge", "g2.mac.m2pro.4c-6g"); got != "osx-26-edge · g2.mac.m2pro.4c-6g · 4 vCPU · 6 GB" {
+	// The image is shown humanized; the machine type keeps its raw name plus a
+	// parsed spec hint.
+	if got := reuseSummary("osx-26-edge", "g2.mac.m2pro.4c-6g"); got != "Edge (Xcode 26) · g2.mac.m2pro.4c-6g · 4 vCPU · 6 GB" {
 		t.Errorf("reuseSummary with specs = %q", got)
 	}
 	// A machine name without a parseable spec tail omits the hint.
-	if got := reuseSummary("linux-bitvirt-2026", "g2.mac"); got != "linux-bitvirt-2026 · g2.mac" {
+	if got := reuseSummary("linux-bitvirt-2026", "g2.mac"); got != "Ubuntu 24.04 · g2.mac" {
 		t.Errorf("reuseSummary without specs = %q", got)
 	}
 }

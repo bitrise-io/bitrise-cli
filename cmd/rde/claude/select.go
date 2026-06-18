@@ -57,7 +57,7 @@ func selectImageAndMachineType(ctx context.Context, cmd *cobra.Command, svc *int
 		// through to the full pick below (saved values still seed the defaults).
 	}
 
-	image, err := chooseOne(ctx, cmd, log, "image", "Select an image", imageNames, prefs.Image, backendDefaultImage, flagImage, nil)
+	image, err := chooseOne(ctx, cmd, log, "image", "Select an image", imageNames, prefs.Image, backendDefaultImage, flagImage, imageItem)
 	if err != nil {
 		return "", "", err
 	}
@@ -82,17 +82,18 @@ func chooseMachineForImage(ctx context.Context, cmd *cobra.Command, svc *interna
 		return "", fmt.Errorf("no machine types are compatible with image %q", image)
 	}
 	mtNames, backendDefaultMT := uniqueMachineTypeNames(mts)
-	return chooseOne(ctx, cmd, log, "machine type", "Select a machine type", mtNames, prefMachineType, backendDefaultMT, flagMachineType, machineSpecHint)
+	return chooseOne(ctx, cmd, log, "machine type", "Select a machine type", mtNames, prefMachineType, backendDefaultMT, flagMachineType, machineItem)
 }
 
 // chooseOne resolves a single selection. An explicit flag is validated against
 // the options and used as-is; a single option is auto-selected; a
 // non-interactive stdin/stderr uses the resolved default without prompting;
 // otherwise it shows the interactive picker. noun is used in messages
-// ("image"); label heads the picker. descFn, when non-nil, derives an optional
-// dim secondary hint for each row (used for machine-type specs). options must
-// be non-empty.
-func chooseOne(ctx context.Context, cmd *cobra.Command, log *stepLogger, noun, label string, options []string, prefName, backendDefault, flag string, descFn func(string) string) (string, error) {
+// ("image"); label heads the picker. itemize, when non-nil, builds the picker
+// row for each option (e.g. a human-friendly image title, or a machine-type
+// spec hint); the raw option string is always what's returned. options must be
+// non-empty.
+func chooseOne(ctx context.Context, cmd *cobra.Command, log *stepLogger, noun, label string, options []string, prefName, backendDefault, flag string, itemize func(string) picker.Item) (string, error) {
 	if flag != "" {
 		if indexOf(options, flag) < 0 {
 			return "", fmt.Errorf("%s %q is not available; choose one of: %s", noun, flag, strings.Join(options, ", "))
@@ -114,9 +115,10 @@ func chooseOne(ctx context.Context, cmd *cobra.Command, log *stepLogger, noun, l
 	ordered := moveToFront(options, defaultIdx)
 	items := make([]picker.Item, len(ordered))
 	for i, opt := range ordered {
-		items[i] = picker.Item{Title: opt}
-		if descFn != nil {
-			items[i].Desc = descFn(opt)
+		if itemize != nil {
+			items[i] = itemize(opt)
+		} else {
+			items[i] = picker.Item{Title: opt}
 		}
 	}
 	idx, err := picker.Select(ctx, picker.Config{
@@ -193,7 +195,7 @@ func offerReuse(ctx context.Context, cmd *cobra.Command, svc *internalrde.Servic
 		// Caller runs the full image + machine pick.
 		return "", "", false, nil
 	case reuseChangeMachine:
-		mt, err := chooseOne(ctx, cmd, log, "machine type", "Select a machine type", mtNames, prefs.MachineType, "", "", machineSpecHint)
+		mt, err := chooseOne(ctx, cmd, log, "machine type", "Select a machine type", mtNames, prefs.MachineType, "", "", machineItem)
 		if err != nil {
 			return "", "", false, err
 		}
@@ -223,11 +225,46 @@ func buildReuseMenu(multiImage, multiMachine bool, summary string) ([]picker.Ite
 
 // reuseSummary is the one-line "image · machine (specs)" shown on the reuse row.
 func reuseSummary(image, machineType string) string {
-	s := fmt.Sprintf("%s · %s", image, machineType)
+	s := fmt.Sprintf("%s · %s", imageLabel(image), machineType)
 	if hint := machineSpecHint(machineType); hint != "" {
 		s += " · " + hint
 	}
 	return s
+}
+
+// imageItem and machineItem build the picker rows for the image and machine-type
+// pickers: images show a human-friendly label, machine types show their spec
+// hint as dim secondary text. The picker still returns the raw option string.
+func imageItem(name string) picker.Item { return picker.Item{Title: imageLabel(name)} }
+func machineItem(name string) picker.Item {
+	return picker.Item{Title: name, Desc: machineSpecHint(name)}
+}
+
+// imageDisplayNames maps RDE image names to human-friendly labels. This is a
+// stopgap until the backend serves proper descriptions; unmapped names fall
+// back to the raw name so new images still display. The trailing osx number is
+// the Xcode version; "-edge" images are labeled by Xcode version only (no macOS
+// codename yet). Refine the wording here as the catalog evolves.
+var imageDisplayNames = map[string]string{
+	"linux-bitvirt-2026":   "Ubuntu 24.04",
+	"linux-docker-bitvirt": "Ubuntu 24.04 (Docker)",
+	"osx-sequoia-16":       "macOS Sequoia (Xcode 16)",
+	"osx-sequoia-26":       "macOS Sequoia (Xcode 26)",
+	"osx-sonoma-15":        "macOS Sonoma (Xcode 15)",
+	"osx-sonoma-16":        "macOS Sonoma (Xcode 16)",
+	"osx-ventura-15":       "macOS Ventura (Xcode 15)",
+	"osx-tahoe-26":         "macOS Tahoe (Xcode 26)",
+	"osx-26-edge":          "Edge (Xcode 26)",
+	"osx-27-edge":          "Edge (Xcode 27)",
+}
+
+// imageLabel returns the human-friendly label for an image name, or the raw
+// name when there's no mapping.
+func imageLabel(name string) string {
+	if label, ok := imageDisplayNames[name]; ok {
+		return label
+	}
+	return name
 }
 
 // interactivePicker reports whether an interactive picker can run: it reads keys

@@ -192,7 +192,7 @@ func runFresh(ctx context.Context, cmd *cobra.Command, opts freshOptions) error 
 	if err != nil {
 		return err
 	}
-	log.done("Image %s, machine type %s", image, machineType)
+	log.done("Image %s, machine type %s", imageLabel(image), machineType)
 
 	// ── Claude Code auth ───────────────────────────────────────────
 	// Ensure a Claude Code token exists on the control plane *before*
