@@ -281,13 +281,31 @@ func TestSoleWorkspace(t *testing.T) {
 		}
 	})
 
-	t.Run("multiple errors and lists them sorted", func(t *testing.T) {
+	t.Run("multiple errors and lists name and id sorted", func(t *testing.T) {
+		_, err := SoleWorkspace([]bitriseapi.Organization{
+			{Slug: "zeta", Name: "Zebra"},
+			{Slug: "alpha", Name: "Acme"},
+		})
+		if err == nil || !strings.Contains(err.Error(), "multiple workspaces") {
+			t.Fatalf("expected multiple-workspaces error, got %v", err)
+		}
+		// Each workspace is listed as "name (id)", sorted by name, one per line.
+		if !strings.Contains(err.Error(), "Acme (alpha)") || !strings.Contains(err.Error(), "Zebra (zeta)") {
+			t.Errorf("error should list each workspace as name (id), got: %v", err)
+		}
+		if strings.Index(err.Error(), "Acme (alpha)") > strings.Index(err.Error(), "Zebra (zeta)") {
+			t.Errorf("workspaces should be sorted by name, got: %v", err)
+		}
+	})
+
+	t.Run("multiple falls back to bare id when name missing", func(t *testing.T) {
 		_, err := SoleWorkspace([]bitriseapi.Organization{{Slug: "zeta"}, {Slug: "alpha"}})
 		if err == nil || !strings.Contains(err.Error(), "multiple workspaces") {
 			t.Fatalf("expected multiple-workspaces error, got %v", err)
 		}
-		if !strings.Contains(err.Error(), "alpha, zeta") {
-			t.Errorf("error should list available slugs sorted, got: %v", err)
+		// Unnamed workspaces show the bare ID, sorted by slug.
+		if !strings.Contains(err.Error(), "  alpha\n  zeta") {
+			t.Errorf("error should list bare slugs sorted, got: %v", err)
 		}
 	})
 }
