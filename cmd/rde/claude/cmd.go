@@ -22,12 +22,8 @@ import (
 	"github.com/bitrise-io/bitrise-cli/internal/rde/localsession"
 )
 
-// The command provisions a templateless session from a fixed image + machine
+// The command provisions a templateless session from a chosen image + machine
 // type, so there's no template to resolve or keep in sync.
-const (
-	sessionImage       = "linux-bitvirt-2026"
-	sessionMachineType = "g2.linux.amd-zen5.8c-32g"
-)
 
 // NewCmd returns the `bitrise-cli rde claude` command.
 func NewCmd() *cobra.Command {
@@ -35,13 +31,21 @@ func NewCmd() *cobra.Command {
 		waitTimeout    time.Duration
 		resume         bool
 		continueLatest bool
+		image          string
+		machineType    string
 	)
 
 	c := &cobra.Command{
 		Use:   "claude [SESSION_ID]",
 		Short: "Create an RDE session and attach to Claude Code",
-		Long: `Create a fresh RDE session on the "` + sessionImage + `" image, wait for it to
-start, then SSH in and drop you directly into Claude Code (not a shell).
+		Long: `Create a fresh RDE session, wait for it to start, then SSH in and drop you
+directly into Claude Code (not a shell).
+
+You pick the image first, then a machine type compatible with it. Your choice
+is remembered per repository and preselected next time, so you can just press
+Enter. Pass --image / --machine-type to skip the prompts
+(useful for scripts); when stdin isn't a terminal the remembered or default
+selection is used without prompting.
 
 Run this from inside a git repository: the session clones the same repository
 and branch you're on (via 'git clone') and starts Claude Code inside that
@@ -76,6 +80,7 @@ or minted with 'claude setup-token' (browser auth). The control plane uses that
 token to install Claude Code and tmux during provisioning and to authenticate
 the in-session claude; once saved, future sessions reuse it.`,
 		Example: `  bitrise-cli rde claude --workspace WORKSPACE_ID
+  bitrise-cli rde claude --image osx-26-edge --machine-type g2.mac.m2pro.4c-6g
   bitrise-cli rde claude --continue
   bitrise-cli rde claude --resume`,
 		Args: cobra.MaximumNArgs(1),
@@ -103,20 +108,33 @@ the in-session claude; once saved, future sessions reuse it.`,
 					waitTimeout:    waitTimeout,
 				})
 			}
-			return runFresh(ctx, cmd, waitTimeout)
+			return runFresh(ctx, cmd, freshOptions{
+				waitTimeout: waitTimeout,
+				image:       image,
+				machineType: machineType,
+			})
 		},
 	}
 
 	c.Flags().DurationVar(&waitTimeout, "wait-timeout", 10*time.Minute, "max time to wait for the session to start (uses Go duration syntax: 30s, 5m, 1h)")
 	c.Flags().BoolVar(&resume, "resume", false, "resume a previous session for this repo; with no SESSION_ID, pick one from a list")
 	c.Flags().BoolVar(&continueLatest, "continue", false, "resume the most recent session started from this repo")
+	c.Flags().StringVar(&image, "image", "", "image to use (skips the image prompt); see 'rde image list'")
+	c.Flags().StringVar(&machineType, "machine-type", "", "machine type to use (skips the machine-type prompt); see 'rde machine-type list'")
 	c.MarkFlagsMutuallyExclusive("resume", "continue")
 	return c
 }
 
+// freshOptions configures a fresh `rde claude` run.
+type freshOptions struct {
+	waitTimeout time.Duration
+	image       string // --image override ("" = prompt/default)
+	machineType string // --machine-type override ("" = prompt/default)
+}
+
 // runFresh creates a new RDE session and attaches to a fresh Claude Code
 // session inside it.
-func runFresh(ctx context.Context, cmd *cobra.Command, waitTimeout time.Duration) error {
+func runFresh(ctx context.Context, cmd *cobra.Command, opts freshOptions) error {
 	// Resolve the local repo + branch FIRST so a non-repo cwd fails
 	// before we create (and would have to tear down) a session.
 	detector := internalapp.ExecGitDetector{}
@@ -161,6 +179,21 @@ func runFresh(ctx context.Context, cmd *cobra.Command, waitTimeout time.Duration
 
 	log := newStepLogger(cmd)
 
+	// ── Image & machine type ───────────────────────────────────────
+	// Choose before auth so all interactive input is gathered up front (and a
+	// bad --image/--machine-type fails fast, before the auth step that can open
+	// a browser). The choice is remembered per repo and used on the next run.
+	log.group("Image & machine type")
+	image, machineType, err := selectImageAndMachineType(ctx, cmd, svc, log, workspaceID, repoPath, opts.image, opts.machineType)
+	if errors.Is(err, errSelectionCancelled) {
+		_, _ = fmt.Fprintln(cmd.ErrOrStderr(), "Cancelled.")
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	log.done("Image %s, machine type %s", image, machineType)
+
 	// ── Claude Code auth ───────────────────────────────────────────
 	// Ensure a Claude Code token exists on the control plane *before*
 	// creating the session: the backend installs claude + tmux during
@@ -178,8 +211,8 @@ func runFresh(ctx context.Context, cmd *cobra.Command, waitTimeout time.Duration
 	log.step("Creating session %q…", name)
 	res, err := svc.CreateSession(ctx, workspaceID, internalrde.CreateSessionRequest{
 		Name:        name,
-		Image:       sessionImage,
-		MachineType: sessionMachineType,
+		Image:       image,
+		MachineType: machineType,
 		// Auth is guaranteed present by now, so map the token saved
 		// input in: provisioning installs claude + tmux and the session
 		// is authenticated.
@@ -189,6 +222,12 @@ func runFresh(ctx context.Context, cmd *cobra.Command, waitTimeout time.Duration
 		return err
 	}
 	sessionID := res.Session.ID
+
+	// Remember the selection so the next run in this repo preselects it.
+	// Best-effort: a failure only costs the preselect convenience.
+	if err := localsession.SavePrefs(repoPath, localsession.Prefs{Image: image, MachineType: machineType}); err != nil {
+		log.warn("Could not save image/machine-type choice for next time: %v", err)
+	}
 
 	// Persist a local record immediately so the session is resumable even if
 	// this process dies abruptly (e.g. laptop sleep, SIGKILL) before the
@@ -212,10 +251,10 @@ func runFresh(ctx context.Context, cmd *cobra.Command, waitTimeout time.Duration
 	// it can be restored later.
 	defer terminateOnExit(svc, log, workspaceID, sessionID, name)()
 
-	log.step("Waiting for it to start (timeout %s)…", waitTimeout)
+	log.step("Waiting for it to start (timeout %s)…", opts.waitTimeout)
 	// The whole startup wait — reaching "running" and then SSH
 	// credentials being issued — shares one timeout budget.
-	waitCtx, cancel := context.WithTimeout(ctx, waitTimeout)
+	waitCtx, cancel := context.WithTimeout(ctx, opts.waitTimeout)
 	defer cancel()
 
 	ready, err := svc.WaitForReady(waitCtx, workspaceID, sessionID, 0)

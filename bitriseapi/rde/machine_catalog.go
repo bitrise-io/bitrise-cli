@@ -10,6 +10,8 @@ type Image struct {
 	ID          string `json:"id"`
 	Name        string `json:"name"`
 	ClusterName string `json:"clusterName,omitempty"`
+	// IsDefault is set by the backend on the deployment's default image.
+	IsDefault bool `json:"isDefault,omitempty"`
 }
 
 // MachineType is a machine size available for templates/sessions.
@@ -17,6 +19,8 @@ type MachineType struct {
 	ID          string `json:"id"`
 	Name        string `json:"name"`
 	ClusterName string `json:"clusterName,omitempty"`
+	// IsDefault is set by the backend on the deployment's default machine type.
+	IsDefault bool `json:"isDefault,omitempty"`
 }
 
 type listImagesResp struct {
