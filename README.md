@@ -4,16 +4,45 @@ A CLI tool to manage all Bitrise platform resources — CI, RM, RDE, and more �
 
 ## Installation
 
-### `go install`
+### Quick install (recommended)
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/bitrise-io/bitrise-cli/main/install.sh | bash
+```
+
+This downloads the latest release for your OS and architecture, verifies its
+checksum, and installs the `bitrise-cli` binary to `~/.local/bin` (no `sudo`).
+Make sure `~/.local/bin` is on your `PATH` — it is by default on many systems;
+otherwise add it.
+
+Two environment variables tweak the install:
+
+- `BITRISE_CLI_INSTALL_DIR` — install elsewhere, e.g.
+  `BITRISE_CLI_INSTALL_DIR=/usr/local/bin` (which may need `sudo`).
+- `BITRISE_CLI_VERSION` — pin a specific release instead of the latest, e.g.
+  `BITRISE_CLI_VERSION=v0.2.0`.
+
+Prebuilt binaries are published for macOS and Linux on `amd64` and `arm64`. On
+Windows, use the manual download below.
+
+### Manual download
+
+Grab the archive for your platform from the
+[latest release](https://github.com/bitrise-io/bitrise-cli/releases/latest),
+extract it, and put `bitrise-cli` on your `PATH`. Each release also lists a
+ready-to-paste `curl` command. This is the path for Windows (`.zip`) and for
+anyone who prefers not to pipe a script to a shell.
+
+### Build from source
+
+Requires a Go toolchain — mainly for contributors.
 
 ```sh
 go install github.com/bitrise-io/bitrise-cli@latest
 ```
 
 This installs the `bitrise-cli` binary into `$(go env GOPATH)/bin` (make sure
-that directory is on your `PATH`).
-
-### From source
+that directory is on your `PATH`). Or build from a checkout:
 
 ```sh
 git clone https://github.com/bitrise-io/bitrise-cli.git

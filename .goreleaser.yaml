@@ -64,6 +64,15 @@ release:
   footer: |
     ### Install
 
+    The quickest way — installs the latest release for your OS/architecture,
+    verifies its checksum, and drops the binary in `~/.local/bin`:
+
+    ```sh
+    curl -fsSL https://raw.githubusercontent.com/bitrise-io/bitrise-cli/main/install.sh | bash
+    ```
+
+    To install **this specific version** without the script:
+
     ```sh
     OS=$(uname -s | tr '[:upper:]' '[:lower:]')
     ARCH=$(uname -m); case "$ARCH" in x86_64) ARCH=amd64 ;; aarch64) ARCH=arm64 ;; esac
@@ -72,7 +81,7 @@ release:
     install -m 0755 bitrise-cli ~/.local/bin/
     ```
 
-    This installs without `sudo`. Make sure `~/.local/bin` is on your `PATH`
+    Both install without `sudo`. Make sure `~/.local/bin` is on your `PATH`
     (it is by default on many systems); otherwise add it. To install
     system-wide instead, use `sudo install -m 0755 bitrise-cli /usr/local/bin/`.
 
