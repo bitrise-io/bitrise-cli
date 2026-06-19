@@ -1,11 +1,7 @@
 package session
 
 import (
-	"context"
 	"fmt"
-	"os/exec"
-	"runtime"
-	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -25,7 +21,7 @@ type openVNCResult struct {
 
 // urlOpener spawns the platform-appropriate URL handler. Overridable in
 // tests so we can assert what we'd run without launching anything.
-var urlOpener = openURL
+var urlOpener = cmdutil.OpenVNCURL
 
 func newOpenVNCCmd() *cobra.Command {
 	c := &cobra.Command{
@@ -83,37 +79,4 @@ viewer manually.`,
 		},
 	}
 	return c
-}
-
-// openURL invokes the OS's default URL handler for url. Errors carry the
-// handler's stderr so a missing xdg-open or a malformed URL is debuggable
-// without rerunning under strace.
-//
-// The url is constructed by buildVNCURL from backend-provided host/port
-// plus URL-escaped credentials, so we verify the `vnc://` prefix before
-// shelling out — a defense-in-depth check that also keeps gosec G204
-// honest about the trust boundary.
-func openURL(ctx context.Context, url string) error {
-	if !strings.HasPrefix(url, "vnc://") {
-		return fmt.Errorf("refusing to open non-vnc URL %q", url)
-	}
-	var cmd *exec.Cmd
-	switch runtime.GOOS {
-	case "darwin":
-		cmd = exec.CommandContext(ctx, "open", url) // #nosec G204 -- vnc:// URL handed to /usr/bin/open as argv
-	case "windows":
-		// `cmd /c start "" url` — the empty "" is `start`'s window-title
-		// placeholder, without it `start` treats the URL as the title.
-		cmd = exec.CommandContext(ctx, "cmd", "/c", "start", "", url) // #nosec G204 -- vnc:// URL handed to start as argv
-	default:
-		cmd = exec.CommandContext(ctx, "xdg-open", url) // #nosec G204 -- vnc:// URL handed to xdg-open as argv
-	}
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		if len(out) > 0 {
-			return fmt.Errorf("%w: %s", err, string(out))
-		}
-		return err
-	}
-	return nil
 }
