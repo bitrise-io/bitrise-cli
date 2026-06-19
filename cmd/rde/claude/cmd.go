@@ -77,7 +77,9 @@ date both locally and on the session itself.
 A local SSH agent ($SSH_AUTH_SOCK), if present, is forwarded into the session
 so the clone (and git-over-SSH inside the session) uses your local keys. If the
 repo's origin is an HTTPS GitHub/GitLab/Bitbucket URL, it's rewritten to its
-SSH form so the forwarded agent can authenticate.
+SSH form so the forwarded agent can authenticate. Your local git identity
+(user.name / user.email) is also copied into the session and set globally, so
+commits made there are attributed to you rather than the session's account.
 
 Unless a Claude Code token is already configured on the control plane, a local
 credential is saved there before the session is created — taken from
@@ -322,6 +324,11 @@ func runFresh(ctx context.Context, cmd *cobra.Command, opts freshOptions) error 
 		cmdutil.SilenceRootErrors(cmd)
 		return fmt.Errorf("git clone failed (status %d)", cloneCode)
 	}
+
+	// Mirror the user's local git identity onto the session so commits Claude
+	// makes are attributed to them, not the session's system account. Part of
+	// the Repository group, best-effort (see syncGitIdentity).
+	syncGitIdentity(ctx, svc, log, workspaceID, sessionID)
 	log.done("Repository cloned")
 
 	// ── Claude Code ────────────────────────────────────────────────
@@ -479,6 +486,81 @@ func buildCloneCommand(cloneURL, repoDir, branch string, useDefaultBranch bool) 
 	}
 	return fmt.Sprintf("%s git clone --branch %s %s %s",
 		sshEnv, cmdutil.ShellQuote(branch), cmdutil.ShellQuote(cloneURL), cmdutil.ShellQuote(repoDir))
+}
+
+// syncGitIdentity copies the user's local git identity (user.name/user.email)
+// onto the session, set globally (~/.gitconfig), so commits Claude makes are
+// attributed to the user rather than the session's system account
+// (vagrant@…/ubuntu@… — the SSH users sessions run as). It complements the
+// forwarded SSH agent: the agent lets the session push, this makes the commits
+// it pushes carry the right author.
+//
+// Best-effort by design: when no local identity is set it does nothing, and a
+// remote failure only warns — neither blocks the session. Idempotent and
+// global, so resuming re-applies it (covering an identity that changed locally,
+// or sessions created before this existed) and it survives a restore since ~ is
+// on the persistent disk.
+func syncGitIdentity(ctx context.Context, svc *internalrde.Service, log *stepLogger, workspaceID, sessionID string) {
+	name, email := localGitIdentity(ctx)
+	command := buildGitIdentityCommand(name, email)
+	if command == "" {
+		return // no local identity configured — leave the session's default alone
+	}
+	log.step("Setting git identity (%s)…", gitIdentityLabel(name, email))
+	res, err := svc.Execute(ctx, workspaceID, sessionID, command)
+	switch {
+	case err != nil:
+		log.warn("Could not set git identity on the session: %v", err)
+	case res.ExitCode != 0:
+		log.warn("Could not set git identity on the session (status %d): %s", res.ExitCode, strings.TrimSpace(res.Stderr))
+	}
+}
+
+// localGitIdentity reads the user's git identity (user.name and user.email)
+// from the cwd repo. Reading from inside the repo honors git's full precedence
+// (repo-local > global > system), so it matches who commits are attributed to
+// here. Either value comes back "" when it isn't set.
+func localGitIdentity(ctx context.Context) (name, email string) {
+	return gitConfigValue(ctx, "user.name"), gitConfigValue(ctx, "user.email")
+}
+
+// gitConfigValue returns the configured value for a git config key, or "" if
+// it isn't set (or git errors).
+func gitConfigValue(ctx context.Context, key string) string {
+	//nolint:gosec // G204: key is a hardcoded git config name, never user input
+	out, err := exec.CommandContext(ctx, "git", "config", "--get", key).Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
+}
+
+// buildGitIdentityCommand returns the remote shell command that sets the user's
+// git identity globally on the session, or "" when neither value is set. Each
+// value is shell-quoted — names legitimately contain spaces, and emails are
+// taken from local config unvalidated.
+func buildGitIdentityCommand(name, email string) string {
+	var parts []string
+	if name != "" {
+		parts = append(parts, "git config --global user.name "+cmdutil.ShellQuote(name))
+	}
+	if email != "" {
+		parts = append(parts, "git config --global user.email "+cmdutil.ShellQuote(email))
+	}
+	return strings.Join(parts, " && ")
+}
+
+// gitIdentityLabel renders an identity for a progress line: "Name <email>", or
+// just whichever half is set.
+func gitIdentityLabel(name, email string) string {
+	switch {
+	case name != "" && email != "":
+		return name + " <" + email + ">"
+	case email != "":
+		return email
+	default:
+		return name
+	}
 }
 
 // buildClaudeCommand returns the remote shell command that starts Claude Code
