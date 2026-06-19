@@ -26,13 +26,14 @@ Workspace resolution (highest to lowest precedence):
   --workspace ID            flag on the rde command
   BITRISE_WORKSPACE_ID      environment variable
   default_workspace_id      saved with 'bitrise-cli config set'
+  auto-detect               when none of the above is set and you have exactly one workspace
 
 Saved inputs are user-scoped — they do not require --workspace.`,
 		Example: `  bitrise-cli rde session list --workspace WORKSPACE_ID
   bitrise-cli rde session list --output json
   bitrise-cli rde template list`,
 	}
-	c.PersistentFlags().String(cmdutil.FlagWorkspace, "", "workspace ID (or set BITRISE_WORKSPACE_ID; defaults to default_workspace_id)")
+	c.PersistentFlags().String(cmdutil.FlagWorkspace, "", "workspace ID (or set BITRISE_WORKSPACE_ID or default_workspace_id; auto-detected if you have exactly one workspace)")
 
 	c.AddCommand(
 		rdeclaude.NewCmd(),

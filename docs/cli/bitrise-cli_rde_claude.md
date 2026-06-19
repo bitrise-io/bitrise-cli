@@ -18,6 +18,12 @@ and branch you're on (via 'git clone') and starts Claude Code inside that
 clone. Only the pushed remote state of the branch is cloned — local
 uncommitted or unpushed changes are not transferred.
 
+On macOS sessions, while you're in Claude Code it can open a VNC viewer on your
+machine showing the session's desktop when you ask to see something visual (a
+simulator, app, or browser running in the session). Linux sessions have no
+desktop to show, so this isn't offered there; either way the rest of the
+command is unaffected.
+
 When you exit Claude Code, the session is terminated automatically (its VM is
 torn down), but the session is preserved and can be restored later. Each
 invocation creates a new, uniquely named session (claude-<id>).
@@ -77,7 +83,7 @@ bitrise-cli rde claude [SESSION_ID] [flags]
   -o, --output string      output format: human|json (default "human")
   -q, --quiet              suppress non-error diagnostic messages
       --theme string       color theme: auto|dark|light|none (default "auto"; overrides terminal background detection)
-      --workspace string   workspace ID (or set BITRISE_WORKSPACE_ID; defaults to default_workspace_id)
+      --workspace string   workspace ID (or set BITRISE_WORKSPACE_ID or default_workspace_id; auto-detected if you have exactly one workspace)
 ```
 
 ### SEE ALSO

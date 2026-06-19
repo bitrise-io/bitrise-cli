@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"testing"
 
 	"github.com/bitrise-io/bitrise-cli/bitriseapi"
@@ -260,4 +261,72 @@ func TestWorkspaceID_AmbiguousError(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected ambiguity error, got nil")
 	}
+}
+
+func TestSoleWorkspace(t *testing.T) {
+	t.Run("one returns it", func(t *testing.T) {
+		ws, err := SoleWorkspace([]bitriseapi.Organization{{Slug: "only", Name: "Only"}})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if ws.Slug != "only" {
+			t.Errorf("Slug = %q, want only", ws.Slug)
+		}
+	})
+
+	t.Run("zero errors", func(t *testing.T) {
+		_, err := SoleWorkspace(nil)
+		if err == nil || !strings.Contains(err.Error(), "no workspaces") {
+			t.Fatalf("expected no-workspaces error, got %v", err)
+		}
+	})
+
+	t.Run("multiple errors and lists name and id sorted", func(t *testing.T) {
+		_, err := SoleWorkspace([]bitriseapi.Organization{
+			{Slug: "zeta", Name: "Zebra"},
+			{Slug: "alpha", Name: "Acme"},
+		})
+		if err == nil || !strings.Contains(err.Error(), "multiple workspaces") {
+			t.Fatalf("expected multiple-workspaces error, got %v", err)
+		}
+		// Each workspace is listed as "name (id)", sorted by name, one per line.
+		if !strings.Contains(err.Error(), "Acme (alpha)") || !strings.Contains(err.Error(), "Zebra (zeta)") {
+			t.Errorf("error should list each workspace as name (id), got: %v", err)
+		}
+		if strings.Index(err.Error(), "Acme (alpha)") > strings.Index(err.Error(), "Zebra (zeta)") {
+			t.Errorf("workspaces should be sorted by name, got: %v", err)
+		}
+	})
+
+	t.Run("multiple falls back to bare id when name missing", func(t *testing.T) {
+		_, err := SoleWorkspace([]bitriseapi.Organization{{Slug: "zeta"}, {Slug: "alpha"}})
+		if err == nil || !strings.Contains(err.Error(), "multiple workspaces") {
+			t.Fatalf("expected multiple-workspaces error, got %v", err)
+		}
+		// Unnamed workspaces show the bare ID, sorted by slug.
+		if !strings.Contains(err.Error(), "  alpha\n  zeta") {
+			t.Errorf("error should list bare slugs sorted, got: %v", err)
+		}
+	})
+}
+
+func TestDefaultWorkspace(t *testing.T) {
+	t.Run("single workspace auto-detected", func(t *testing.T) {
+		client := fakeAPI(t, orgsBody(`{"data":[{"slug":"solo","name":"Solo"}],"paging":{}}`))
+		ws, err := New(client, nil).DefaultWorkspace(context.Background())
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if ws.Slug != "solo" || ws.Name != "Solo" {
+			t.Errorf("got %+v, want {solo Solo}", ws)
+		}
+	})
+
+	t.Run("multiple workspaces error", func(t *testing.T) {
+		client := fakeAPI(t, orgsBody(`{"data":[{"slug":"a"},{"slug":"b"}],"paging":{}}`))
+		_, err := New(client, nil).DefaultWorkspace(context.Background())
+		if err == nil || !strings.Contains(err.Error(), "multiple workspaces") {
+			t.Fatalf("expected multiple-workspaces error, got %v", err)
+		}
+	})
 }

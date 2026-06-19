@@ -205,6 +205,15 @@ func (c *sshClient) Close() error {
 	return errors.Join(errs...)
 }
 
+// listenRemote asks the remote sshd to open a listener on addr and returns a
+// net.Listener whose Accept yields connections initiated on the remote side and
+// tunneled back over this SSH connection (the equivalent of `ssh -R`). Pass an
+// explicit loopback bind address (e.g. "127.0.0.1:0") so the remote listener is
+// reachable only from the session itself, never the session's network.
+func (c *sshClient) listenRemote(addr string) (net.Listener, error) {
+	return c.client.Listen("tcp", addr)
+}
+
 // run executes userCmd in a forced-interactive login bash shell on a fresh
 // SSH session, without allocating a PTY. stdout and stderr are captured
 // separately. Context cancellation propagates by closing the session.
@@ -530,6 +539,31 @@ var (
 	sshAddrPortRegex  = regexp.MustCompile(`-p\s+(\d+)`)
 	bareHostPortRegex = regexp.MustCompile(`^([\w.\-]+)(?::(\d+))?$`)
 )
+
+// sshTargetForSession runs the shared "reachable over SSH?" pre-flight and
+// returns the dial target. Execute, ExecuteInteractive, and the host bridge all
+// gate on the same conditions — session running and SSH credentials populated —
+// so the checks live here once. The caller is responsible for the GetSession
+// fetch (so it can decide how to classify that call's failures).
+func sshTargetForSession(sess Session) (sshTarget, error) {
+	if sess.Status != "running" {
+		return sshTarget{}, fmt.Errorf(
+			"session is not running (status: %q); start the session before running commands",
+			sess.Status,
+		)
+	}
+	if !sess.SSHConnectionOpen || sess.SSHAddress == "" || sess.SSHPassword == "" {
+		return sshTarget{}, fmt.Errorf(
+			"session SSH is not ready yet (credentials not populated); the session may still be provisioning — wait a few seconds and retry",
+		)
+	}
+	target, err := parseSSHAddress(sess.SSHAddress)
+	if err != nil {
+		return sshTarget{}, fmt.Errorf("parse session ssh address: %w", err)
+	}
+	target.Password = sess.SSHPassword
+	return target, nil
+}
 
 // parseSSHAddress extracts user, host, and port from a backend-provided
 // ssh_address (which may be a full ssh command or "host:port"). Returns

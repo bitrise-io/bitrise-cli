@@ -32,23 +32,10 @@ func (s *Service) Execute(ctx context.Context, workspaceID, sessionID, command s
 	if err != nil {
 		return ExecResult{}, fmt.Errorf("fetch session: %w", err)
 	}
-	if sess.Status != "running" {
-		return ExecResult{}, fmt.Errorf(
-			"session is not running (status: %q); start the session before running commands",
-			sess.Status,
-		)
-	}
-	if !sess.SSHConnectionOpen || sess.SSHAddress == "" || sess.SSHPassword == "" {
-		return ExecResult{}, fmt.Errorf(
-			"session SSH is not ready yet (credentials not populated); the session may still be provisioning — wait a few seconds and retry",
-		)
-	}
-
-	target, err := parseSSHAddress(sess.SSHAddress)
+	target, err := sshTargetForSession(sess)
 	if err != nil {
-		return ExecResult{}, fmt.Errorf("parse session ssh address: %w", err)
+		return ExecResult{}, err
 	}
-	target.Password = sess.SSHPassword
 
 	execCtx, cancel := context.WithTimeout(ctx, ExecuteTimeout)
 	defer cancel()
