@@ -7,10 +7,10 @@ import (
 	"net/url"
 	"os/exec"
 	"path"
-	"sort"
 	"strings"
 
 	"github.com/bitrise-io/bitrise-cli/bitriseapi"
+	"github.com/bitrise-io/bitrise-cli/internal/resolve"
 )
 
 // DefaultStackID is the stack used by `app create` when --stack is not
@@ -163,25 +163,19 @@ func (s *Service) Create(ctx context.Context, opts CreateOptions) (CreateResult,
 }
 
 // autoDetectOrg fetches the user's organizations and returns the slug
-// when there's exactly one. 0 or 2+ orgs produce a friendly error.
+// when there's exactly one. 0 or 2+ orgs produce a friendly error. The
+// "exactly one workspace" rule itself lives in resolve.SoleWorkspace so the
+// CLI applies it identically here and in the --workspace fallback.
 func (s *Service) autoDetectOrg(ctx context.Context) (string, error) {
 	orgs, err := s.client.Organizations(ctx)
 	if err != nil {
 		return "", fmt.Errorf("list workspaces: %w", err)
 	}
-	switch len(orgs) {
-	case 0:
-		return "", errors.New("no workspaces found for this account — pass --workspace or create one in the Bitrise dashboard")
-	case 1:
-		return orgs[0].Slug, nil
-	default:
-		slugs := make([]string, 0, len(orgs))
-		for _, o := range orgs {
-			slugs = append(slugs, o.Slug)
-		}
-		sort.Strings(slugs)
-		return "", fmt.Errorf("multiple workspaces available — pass --workspace or run 'bitrise-cli config set default_workspace_id <id>'. Available: %s", strings.Join(slugs, ", "))
+	ws, err := resolve.SoleWorkspace(orgs)
+	if err != nil {
+		return "", err
 	}
+	return ws.Slug, nil
 }
 
 // resolveProvider validates an explicit --provider value, or returns the

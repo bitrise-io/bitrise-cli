@@ -14,8 +14,9 @@ Auto-detection from the current git repo:
 Workspace:
   --workspace is required if you belong to multiple workspaces.
   Otherwise it falls back to:
-    1. default_workspace_id from config
-    2. auto-detect when your account has exactly one workspace
+    1. BITRISE_WORKSPACE_ID environment variable
+    2. default_workspace_id from config
+    3. auto-detect when your account has exactly one workspace
 
 bitrise.yml handling:
   --bitrise-yml PATH   upload that file as the app's config

@@ -64,8 +64,11 @@ func ResolveAppSlug(cmd *cobra.Command) (string, error) {
 }
 
 // ResolveWorkspaceID returns the workspace ID, preferring --workspace, then
-// BITRISE_WORKSPACE_ID, then the default_workspace_id config key. (On the
-// Bitrise API this identifier is a slug; the CLI never exposes that term.)
+// BITRISE_WORKSPACE_ID, then the default_workspace_id config key. When none is
+// set and the account has exactly one workspace, that workspace is used
+// automatically (one GET /organizations call); 0 or 2+ workspaces produce a
+// friendly error. (On the Bitrise API this identifier is a slug; the CLI never
+// exposes that term.)
 func ResolveWorkspaceID(cmd *cobra.Command) (string, error) {
 	if v, _ := cmd.Flags().GetString(FlagWorkspace); v != "" {
 		return v, nil
@@ -73,8 +76,32 @@ func ResolveWorkspaceID(cmd *cobra.Command) (string, error) {
 	if v := config.FromContext(cmd.Context()).WorkspaceID; v != "" {
 		return v, nil
 	}
-	return "", fmt.Errorf("--workspace is required (or set %s, or run 'bitrise-cli config set %s <id>')",
-		config.EnvWorkspaceID, config.KeyDefaultWorkspaceID)
+	// Nothing configured — fall back to the account's sole workspace.
+	client, err := NewAPIClient(cmd)
+	if err != nil {
+		return "", err
+	}
+	ws, err := NewResolver(cmd, client).DefaultWorkspace(cmd.Context())
+	if err != nil {
+		return "", err
+	}
+	// Announce the auto-pick and nudge the user to persist it, but only for
+	// human output — in JSON (scripting/CI) these hints are just noise. The
+	// breadcrumb already goes to stderr, so it never touches the JSON on stdout.
+	if !IsQuiet(cmd) && ResolveFormat(cmd) == output.Human {
+		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Using your only workspace: %s\n", workspaceLabel(ws))
+		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Set it permanently to skip this lookup: bitrise-cli config set %s %s\n", config.KeyDefaultWorkspaceID, ws.Slug)
+	}
+	return ws.Slug, nil
+}
+
+// workspaceLabel renders a workspace for a human breadcrumb as "name (id)",
+// falling back to the bare ID when the API omitted a name.
+func workspaceLabel(ws bitriseapi.Organization) string {
+	if ws.Name != "" {
+		return fmt.Sprintf("%s (%s)", ws.Name, ws.Slug)
+	}
+	return ws.Slug
 }
 
 // ResolveAppSlugArg returns the positional APP_ID argument, falling back to Resolved.

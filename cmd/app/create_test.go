@@ -118,10 +118,11 @@ func TestCreateCmd_AutoOrgFromConfig(t *testing.T) {
 	c.SetOut(io.Discard)
 	c.SetErr(io.Discard)
 	c.SetContext(config.WithResolved(context.Background(), config.Resolved{
-		Output:     "human",
-		APIBaseURL: api.srv.URL,
-		Token:      "tok",
-		OrgSlug:    "from-config",
+		Output:      "human",
+		APIBaseURL:  api.srv.URL,
+		Token:       "tok",
+		OrgSlug:     "from-config",
+		WorkspaceID: "from-config",
 	}))
 	c.SetArgs([]string{
 		"--repo-url", "https://github.com/a/b.git",
