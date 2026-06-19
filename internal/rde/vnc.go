@@ -32,6 +32,21 @@ func (s *Service) GetSessionVNC(ctx context.Context, workspaceID, sessionID stri
 	return VNCCredentialsFromSession(sess)
 }
 
+// SessionExposesVNC reports whether the session currently has a VNC endpoint.
+// VNC is exposed by macOS sessions once they are running; Linux sessions have
+// none. Callers use it to decide whether to offer VNC-related features for a
+// session at all, rather than letting GetSessionVNC fail later.
+func (s *Service) SessionExposesVNC(ctx context.Context, workspaceID, sessionID string) (bool, error) {
+	if s.client == nil {
+		return false, errClient()
+	}
+	sess, err := s.GetSession(ctx, workspaceID, sessionID)
+	if err != nil {
+		return false, err
+	}
+	return sess.VNCAddress != "", nil
+}
+
 // VNCCredentialsFromSession assembles a credentials bundle from an already
 // loaded Session. Split from GetSessionVNC so callers that already hold a
 // Session (e.g. `session create --wait`) can reuse it without a second GET.

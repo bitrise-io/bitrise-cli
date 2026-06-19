@@ -52,6 +52,12 @@ and branch you're on (via 'git clone') and starts Claude Code inside that
 clone. Only the pushed remote state of the branch is cloned — local
 uncommitted or unpushed changes are not transferred.
 
+On macOS sessions, while you're in Claude Code it can open a VNC viewer on your
+machine showing the session's desktop when you ask to see something visual (a
+simulator, app, or browser running in the session). Linux sessions have no
+desktop to show, so this isn't offered there; either way the rest of the
+command is unaffected.
+
 When you exit Claude Code, the session is terminated automatically (its VM is
 torn down), but the session is preserved and can be restored later. Each
 invocation creates a new, uniquely named session (claude-<id>).
@@ -370,6 +376,26 @@ func attachClaude(ctx context.Context, svc *internalrde.Service, log *stepLogger
 		Describe:        p.describe,
 	}
 	go mon.Run(monCtx)
+
+	// Best-effort host bridge: lets the in-session Claude trigger local actions
+	// (currently, open a VNC viewer on the user's machine showing the session's
+	// desktop). The action set depends on the session — open-vnc only applies to
+	// sessions that expose a VNC endpoint (macOS today; Linux sessions have
+	// none). When the session offers no host actions, skip the bridge entirely so
+	// Claude is never told about a capability it can't use. Otherwise start it —
+	// and write its skill — before the interactive attach, so the capability is
+	// in place when Claude launches; it degrades silently if the session does not
+	// permit the reverse forward, and never disrupts the attach.
+	if actions := localHostActions(monCtx, svc, p.workspaceID, p.sessionID); len(actions) > 0 {
+		bridge := newHostBridge(svc, p.workspaceID, p.sessionID, actions)
+		if bridgeErr := bridge.Start(monCtx); bridgeErr != nil {
+			log.step("Host actions unavailable in this session")
+		} else {
+			defer bridge.Close()
+			go bridge.Serve(monCtx)
+			log.step("Host actions enabled (Claude can open a VNC viewer on your machine)")
+		}
+	}
 
 	exitCode, err := svc.ExecuteInteractive(ctx, p.workspaceID, p.sessionID, p.claudeCmd, os.Stdin, os.Stdout, os.Stderr)
 	if errors.Is(err, internalrde.ErrConnectionLost) {
