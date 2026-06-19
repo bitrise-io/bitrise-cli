@@ -81,6 +81,12 @@ var (
 	warnColor    = lipgloss.AdaptiveColor{Light: "136", Dark: "220"} // yellow / olive
 )
 
+// BrandColor is the Bitrise brand purple. Unlike the AdaptiveColor pairs above
+// it's a single truecolor value (lipgloss downsamples to 256/16-color when the
+// terminal can't render it), used for accents like the build-watch spinner and
+// the interactive picker's cursor.
+const BrandColor = lipgloss.Color("#7B61FF")
+
 // forceNoColor and forcedTheme are set by Configure. They override the
 // renderer's auto-detection on every Styles bundle constructed after
 // Configure runs. Concurrent New() calls during a single command run see
@@ -113,6 +119,7 @@ type Styles struct {
 	Success lipgloss.Style // success indicators / "✓"
 	Failure lipgloss.Style // failure indicators / "✗"
 	Warn    lipgloss.Style // warnings / "!"
+	Brand   lipgloss.Style // brand-purple accent (picker cursor, etc.)
 
 	statusSuccess    lipgloss.Style
 	statusFailed     lipgloss.Style
@@ -149,6 +156,7 @@ func New(w io.Writer) Styles {
 		Success:          r.NewStyle().Foreground(successColor),
 		Failure:          r.NewStyle().Foreground(failedColor),
 		Warn:             r.NewStyle().Foreground(warnColor),
+		Brand:            r.NewStyle().Foreground(BrandColor),
 		statusSuccess:    r.NewStyle().Foreground(successColor),
 		statusFailed:     r.NewStyle().Foreground(failedColor),
 		statusAborted:    r.NewStyle().Foreground(abortedColor),

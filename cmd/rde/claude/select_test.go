@@ -1,6 +1,7 @@
 package claude
 
 import (
+	"strings"
 	"testing"
 
 	internalrde "github.com/bitrise-io/bitrise-cli/internal/rde"
@@ -115,5 +116,98 @@ func TestIndexOf(t *testing.T) {
 	}
 	if indexOf(names, "z") != -1 {
 		t.Error("absent target should be -1")
+	}
+}
+
+func TestImageLabel(t *testing.T) {
+	for in, want := range map[string]string{
+		"linux-bitvirt-2026":   "Ubuntu 24.04",
+		"linux-docker-bitvirt": "Ubuntu 24.04 (Docker)",
+		"osx-tahoe-26":         "macOS Tahoe (Xcode 26)",
+		"osx-sonoma-15":        "macOS Sonoma (Xcode 15)",
+		"osx-27-edge":          "Edge (Xcode 27)",
+		"some-future-image":    "some-future-image", // unmapped → raw name
+	} {
+		if got := imageLabel(in); got != want {
+			t.Errorf("imageLabel(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestReuseDetail(t *testing.T) {
+	// Two lines: humanized image, then the raw machine type plus a parsed spec
+	// hint in parentheses.
+	got := reuseDetail("osx-tahoe-26", "g2.mac.m2pro.6c-14g")
+	lines := strings.Split(got, "\n")
+	if len(lines) != 2 {
+		t.Fatalf("reuseDetail lines = %d, want 2: %q", len(lines), got)
+	}
+	if !strings.Contains(lines[0], "Image") || !strings.Contains(lines[0], "macOS Tahoe (Xcode 26)") {
+		t.Errorf("image line = %q", lines[0])
+	}
+	if !strings.Contains(lines[1], "Machine type") || !strings.Contains(lines[1], "g2.mac.m2pro.6c-14g") || !strings.Contains(lines[1], "6 vCPU · 14 GB") {
+		t.Errorf("machine line = %q", lines[1])
+	}
+	// A machine name without a parseable spec tail omits the parenthetical.
+	if got := reuseDetail("linux-bitvirt-2026", "g2.mac"); strings.Contains(got, "(") {
+		t.Errorf("reuseDetail without specs should have no parens: %q", got)
+	}
+}
+
+func TestBuildReuseMenu(t *testing.T) {
+	for _, tc := range []struct {
+		name         string
+		multiImage   bool
+		multiMachine bool
+		wantTitles   []string
+		wantActions  []reuseAction
+	}{
+		{"both changeable", true, true,
+			[]string{"Use this setup", "Change image", "Change machine type"},
+			[]reuseAction{reuseUse, reuseChangeImage, reuseChangeMachine}},
+		{"single machine type hides machine row", true, false,
+			[]string{"Use this setup", "Change image"},
+			[]reuseAction{reuseUse, reuseChangeImage}},
+		{"single image hides image row", false, true,
+			[]string{"Use this setup", "Change machine type"},
+			[]reuseAction{reuseUse, reuseChangeMachine}},
+		{"single of both → reuse only", false, false,
+			[]string{"Use this setup"},
+			[]reuseAction{reuseUse}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			items, actions := buildReuseMenu(tc.multiImage, tc.multiMachine)
+			if len(items) != len(tc.wantTitles) {
+				t.Fatalf("items = %d, want %d", len(items), len(tc.wantTitles))
+			}
+			for i, want := range tc.wantTitles {
+				if items[i].Title != want {
+					t.Errorf("items[%d].Title = %q, want %q", i, items[i].Title, want)
+				}
+			}
+			for i, want := range tc.wantActions {
+				if actions[i] != want {
+					t.Errorf("actions[%d] = %d, want %d", i, actions[i], want)
+				}
+			}
+		})
+	}
+}
+
+func TestMachineSpecHint(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		want string
+	}{
+		{"g2.mac.m2pro.4c-6g", "4 vCPU · 6 GB"},
+		{"g2.linux.amd-zen5.8c-32g", "8 vCPU · 32 GB"},
+		{"8c-16g", "8 vCPU · 16 GB"}, // bare segment, no dots
+		{"g2.mac", ""},               // last segment "mac" doesn't match
+		{"g2.linux.bad", ""},
+		{"", ""},
+	} {
+		if got := machineSpecHint(tc.name); got != tc.want {
+			t.Errorf("machineSpecHint(%q) = %q, want %q", tc.name, got, tc.want)
+		}
 	}
 }

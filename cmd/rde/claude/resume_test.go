@@ -5,31 +5,16 @@ import (
 	"errors"
 	"io"
 	"net/http"
-	"strings"
 	"testing"
 	"time"
 
 	"github.com/spf13/cobra"
 
 	rdeapi "github.com/bitrise-io/bitrise-cli/bitriseapi/rde"
+	"github.com/bitrise-io/bitrise-cli/cmd/cmdutil/picker"
 	internalrde "github.com/bitrise-io/bitrise-cli/internal/rde"
 	"github.com/bitrise-io/bitrise-cli/internal/rde/localsession"
 )
-
-func TestReadLine(t *testing.T) {
-	line, err := readLine(context.Background(), strings.NewReader("2\n"))
-	if err != nil || strings.TrimSpace(line) != "2" {
-		t.Fatalf("readLine = %q, %v", line, err)
-	}
-
-	// A cancelled context unblocks the read (the Ctrl-C path).
-	pr, _ := io.Pipe() // never written → the read blocks until ctx cancels it
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-	if _, err := readLine(ctx, pr); !errors.Is(err, context.Canceled) {
-		t.Errorf("cancelled readLine err = %v, want context.Canceled", err)
-	}
-}
 
 func TestAgo(t *testing.T) {
 	now := time.Now()
@@ -156,6 +141,24 @@ func TestStatusLabel(t *testing.T) {
 	} {
 		if got := statusLabel(tc.rs); got != tc.want {
 			t.Errorf("statusLabel(%+v) = %q, want %q", tc.rs, got, tc.want)
+		}
+	}
+}
+
+func TestStatusTone(t *testing.T) {
+	for _, tc := range []struct {
+		rs   recordStatus
+		want picker.Tone
+	}{
+		{recordStatus{status: "running", resumable: true}, picker.ToneSuccess},
+		{recordStatus{status: "failed", resumable: true}, picker.ToneDanger},
+		{recordStatus{status: "deleted"}, picker.ToneDanger},
+		{recordStatus{status: "terminated", resumable: false}, picker.ToneWarn},
+		{recordStatus{status: "terminated", resumable: true}, picker.ToneDim},
+		{recordStatus{}, picker.ToneDim},
+	} {
+		if got := statusTone(tc.rs); got != tc.want {
+			t.Errorf("statusTone(%+v) = %v, want %v", tc.rs, got, tc.want)
 		}
 	}
 }
