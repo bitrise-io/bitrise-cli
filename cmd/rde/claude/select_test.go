@@ -1,6 +1,7 @@
 package claude
 
 import (
+	"strings"
 	"testing"
 
 	internalrde "github.com/bitrise-io/bitrise-cli/internal/rde"
@@ -133,20 +134,27 @@ func TestImageLabel(t *testing.T) {
 	}
 }
 
-func TestReuseSummary(t *testing.T) {
-	// The image is shown humanized; the machine type keeps its raw name plus a
-	// parsed spec hint.
-	if got := reuseSummary("osx-26-edge", "g2.mac.m2pro.4c-6g"); got != "Edge (Xcode 26) · g2.mac.m2pro.4c-6g · 4 vCPU · 6 GB" {
-		t.Errorf("reuseSummary with specs = %q", got)
+func TestReuseDetail(t *testing.T) {
+	// Two lines: humanized image, then the raw machine type plus a parsed spec
+	// hint in parentheses.
+	got := reuseDetail("osx-tahoe-26", "g2.mac.m2pro.6c-14g")
+	lines := strings.Split(got, "\n")
+	if len(lines) != 2 {
+		t.Fatalf("reuseDetail lines = %d, want 2: %q", len(lines), got)
 	}
-	// A machine name without a parseable spec tail omits the hint.
-	if got := reuseSummary("linux-bitvirt-2026", "g2.mac"); got != "Ubuntu 24.04 · g2.mac" {
-		t.Errorf("reuseSummary without specs = %q", got)
+	if !strings.Contains(lines[0], "Image") || !strings.Contains(lines[0], "macOS Tahoe (Xcode 26)") {
+		t.Errorf("image line = %q", lines[0])
+	}
+	if !strings.Contains(lines[1], "Machine type") || !strings.Contains(lines[1], "g2.mac.m2pro.6c-14g") || !strings.Contains(lines[1], "6 vCPU · 14 GB") {
+		t.Errorf("machine line = %q", lines[1])
+	}
+	// A machine name without a parseable spec tail omits the parenthetical.
+	if got := reuseDetail("linux-bitvirt-2026", "g2.mac"); strings.Contains(got, "(") {
+		t.Errorf("reuseDetail without specs should have no parens: %q", got)
 	}
 }
 
 func TestBuildReuseMenu(t *testing.T) {
-	const summary = "img · mt"
 	for _, tc := range []struct {
 		name         string
 		multiImage   bool
@@ -168,7 +176,7 @@ func TestBuildReuseMenu(t *testing.T) {
 			[]reuseAction{reuseUse}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			items, actions := buildReuseMenu(tc.multiImage, tc.multiMachine, summary)
+			items, actions := buildReuseMenu(tc.multiImage, tc.multiMachine)
 			if len(items) != len(tc.wantTitles) {
 				t.Fatalf("items = %d, want %d", len(items), len(tc.wantTitles))
 			}
@@ -176,9 +184,6 @@ func TestBuildReuseMenu(t *testing.T) {
 				if items[i].Title != want {
 					t.Errorf("items[%d].Title = %q, want %q", i, items[i].Title, want)
 				}
-			}
-			if items[0].Desc != summary {
-				t.Errorf("reuse row Desc = %q, want %q", items[0].Desc, summary)
 			}
 			for i, want := range tc.wantActions {
 				if actions[i] != want {

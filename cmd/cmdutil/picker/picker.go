@@ -48,7 +48,11 @@ type Item struct {
 type Config struct {
 	// Prompt heads the list, e.g. "Select an image".
 	Prompt string
-	Items  []Item
+	// Note is an optional dim block rendered between the prompt and the rows,
+	// e.g. a key/value summary of what's being chosen. May span multiple lines;
+	// each line is rendered as-is (indent it yourself).
+	Note  string
+	Items []Item
 	// Cursor is the index highlighted on open (the press-Enter choice).
 	// Out-of-range values fall back to 0.
 	Cursor int
@@ -104,6 +108,7 @@ func Select(ctx context.Context, cfg Config) (int, error) {
 // view holds the item indices currently shown.
 type model struct {
 	prompt   string
+	note     string
 	items    []Item
 	filterOn bool
 
@@ -138,6 +143,7 @@ func newModel(cfg Config) model {
 	s := style.New(cfg.Out)
 	m := model{
 		prompt:      cfg.Prompt,
+		note:        cfg.Note,
 		items:       cfg.Items,
 		filterOn:    cfg.Filter,
 		view:        view,
@@ -220,6 +226,14 @@ func (m model) View() string {
 		b.WriteString(m.s.Dim.Render("/" + m.filter))
 	}
 	b.WriteByte('\n')
+
+	if m.note != "" {
+		for _, line := range strings.Split(m.note, "\n") {
+			b.WriteString(m.s.Dim.Render(line))
+			b.WriteByte('\n')
+		}
+		b.WriteByte('\n') // blank line between the summary and the rows
+	}
 
 	if len(m.view) == 0 {
 		b.WriteString(m.s.Dim.Render("  no matches"))

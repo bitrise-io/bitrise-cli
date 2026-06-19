@@ -168,7 +168,7 @@ func offerReuse(ctx context.Context, cmd *cobra.Command, svc *internalrde.Servic
 		return "", "", false, nil
 	}
 
-	items, actions := buildReuseMenu(len(imageNames) > 1, len(mtNames) > 1, reuseSummary(prefs.Image, prefs.MachineType))
+	items, actions := buildReuseMenu(len(imageNames) > 1, len(mtNames) > 1)
 	// Nothing to customize (a single image and a single machine type): reuse
 	// without prompting.
 	if len(actions) == 1 {
@@ -177,6 +177,7 @@ func offerReuse(ctx context.Context, cmd *cobra.Command, svc *internalrde.Servic
 
 	idx, err := picker.Select(ctx, picker.Config{
 		Prompt:     "Last used for this project",
+		Note:       reuseDetail(prefs.Image, prefs.MachineType),
 		Items:      items,
 		Cursor:     0,
 		DefaultIdx: 0,
@@ -209,8 +210,8 @@ func offerReuse(ctx context.Context, cmd *cobra.Command, svc *internalrde.Servic
 // "Change image" row appears only when more than one image exists, and "Change
 // machine type" only when the remembered image has more than one compatible
 // type — so we never offer a change with nothing to change.
-func buildReuseMenu(multiImage, multiMachine bool, summary string) ([]picker.Item, []reuseAction) {
-	items := []picker.Item{{Title: "Use this setup", Desc: summary}}
+func buildReuseMenu(multiImage, multiMachine bool) ([]picker.Item, []reuseAction) {
+	items := []picker.Item{{Title: "Use this setup"}}
 	actions := []reuseAction{reuseUse}
 	if multiImage {
 		items = append(items, picker.Item{Title: "Change image"})
@@ -223,13 +224,14 @@ func buildReuseMenu(multiImage, multiMachine bool, summary string) ([]picker.Ite
 	return items, actions
 }
 
-// reuseSummary is the one-line "image · machine (specs)" shown on the reuse row.
-func reuseSummary(image, machineType string) string {
-	s := fmt.Sprintf("%s · %s", imageLabel(image), machineType)
+// reuseDetail is the two-line "Image / Machine type" summary shown under the
+// reuse-menu prompt, so the user can see exactly what "Use this setup" launches.
+func reuseDetail(image, machineType string) string {
+	machine := machineType
 	if hint := machineSpecHint(machineType); hint != "" {
-		s += " · " + hint
+		machine += "  (" + hint + ")"
 	}
-	return s
+	return fmt.Sprintf("  %-13s %s\n  %-13s %s", "Image", imageLabel(image), "Machine type", machine)
 }
 
 // imageItem and machineItem build the picker rows for the image and machine-type

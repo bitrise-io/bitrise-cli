@@ -193,6 +193,20 @@ func TestViewContentAndCollapse(t *testing.T) {
 	}
 }
 
+func TestViewRendersNote(t *testing.T) {
+	m := newTestModel(Config{
+		Prompt: "Last used for this project",
+		Note:   "  Image         Ubuntu 24.04\n  Machine type  g2.mac",
+		Items:  []Item{{Title: "Use this setup"}, {Title: "Change image"}},
+	})
+	v := m.View()
+	for _, want := range []string{"Image         Ubuntu 24.04", "Machine type  g2.mac", "Use this setup"} {
+		if !strings.Contains(v, want) {
+			t.Errorf("View() missing note/row %q in:\n%s", want, v)
+		}
+	}
+}
+
 func TestStatusRendersInView(t *testing.T) {
 	m := newTestModel(Config{Items: []Item{
 		{Title: "sess-1", Desc: "[main] 2h ago", Status: "running", Tone: ToneSuccess},
