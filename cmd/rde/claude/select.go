@@ -4,14 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"os"
-	"strconv"
+	"regexp"
 	"strings"
 
 	"github.com/spf13/cobra"
 
 	"github.com/bitrise-io/bitrise-cli/cmd/cmdutil"
+	"github.com/bitrise-io/bitrise-cli/cmd/cmdutil/picker"
 	internalrde "github.com/bitrise-io/bitrise-cli/internal/rde"
 	"github.com/bitrise-io/bitrise-cli/internal/rde/localsession"
 )
@@ -23,11 +23,14 @@ var errSelectionCancelled = errors.New("selection cancelled")
 
 // selectImageAndMachineType resolves the image and machine type for a fresh
 // session, mirroring the RDE web UI: pick an image first, then a machine type
-// compatible with that image. For each step the choice is, in order: an
-// explicit --image/--machine-type flag, the only option when there's just one,
-// or an interactive numbered picker (the default preselected from the per-repo
-// saved choice, else the backend-marked default, else the first item). When
-// stdin isn't a terminal the default is used without prompting.
+// compatible with that image. When a still-valid combo is remembered for this
+// project (and neither --image nor --machine-type is set), it first offers a
+// one-step "use your last setup" menu so returning users don't re-pick the same
+// pair. For each pick the choice is, in order: an explicit flag, the only option
+// when there's just one (so a single machine type starts the session without a
+// prompt), or the interactive picker (default = the per-project saved choice,
+// else the backend default, else the first). When stdin/stderr isn't a terminal
+// the default is used without prompting.
 //
 // The returned values are image and machine type NAMES, ready for CreateSession.
 func selectImageAndMachineType(ctx context.Context, cmd *cobra.Command, svc *internalrde.Service, log *stepLogger, workspaceID, repoPath, flagImage, flagMachineType string) (string, string, error) {
@@ -44,33 +47,53 @@ func selectImageAndMachineType(ctx context.Context, cmd *cobra.Command, svc *int
 	}
 	imageNames, backendDefaultImage := uniqueImageNames(images)
 
-	image, err := chooseOne(ctx, cmd, log, "image", "Select an image", imageNames, prefs.Image, backendDefaultImage, flagImage)
+	// Fast path: reuse the remembered combo for this project in one step.
+	if flagImage == "" && flagMachineType == "" && interactivePicker(cmd) && prefs.Image != "" && prefs.MachineType != "" {
+		image, machineType, done, err := offerReuse(ctx, cmd, svc, log, workspaceID, imageNames, prefs)
+		if err != nil || done {
+			return image, machineType, err
+		}
+		// The remembered combo is stale, or the user chose "Change image" — fall
+		// through to the full pick below (saved values still seed the defaults).
+	}
+
+	image, err := chooseOne(ctx, cmd, log, "image", "Select an image", imageNames, prefs.Image, backendDefaultImage, flagImage, imageItem)
 	if err != nil {
 		return "", "", err
 	}
 
-	mts, err := svc.MachineTypesForImage(ctx, workspaceID, image)
-	if err != nil {
-		return "", "", err
-	}
-	if len(mts) == 0 {
-		return "", "", fmt.Errorf("no machine types are compatible with image %q", image)
-	}
-	mtNames, backendDefaultMT := uniqueMachineTypeNames(mts)
-
-	machineType, err := chooseOne(ctx, cmd, log, "machine type", "Select a machine type", mtNames, prefs.MachineType, backendDefaultMT, flagMachineType)
+	machineType, err := chooseMachineForImage(ctx, cmd, svc, log, workspaceID, image, prefs.MachineType, flagMachineType)
 	if err != nil {
 		return "", "", err
 	}
 	return image, machineType, nil
 }
 
+// chooseMachineForImage resolves the machine type for the chosen image: it
+// fetches the compatible types and defers to chooseOne, which auto-selects when
+// only one is available — so a single compatible machine type starts the session
+// without a machine-type prompt.
+func chooseMachineForImage(ctx context.Context, cmd *cobra.Command, svc *internalrde.Service, log *stepLogger, workspaceID, image, prefMachineType, flagMachineType string) (string, error) {
+	mts, err := svc.MachineTypesForImage(ctx, workspaceID, image)
+	if err != nil {
+		return "", err
+	}
+	if len(mts) == 0 {
+		return "", fmt.Errorf("no machine types are compatible with image %q", image)
+	}
+	mtNames, backendDefaultMT := uniqueMachineTypeNames(mts)
+	return chooseOne(ctx, cmd, log, "machine type", "Select a machine type", mtNames, prefMachineType, backendDefaultMT, flagMachineType, machineItem)
+}
+
 // chooseOne resolves a single selection. An explicit flag is validated against
-// the options and used as-is; a single option is auto-selected; a non-terminal
-// stdin uses the resolved default without prompting; otherwise it shows an
-// interactive numbered picker. noun is used in messages ("image"); label heads
-// the picker. options must be non-empty.
-func chooseOne(ctx context.Context, cmd *cobra.Command, log *stepLogger, noun, label string, options []string, prefName, backendDefault, flag string) (string, error) {
+// the options and used as-is; a single option is auto-selected; a
+// non-interactive stdin/stderr uses the resolved default without prompting;
+// otherwise it shows the interactive picker. noun is used in messages
+// ("image"); label heads the picker. itemize, when non-nil, builds the picker
+// row for each option (e.g. a human-friendly image title, or a machine-type
+// spec hint); the raw option string is always what's returned. options must be
+// non-empty.
+func chooseOne(ctx context.Context, cmd *cobra.Command, log *stepLogger, noun, label string, options []string, prefName, backendDefault, flag string, itemize func(string) picker.Item) (string, error) {
 	if flag != "" {
 		if indexOf(options, flag) < 0 {
 			return "", fmt.Errorf("%s %q is not available; choose one of: %s", noun, flag, strings.Join(options, ", "))
@@ -83,18 +106,193 @@ func chooseOne(ctx context.Context, cmd *cobra.Command, log *stepLogger, noun, l
 		return options[0], nil
 	}
 	defaultIdx := resolveDefault(options, prefName, backendDefault)
-	if !cmdutil.IsTerminal(os.Stdin) {
+	if !interactivePicker(cmd) {
 		log.step("Using default %s (stdin is not a terminal): %s", noun, options[defaultIdx])
 		return options[defaultIdx], nil
 	}
-	// Surface the default at the top of the list so it's easy to recognize as
-	// the press-Enter choice, then prompt with it preselected at position 1.
+	// Surface the default at the top of the list so it's the obvious
+	// press-Enter choice, with the cursor and "(default)" badge on row 1.
 	ordered := moveToFront(options, defaultIdx)
-	idx, err := promptChoice(ctx, cmd, label, ordered, 0)
+	items := make([]picker.Item, len(ordered))
+	for i, opt := range ordered {
+		if itemize != nil {
+			items[i] = itemize(opt)
+		} else {
+			items[i] = picker.Item{Title: opt}
+		}
+	}
+	idx, err := picker.Select(ctx, picker.Config{
+		Prompt:     label,
+		Items:      items,
+		Cursor:     0,
+		DefaultIdx: 0,
+		In:         os.Stdin,
+		Out:        cmd.ErrOrStderr(),
+	})
+	if errors.Is(err, picker.ErrCancelled) {
+		return "", errSelectionCancelled
+	}
 	if err != nil {
 		return "", err
 	}
 	return ordered[idx], nil
+}
+
+// reuseAction is which entry of the "use your last setup" menu was picked.
+type reuseAction int
+
+const (
+	reuseUse reuseAction = iota
+	reuseChangeImage
+	reuseChangeMachine
+)
+
+// offerReuse shows the one-step "use your last setup" menu for a project that
+// has a remembered image+machine combo. done=true means the combo was resolved
+// here (reused, or customized through the menu) and the returned values are
+// final; done=false with a nil error means the remembered combo is stale or the
+// user asked to change the image, so the caller should run the full pick. A
+// non-nil error (e.g. the user cancelled) aborts selection.
+func offerReuse(ctx context.Context, cmd *cobra.Command, svc *internalrde.Service, log *stepLogger, workspaceID string, imageNames []string, prefs localsession.Prefs) (image, machineType string, done bool, err error) {
+	// The remembered image must still be offered…
+	if indexOf(imageNames, prefs.Image) < 0 {
+		return "", "", false, nil
+	}
+	mts, err := svc.MachineTypesForImage(ctx, workspaceID, prefs.Image)
+	if err != nil {
+		return "", "", false, err
+	}
+	mtNames, _ := uniqueMachineTypeNames(mts)
+	// …and the remembered machine type must still be compatible with it.
+	if indexOf(mtNames, prefs.MachineType) < 0 {
+		return "", "", false, nil
+	}
+
+	items, actions := buildReuseMenu(len(imageNames) > 1, len(mtNames) > 1)
+	// Nothing to customize (a single image and a single machine type): reuse
+	// without prompting.
+	if len(actions) == 1 {
+		return prefs.Image, prefs.MachineType, true, nil
+	}
+
+	idx, err := picker.Select(ctx, picker.Config{
+		Prompt:     "Last used for this project",
+		Note:       reuseDetail(prefs.Image, prefs.MachineType),
+		Items:      items,
+		Cursor:     0,
+		DefaultIdx: 0,
+		In:         os.Stdin,
+		Out:        cmd.ErrOrStderr(),
+	})
+	if errors.Is(err, picker.ErrCancelled) {
+		return "", "", false, errSelectionCancelled
+	}
+	if err != nil {
+		return "", "", false, err
+	}
+
+	switch actions[idx] {
+	case reuseChangeImage:
+		// Caller runs the full image + machine pick.
+		return "", "", false, nil
+	case reuseChangeMachine:
+		mt, err := chooseOne(ctx, cmd, log, "machine type", "Select a machine type", mtNames, prefs.MachineType, "", "", machineItem)
+		if err != nil {
+			return "", "", false, err
+		}
+		return prefs.Image, mt, true, nil
+	default: // reuseUse
+		return prefs.Image, prefs.MachineType, true, nil
+	}
+}
+
+// buildReuseMenu assembles the rows and matching actions for offerReuse. The
+// "Change image" row appears only when more than one image exists, and "Change
+// machine type" only when the remembered image has more than one compatible
+// type — so we never offer a change with nothing to change.
+func buildReuseMenu(multiImage, multiMachine bool) ([]picker.Item, []reuseAction) {
+	items := []picker.Item{{Title: "Use this setup"}}
+	actions := []reuseAction{reuseUse}
+	if multiImage {
+		items = append(items, picker.Item{Title: "Change image"})
+		actions = append(actions, reuseChangeImage)
+	}
+	if multiMachine {
+		items = append(items, picker.Item{Title: "Change machine type"})
+		actions = append(actions, reuseChangeMachine)
+	}
+	return items, actions
+}
+
+// reuseDetail is the two-line "Image / Machine type" summary shown under the
+// reuse-menu prompt, so the user can see exactly what "Use this setup" launches.
+func reuseDetail(image, machineType string) string {
+	machine := machineType
+	if hint := machineSpecHint(machineType); hint != "" {
+		machine += "  (" + hint + ")"
+	}
+	return fmt.Sprintf("  %-13s %s\n  %-13s %s", "Image", imageLabel(image), "Machine type", machine)
+}
+
+// imageItem and machineItem build the picker rows for the image and machine-type
+// pickers: images show a human-friendly label, machine types show their spec
+// hint as dim secondary text. The picker still returns the raw option string.
+func imageItem(name string) picker.Item { return picker.Item{Title: imageLabel(name)} }
+func machineItem(name string) picker.Item {
+	return picker.Item{Title: name, Desc: machineSpecHint(name)}
+}
+
+// imageDisplayNames maps RDE image names to human-friendly labels. This is a
+// stopgap until the backend serves proper descriptions; unmapped names fall
+// back to the raw name so new images still display. The trailing osx number is
+// the Xcode version; "-edge" images are labeled by Xcode version only (no macOS
+// codename yet). Refine the wording here as the catalog evolves.
+var imageDisplayNames = map[string]string{
+	"linux-bitvirt-2026":   "Ubuntu 24.04",
+	"linux-docker-bitvirt": "Ubuntu 24.04 (Docker)",
+	"osx-sequoia-16":       "macOS Sequoia (Xcode 16)",
+	"osx-sequoia-26":       "macOS Sequoia (Xcode 26)",
+	"osx-sonoma-15":        "macOS Sonoma (Xcode 15)",
+	"osx-sonoma-16":        "macOS Sonoma (Xcode 16)",
+	"osx-ventura-15":       "macOS Ventura (Xcode 15)",
+	"osx-tahoe-26":         "macOS Tahoe (Xcode 26)",
+	"osx-26-edge":          "Edge (Xcode 26)",
+	"osx-27-edge":          "Edge (Xcode 27)",
+}
+
+// imageLabel returns the human-friendly label for an image name, or the raw
+// name when there's no mapping.
+func imageLabel(name string) string {
+	if label, ok := imageDisplayNames[name]; ok {
+		return label
+	}
+	return name
+}
+
+// interactivePicker reports whether an interactive picker can run: it reads keys
+// from stdin and draws to stderr, so both must be a terminal.
+func interactivePicker(cmd *cobra.Command) bool {
+	return cmdutil.IsTerminal(os.Stdin) && cmdutil.WriterIsTTY(cmd.ErrOrStderr())
+}
+
+// machineSpecRe matches the "<vCPU>c-<RAM>g" tail of a machine-type name.
+var machineSpecRe = regexp.MustCompile(`^(\d+)c-(\d+)g$`)
+
+// machineSpecHint derives a "<n> vCPU · <m> GB" hint from a machine-type name
+// by parsing its last '.'-separated segment (e.g. "g2.mac.m2pro.4c-6g" →
+// "4c-6g" → "4 vCPU · 6 GB"). Returns "" when the segment doesn't match the
+// "<n>c-<m>g" shape (e.g. "g2.mac"), so an unrecognized name simply shows no
+// hint rather than a wrong one.
+func machineSpecHint(name string) string {
+	seg := name
+	if i := strings.LastIndex(name, "."); i >= 0 {
+		seg = name[i+1:]
+	}
+	m := machineSpecRe.FindStringSubmatch(seg)
+	if m == nil {
+		return ""
+	}
+	return fmt.Sprintf("%s vCPU · %s GB", m[1], m[2])
 }
 
 // moveToFront returns options with the element at idx moved to the front,
@@ -109,48 +307,6 @@ func moveToFront(options []string, idx int) []string {
 	out = append(out, options[:idx]...)
 	out = append(out, options[idx+1:]...)
 	return out
-}
-
-// promptChoice renders a numbered list of options to stderr and reads a
-// selection from stdin. Enter accepts the default (defaultIdx); a number 1-N
-// picks that option; "q", EOF (Ctrl-D), or Ctrl-C (which cancels ctx) back out
-// with errSelectionCancelled. Returns the chosen index. Mirrors the resume
-// picker (resume.go pickRecord).
-func promptChoice(ctx context.Context, cmd *cobra.Command, label string, options []string, defaultIdx int) (int, error) {
-	ew := cmdutil.NewErrWriter(cmd.ErrOrStderr())
-	ew.F("%s:\n", label)
-	for i, opt := range options {
-		marker := ""
-		if i == defaultIdx {
-			marker = "  (default)"
-		}
-		ew.F("  %d) %s%s\n", i+1, opt, marker)
-	}
-	ew.F("Choice (1-%d) [%d], or q to cancel: ", len(options), defaultIdx+1)
-	if ew.Err != nil {
-		return 0, ew.Err
-	}
-
-	line, err := readLine(ctx, os.Stdin)
-	if err != nil {
-		// Ctrl-C (ctx cancelled) or Ctrl-D (EOF) → treat as cancel.
-		if errors.Is(err, context.Canceled) || errors.Is(err, io.EOF) {
-			return 0, errSelectionCancelled
-		}
-		return 0, err
-	}
-	line = strings.TrimSpace(line)
-	switch strings.ToLower(line) {
-	case "q", "quit", "exit":
-		return 0, errSelectionCancelled
-	case "":
-		return defaultIdx, nil
-	}
-	n, err := strconv.Atoi(line)
-	if err != nil || n < 1 || n > len(options) {
-		return 0, fmt.Errorf("invalid selection %q", line)
-	}
-	return n - 1, nil
 }
 
 // resolveDefault returns the index in names to preselect, applying the
