@@ -43,7 +43,9 @@ date both locally and on the session itself.
 A local SSH agent ($SSH_AUTH_SOCK), if present, is forwarded into the session
 so the clone (and git-over-SSH inside the session) uses your local keys. If the
 repo's origin is an HTTPS GitHub/GitLab/Bitbucket URL, it's rewritten to its
-SSH form so the forwarded agent can authenticate.
+SSH form so the forwarded agent can authenticate. Your local git identity
+(user.name / user.email) is also copied into the session and set globally, so
+commits made there are attributed to you rather than the session's account.
 
 Unless a Claude Code token is already configured on the control plane, a local
 credential is saved there before the session is created — taken from

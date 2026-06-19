@@ -144,6 +144,11 @@ func resumeSession(ctx context.Context, cmd *cobra.Command, svc *internalrde.Ser
 	defer cleanupAgent()
 	log.step("Auth: %s", repoAuth)
 
+	// Re-apply the user's local git identity (idempotent, global): the repo's
+	// on the persistent disk, but their identity may have changed locally, and
+	// sessions created before this existed never had it set.
+	syncGitIdentity(ctx, svc, log, rec.WorkspaceID, rec.RDESessionID)
+
 	// ── Claude Code ────────────────────────────────────────────────
 	log.group("Claude Code")
 	log.step("Resuming…")

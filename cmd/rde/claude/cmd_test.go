@@ -183,6 +183,48 @@ func TestBuildCloneCommand(t *testing.T) {
 	}
 }
 
+func TestBuildGitIdentityCommand(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		uName string
+		email string
+		want  string
+	}{
+		{"both set", "Ada Lovelace", "ada@example.com",
+			"git config --global user.name 'Ada Lovelace' && git config --global user.email ada@example.com"},
+		{"name only", "Ada Lovelace", "",
+			"git config --global user.name 'Ada Lovelace'"},
+		{"email only", "", "ada@example.com",
+			"git config --global user.email ada@example.com"},
+		{"neither set", "", "", ""},
+		{"name with quote is escaped", "O'Brien", "",
+			`git config --global user.name 'O'\''Brien'`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := buildGitIdentityCommand(tc.uName, tc.email); got != tc.want {
+				t.Errorf("buildGitIdentityCommand(%q, %q):\n got  %q\n want %q", tc.uName, tc.email, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestGitIdentityLabel(t *testing.T) {
+	for _, tc := range []struct {
+		uName string
+		email string
+		want  string
+	}{
+		{"Ada Lovelace", "ada@example.com", "Ada Lovelace <ada@example.com>"},
+		{"Ada Lovelace", "", "Ada Lovelace"},
+		{"", "ada@example.com", "ada@example.com"},
+		{"", "", ""},
+	} {
+		if got := gitIdentityLabel(tc.uName, tc.email); got != tc.want {
+			t.Errorf("gitIdentityLabel(%q, %q) = %q, want %q", tc.uName, tc.email, got, tc.want)
+		}
+	}
+}
+
 func TestParseAgentVar(t *testing.T) {
 	out := "SSH_AUTH_SOCK=/tmp/ssh-abc/agent.123; export SSH_AUTH_SOCK;\n" +
 		"SSH_AGENT_PID=456; export SSH_AGENT_PID;\n" +
