@@ -36,7 +36,7 @@ import (
 // Unlike the client_id (a per-environment CIMD URL, resolved by the config
 // layer and overridable via BITRISE_OAUTH_CLIENT_ID), the resource is a stable
 // identifier shared across environments, so it stays a compile-time constant.
-const DefaultResource = "https://cli.bitrise.io"
+const DefaultResource = "https://app.bitrise.io"
 
 // defaultTimeout bounds each token HTTP call. defaultPATLifetime is the
 // fallback PAT lifetime when the exchange response omits expires_in (the
