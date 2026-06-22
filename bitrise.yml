@@ -11,12 +11,10 @@ tools:
 workflows:
 
   # ── Quality gate ──────────────────────────────────────────────────────────
-  # Run on every push and pull request.
+  # Run on every pull request targeting main.
   # Checks dependency hygiene, formatting, static analysis, linting, and tests.
   test:
     triggers:
-      push:
-        - branch: main
       pull_request:
         - target_branch: main
     steps:
