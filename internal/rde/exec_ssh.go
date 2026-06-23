@@ -376,7 +376,9 @@ func (c *sshClient) forwardTerminfo(ctx context.Context, termType string) error 
 // the extended/user-defined capabilities that non-standard terminals rely on.
 func localTerminfoSource(ctx context.Context, termType string) ([]byte, error) {
 	var stdout, stderr bytes.Buffer
-	cmd := exec.CommandContext(ctx, "infocmp", "-x", termType)
+	// termType is the caller's own $TERM, passed as a discrete argv element to a
+	// constant binary (no shell) — there is no command-injection vector.
+	cmd := exec.CommandContext(ctx, "infocmp", "-x", termType) //nolint:gosec // see comment above
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
