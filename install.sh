@@ -110,4 +110,7 @@ case ":$PATH:" in
 esac
 
 info ""
+info "Join our community:"
+info "  https://join.slack.com/t/bitrise/shared_invite/zt-3ycxzv91u-hsP5Uw9wcrOMjNDiJChJfw"
+info ""
 info "Get started:  $BINARY auth login"
