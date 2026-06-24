@@ -126,6 +126,72 @@ func TestCreateCmd_AutoTerminateOmittedWhenFlagUnset(t *testing.T) {
 	}
 }
 
+func TestCreateCmd_TemplateLess(t *testing.T) {
+	var gotBody map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/v1/workspaces/ws-1/sessions" {
+			t.Errorf("unexpected: %s %s", r.Method, r.URL.Path)
+		}
+		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		_, _ = io.WriteString(w, `{"session":{"id":"s-new","name":"dev","status":"SESSION_STATUS_PENDING"}}`)
+	}))
+	defer srv.Close()
+
+	stdout, _, err := run(t, newCreateCmd(), srv.URL, "ws-1",
+		[]string{"dev", "--image", "osx-sequoia-26", "--machine-type", "g2.mac.m2pro.6c-14g"}, output.Human)
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if _, ok := gotBody["templateId"]; ok {
+		t.Errorf("templateId should be omitted for a template-less session, body=%v", gotBody)
+	}
+	if gotBody["image"] != "osx-sequoia-26" || gotBody["machineType"] != "g2.mac.m2pro.6c-14g" {
+		t.Errorf("unexpected create body: %v", gotBody)
+	}
+	if !strings.Contains(stdout, "Session created") || !strings.Contains(stdout, "s-new") {
+		t.Errorf("stdout missing create confirmation:\n%s", stdout)
+	}
+}
+
+func TestCreateCmd_ImageOverridesWithTemplate(t *testing.T) {
+	var gotBody map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		_, _ = io.WriteString(w, `{"session":{"id":"s-new","name":"dev"}}`)
+	}))
+	defer srv.Close()
+
+	// --image / --machine-type may accompany a template to override its
+	// defaults; the template ID is still sent.
+	_, _, err := run(t, newCreateCmd(), srv.URL, "ws-1",
+		[]string{"dev", "--template", uuidTemplate, "--image", "osx-sequoia-26", "--machine-type", "g2.mac.m2pro.6c-14g"}, output.Human)
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if gotBody["templateId"] != uuidTemplate {
+		t.Errorf("templateId = %v, want %s", gotBody["templateId"], uuidTemplate)
+	}
+	if gotBody["image"] != "osx-sequoia-26" || gotBody["machineType"] != "g2.mac.m2pro.6c-14g" {
+		t.Errorf("unexpected create body: %v", gotBody)
+	}
+}
+
+func TestCreateCmd_RequiresTemplateOrMachineSpec(t *testing.T) {
+	cases := map[string][]string{
+		"no template, no machine spec": {"dev"},
+		"image without machine type":   {"dev", "--image", "osx-sequoia-26"},
+		"machine type without image":   {"dev", "--machine-type", "g2.mac.m2pro.6c-14g"},
+	}
+	for name, args := range cases {
+		t.Run(name, func(t *testing.T) {
+			_, _, err := run(t, newCreateCmd(), "http://unused", "ws-1", args, output.Human)
+			if err == nil || !strings.Contains(err.Error(), "--machine-type") {
+				t.Errorf("error = %v, want template-or-image/machine-type requirement", err)
+			}
+		})
+	}
+}
+
 func TestUpdateCmd_RequiresAField(t *testing.T) {
 	_, _, err := run(t, newUpdateCmd(), "http://unused", "ws-1", []string{"s-1"}, output.Human)
 	if err == nil || !strings.Contains(err.Error(), "--name") {

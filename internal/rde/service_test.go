@@ -118,6 +118,29 @@ func TestCreateSession_BodyAndAutoMapped(t *testing.T) {
 	}
 }
 
+func TestCreateSession_TemplateLess(t *testing.T) {
+	rs := newRecordingServer(t, `{"session":{"id":"new","name":"dev","status":"SESSION_STATUS_PENDING"}}`)
+
+	if _, err := rs.service().CreateSession(context.Background(), "ws-1", CreateSessionRequest{
+		Name:        "dev",
+		Image:       "osx-sequoia-26",
+		MachineType: "g2.mac.m2pro.6c-14g",
+	}); err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+
+	var sent rdeapi.CreateSessionRequest
+	if err := json.Unmarshal(rs.lastBody, &sent); err != nil {
+		t.Fatalf("unmarshal sent body: %v", err)
+	}
+	if sent.TemplateID != "" {
+		t.Errorf("sent templateId = %q, want empty for a template-less session", sent.TemplateID)
+	}
+	if sent.Image != "osx-sequoia-26" || sent.MachineType != "g2.mac.m2pro.6c-14g" {
+		t.Errorf("sent image/machineType = %q/%q", sent.Image, sent.MachineType)
+	}
+}
+
 func TestUpdateSession_OmitsUnsetFields(t *testing.T) {
 	rs := newRecordingServer(t, `{"session":{"id":"s1","name":"renamed"}}`)
 

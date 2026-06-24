@@ -33,7 +33,7 @@ bitrise-cli rde session [flags]
 ### SEE ALSO
 
 * [bitrise-cli rde](bitrise-cli_rde.md)	 - Manage Bitrise Remote Dev Environments (sessions, templates, …)
-* [bitrise-cli rde session create](bitrise-cli_rde_session_create.md)	 - Create a new RDE session from a template
+* [bitrise-cli rde session create](bitrise-cli_rde_session_create.md)	 - Create a new RDE session
 * [bitrise-cli rde session delete](bitrise-cli_rde_session_delete.md)	 - Permanently delete a session
 * [bitrise-cli rde session delete-terminated](bitrise-cli_rde_session_delete-terminated.md)	 - Permanently delete every terminated session in the workspace
 * [bitrise-cli rde session diff](bitrise-cli_rde_session_diff.md)	 - Compare a session's template snapshot with the current template
