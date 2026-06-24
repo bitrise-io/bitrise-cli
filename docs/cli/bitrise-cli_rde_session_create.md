@@ -1,13 +1,20 @@
 ## bitrise-cli rde session create
 
-Create a new RDE session from a template
+Create a new RDE session
 
 ### Synopsis
 
-Create a new RDE session from a template.
+Create a new RDE session, either from a template or from a bare
+image + machine type (a template-less session, with no warmup/startup scripts
+or other template configuration).
 
 NAME is a human-readable label for the session; you can use it in place of the
 session ID in later commands (view, terminate, …) as long as it stays unique.
+
+Pass --template to create the session from a template (by ID or name). To
+create a session without a template, omit --template and pass both --image and
+--machine-type instead. --image / --machine-type may also be given alongside
+--template to override the template's defaults for this session.
 
 Provide session input values via --input (one --input per key), --secret-input
 (value stored as secret-at-rest), or --saved-input (reference an existing saved
@@ -34,6 +41,8 @@ bitrise-cli rde session create NAME [flags]
 ```
   bitrise-cli rde session create dev --template TEMPLATE_ID
   bitrise-cli rde session create dev --template TEMPLATE_ID --input repo=my-app
+  # Template-less: pick an image and machine type directly.
+  bitrise-cli rde session create dev --image osx-sequoia-26 --machine-type g2.mac.m2pro.6c-14g
   # Keep secrets off the command line: store once, then reference by ID.
   echo -n "ghp_xxx" | bitrise-cli rde saved-input create --key gh-token --value-stdin --secret
   bitrise-cli rde session create dev --template TEMPLATE_ID --saved-input gh-token=SAVED_INPUT_ID
@@ -49,11 +58,13 @@ bitrise-cli rde session create NAME [flags]
       --description string           session description
       --feature-flag stringArray     name of a feature flag to enable on the session (repeatable)
   -h, --help                         help for create
+      --image string                 machine image name for a template-less session, or to override the template's image (see 'rde image list')
       --input stringArray            session input as key=value (repeatable)
+      --machine-type string          machine type name for a template-less session, or to override the template's machine type (see 'rde machine-type list --image NAME')
       --map-saved-inputs             auto-fill template session inputs from the user's saved inputs (matched by key)
       --saved-input stringArray      session input as key=savedInputID — uses a stored saved-input value (repeatable)
       --secret-input stringArray     session input as key=value, stored as a secret at rest (repeatable; the value is visible in shell history and process args — prefer --saved-input)
-      --template string              template ID or name to create the session from (required)
+      --template string              template ID or name to create the session from (omit to create a template-less session with --image and --machine-type)
       --wait                         wait until the session leaves provisioning (running, failed, …) before returning; exits 1 if the final status isn't running
       --wait-timeout duration        max time to wait when --wait is set (uses Go duration syntax: 30s, 5m, 1h) (default 10m0s)
 ```

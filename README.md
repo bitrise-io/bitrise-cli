@@ -147,7 +147,7 @@ details) under [docs/cli](docs/cli/bitrise-cli.md).
 | [`rde saved-input list`](docs/cli/bitrise-cli_rde_saved-input_list.md) | List saved inputs for the authenticated user |
 | [`rde saved-input update`](docs/cli/bitrise-cli_rde_saved-input_update.md) | Update a saved input's value and/or secret flag |
 | [`rde saved-input view`](docs/cli/bitrise-cli_rde_saved-input_view.md) | Show details of a single saved input |
-| [`rde session create`](docs/cli/bitrise-cli_rde_session_create.md) | Create a new RDE session from a template |
+| [`rde session create`](docs/cli/bitrise-cli_rde_session_create.md) | Create a new RDE session |
 | [`rde session delete`](docs/cli/bitrise-cli_rde_session_delete.md) | Permanently delete a session |
 | [`rde session delete-terminated`](docs/cli/bitrise-cli_rde_session_delete-terminated.md) | Permanently delete every terminated session in the workspace |
 | [`rde session diff`](docs/cli/bitrise-cli_rde_session_diff.md) | Compare a session's template snapshot with the current template |
