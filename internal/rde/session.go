@@ -421,7 +421,11 @@ func templateConfigFromAPI(w rdeapi.TemplateConfig) TemplateConfig {
 // states ("" / "pending" / "starting") and returns the resulting Session.
 // The caller decides whether the returned status counts as success.
 // Returns context.Canceled when ctx is cancelled.
-func (s *Service) WaitForReady(ctx context.Context, workspaceID, sessionID string, interval time.Duration) (Session, error) {
+//
+// onPoll, when non-nil, is called with the session's status on every poll, so a
+// caller can surface the live provisioning state (e.g. in a progress spinner)
+// without polling separately. It must not block.
+func (s *Service) WaitForReady(ctx context.Context, workspaceID, sessionID string, interval time.Duration, onPoll func(status string)) (Session, error) {
 	if s.client == nil {
 		return Session{}, errClient()
 	}
@@ -432,6 +436,9 @@ func (s *Service) WaitForReady(ctx context.Context, workspaceID, sessionID strin
 		sess, err := s.GetSession(ctx, workspaceID, sessionID)
 		if err != nil {
 			return Session{}, err
+		}
+		if onPoll != nil {
+			onPoll(sess.Status)
 		}
 		switch sess.Status {
 		case "", "pending", "starting":
