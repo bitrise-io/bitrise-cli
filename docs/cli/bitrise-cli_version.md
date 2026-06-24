@@ -8,6 +8,11 @@ Print version, commit, and build info.
 
 In JSON mode, all fields are emitted; missing values are omitted.
 
+bitrise-cli checks GitHub at most once a day for a newer release and prints a
+one-line notice on stderr when your build is behind. The check runs only for
+released builds in an interactive terminal, never in CI or JSON mode. Disable it
+by setting BITRISE_CLI_NO_UPDATE_NOTIFIER, or pass --quiet on any command.
+
 ```
 bitrise-cli version [flags]
 ```

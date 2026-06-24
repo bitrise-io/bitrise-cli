@@ -342,3 +342,47 @@ as human-readable error text.
 
 All three are persistent (available on every subcommand) and resolved in
 `persistentPreRun` before any handler runs.
+
+---
+
+## 11. Update notifications
+
+`bitrise-cli` checks the GitHub Releases API of `bitrise-io/bitrise-cli` for a
+newer version and, when the running build is behind, prints a one-line notice
+to **stderr** after the command's own output:
+
+```
+A new release of bitrise-cli is available: 1.2.0 → 1.3.0
+https://github.com/bitrise-io/bitrise-cli/releases/tag/v1.3.0
+Upgrade: curl -fsSL https://app.bitrise.io/cli/install.sh | bash
+```
+
+It is a **diagnostic** (stderr, never stdout), so it never pollutes piped data
+or JSON. The notice is styled with the `Warn` (version line) and `Dim` (hint)
+styles and respects `--no-color`.
+
+### Mechanics
+
+- **Cached.** The last-check timestamp and latest known release are cached in
+  `$XDG_CONFIG_HOME/bitrise/version-check.json` (0600). The network is hit at
+  most once per 24h; every other invocation reads the cache and makes no call.
+- **Best-effort.** Offline, rate-limited, or malformed responses produce no
+  notice and never affect the command's exit status. A failed fetch still
+  records the attempt so a transient outage backs off for the interval.
+- **GitHub only.** The single network destination is GitHub's public API; no
+  data is sent to Bitrise.
+
+### When it is shown
+
+A notice appears only when **all** of these hold (the policy lives in
+`shouldCheckForUpdate`):
+
+| Condition | Why |
+|-----------|-----|
+| `--output human` | JSON is a machine contract; stay silent |
+| stderr is an interactive TTY | don't nag into pipes, files, or CI logs |
+| not in CI (`CI` / `BITRISE_IO` unset) | CI runs are scripts, not readers |
+| `BITRISE_CLI_NO_UPDATE_NOTIFIER` unset | explicit opt-out |
+| not `--quiet` | `-q` suppresses stderr diagnostics |
+| released build (clean `vX.Y.Z`) | dev builds have nothing to compare |
+| a real subcommand (not `version`/`completion`) | `version` already shows it; completion output must stay clean |
