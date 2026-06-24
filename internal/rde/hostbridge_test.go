@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 const testCredential = "0123456789abcdef0123456789abcdef" // #nosec G101 -- test fixture, not a real secret
@@ -225,6 +226,38 @@ func TestShellQuoteRoundTrip(t *testing.T) {
 		if string(got) != content {
 			t.Errorf("round-trip[%d] = %q, want %q", i, got, content)
 		}
+	}
+}
+
+func TestServeActionAppliesPerActionTimeout(t *testing.T) {
+	b := &HostBridge{}
+
+	// deadlineFor runs an action through serveAction and reports how long its
+	// handler's context had left to run.
+	deadlineFor := func(timeout time.Duration) time.Duration {
+		var remaining time.Duration
+		action := HostAction{
+			Timeout: timeout,
+			Handle: func(ctx context.Context, _ *http.Request) (any, error) {
+				dl, ok := ctx.Deadline()
+				if !ok {
+					t.Fatal("action ctx has no deadline")
+				}
+				remaining = time.Until(dl)
+				return map[string]any{"ok": true}, nil
+			},
+		}
+		b.serveAction(httptest.NewRecorder(), httptest.NewRequest(http.MethodPost, "/x", nil), action)
+		return remaining
+	}
+
+	// A per-action Timeout is honored.
+	if custom := deadlineFor(2 * time.Second); custom <= 0 || custom > 2*time.Second {
+		t.Errorf("per-action deadline left = %v, want in (0, 2s]", custom)
+	}
+	// Zero falls back to the 30s default — well above the 2s custom value.
+	if def := deadlineFor(0); def <= 2*time.Second {
+		t.Errorf("default deadline left = %v, want ~%v", def, bridgeActionTimeout)
 	}
 }
 

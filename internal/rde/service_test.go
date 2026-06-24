@@ -219,8 +219,13 @@ func TestWaitForReady_PollsUntilNonProvisioningStatus(t *testing.T) {
 	t.Cleanup(srv.Close)
 
 	svc := NewService(rdeapi.New(srv.URL, "tok"))
+	// onPoll should see the live status on every poll, including the
+	// intermediate provisioning state.
+	var seen []string
 	// 1ms interval keeps the test fast.
-	sess, err := svc.WaitForReady(context.Background(), "ws-1", "s1", time.Millisecond)
+	sess, err := svc.WaitForReady(context.Background(), "ws-1", "s1", time.Millisecond, func(status string) {
+		seen = append(seen, status)
+	})
 	if err != nil {
 		t.Fatalf("WaitForReady: %v", err)
 	}
@@ -229,6 +234,9 @@ func TestWaitForReady_PollsUntilNonProvisioningStatus(t *testing.T) {
 	}
 	if calls < 2 {
 		t.Errorf("expected at least 2 polls, got %d", calls)
+	}
+	if len(seen) < 2 || seen[0] != "pending" || seen[len(seen)-1] != "running" {
+		t.Errorf("onPoll statuses = %v, want pending…running", seen)
 	}
 }
 
@@ -241,7 +249,7 @@ func TestWaitForReady_ContextCancelled(t *testing.T) {
 	svc := NewService(rdeapi.New(srv.URL, "tok"))
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
 	defer cancel()
-	_, err := svc.WaitForReady(ctx, "ws-1", "s1", time.Millisecond)
+	_, err := svc.WaitForReady(ctx, "ws-1", "s1", time.Millisecond, nil)
 	if err == nil {
 		t.Fatal("expected timeout error, got nil")
 	}

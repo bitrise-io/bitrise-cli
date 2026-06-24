@@ -259,14 +259,19 @@ func runFresh(ctx context.Context, cmd *cobra.Command, opts freshOptions) error 
 	// it can be restored later.
 	defer terminateOnExit(svc, log, workspaceID, sessionID, name)()
 
-	log.step("Waiting for it to start (timeout %s)…", opts.waitTimeout)
 	// The whole startup wait — reaching "running" and then SSH
 	// credentials being issued — shares one timeout budget.
 	waitCtx, cancel := context.WithTimeout(ctx, opts.waitTimeout)
 	defer cancel()
 
-	ready, err := svc.WaitForReady(waitCtx, workspaceID, sessionID, 0)
-	if err != nil {
+	var ready internalrde.Session
+	if err := log.await(waitCtx,
+		fmt.Sprintf("Booting session (timeout %s)…", opts.waitTimeout), "Session booted",
+		func(c context.Context, status func(string)) error {
+			var e error
+			ready, e = svc.WaitForReady(c, workspaceID, sessionID, 0, status)
+			return e
+		}); err != nil {
 		return fmt.Errorf("waiting for session: %w", err)
 	}
 	if ready.Status != "running" {
@@ -277,8 +282,11 @@ func runFresh(ctx context.Context, cmd *cobra.Command, opts freshOptions) error 
 	// "running" does not mean SSH is reachable yet — the backend
 	// issues credentials a few seconds later. Wait for them before
 	// dialing in.
-	log.step("Waiting for remote access…")
-	if _, err := svc.WaitForSSHReady(waitCtx, workspaceID, sessionID, 0); err != nil {
+	if err := log.await(waitCtx, "Waiting for remote access…", "Remote access ready",
+		func(c context.Context, _ func(string)) error {
+			_, e := svc.WaitForSSHReady(c, workspaceID, sessionID, 0)
+			return e
+		}); err != nil {
 		return fmt.Errorf("waiting for SSH access: %w", err)
 	}
 	log.done("Session ready")
@@ -385,22 +393,28 @@ func attachClaude(ctx context.Context, svc *internalrde.Service, log *stepLogger
 	go mon.Run(monCtx)
 
 	// Best-effort host bridge: lets the in-session Claude trigger local actions
-	// (currently, open a VNC viewer on the user's machine showing the session's
-	// desktop). The action set depends on the session — open-vnc only applies to
-	// sessions that expose a VNC endpoint (macOS today; Linux sessions have
-	// none). When the session offers no host actions, skip the bridge entirely so
-	// Claude is never told about a capability it can't use. Otherwise start it —
-	// and write its skill — before the interactive attach, so the capability is
-	// in place when Claude launches; it degrades silently if the session does not
-	// permit the reverse forward, and never disrupts the attach.
-	if actions := localHostActions(monCtx, svc, p.workspaceID, p.sessionID); len(actions) > 0 {
+	// (transfer files to/from the user's machine, and on VNC-capable sessions
+	// open a viewer showing the session's desktop). The action set depends on the
+	// session — transfers apply everywhere, open-vnc only to sessions that expose
+	// a VNC endpoint (macOS today; Linux sessions have none). Start it — and write
+	// its skill — before the interactive attach, so the capability is in place
+	// when Claude launches; it degrades silently if the session does not permit
+	// the reverse forward, and never disrupts the attach. localDir is the local
+	// working dir, used to resolve relative transfer paths.
+	localDir := p.record.RepoPath
+	if localDir == "" {
+		if wd, err := os.Getwd(); err == nil {
+			localDir = wd
+		}
+	}
+	if actions := localHostActions(monCtx, svc, p.workspaceID, p.sessionID, localDir); len(actions) > 0 {
 		bridge := newHostBridge(svc, p.workspaceID, p.sessionID, actions)
 		if bridgeErr := bridge.Start(monCtx); bridgeErr != nil {
 			log.step("Host actions unavailable in this session")
 		} else {
 			defer bridge.Close()
 			go bridge.Serve(monCtx)
-			log.step("Host actions enabled (Claude can open a VNC viewer on your machine)")
+			log.step("%s", hostActionsMessage(actions))
 		}
 	}
 
