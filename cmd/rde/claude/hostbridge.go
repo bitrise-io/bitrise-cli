@@ -23,6 +23,12 @@ import (
 // 30s default — without it serveAction would cancel a large transfer mid-flight.
 const transferActionTimeout = 11 * time.Minute
 
+// defaultRemoteUploadDir is where an upload lands in the session when the caller
+// names no destination. A neutral path under /tmp (present on both Linux and
+// macOS session images) rather than the session's working directory, so an
+// uploaded file isn't dropped into a repo and committed by accident.
+const defaultRemoteUploadDir = "/tmp/rde-claude-uploads"
+
 // openVNCURL hands a vnc:// URL to the OS viewer. A package var so tests can
 // assert what the open-vnc action would launch without opening anything.
 var openVNCURL = cmdutil.OpenVNCURL
@@ -160,7 +166,9 @@ type uploadRequest struct {
 
 // uploadAction pushes a local file or directory into the session. As with
 // download the transfer runs from the local process (local→cloud storage→
-// session). A relative localPath is resolved against the launch working dir.
+// session). A relative localPath is resolved against the launch working dir;
+// when no remoteFolder is given the file lands in a neutral temp dir on the
+// session rather than its working directory.
 func uploadAction(svc *internalrde.Service, workspaceID, sessionID, localDir string) func(context.Context, *http.Request) (any, error) {
 	return func(ctx context.Context, r *http.Request) (any, error) {
 		var req uploadRequest
@@ -170,14 +178,12 @@ func uploadAction(svc *internalrde.Service, workspaceID, sessionID, localDir str
 		if req.LocalPath == "" {
 			return nil, fmt.Errorf("localPath is required")
 		}
-		if req.RemoteFolder == "" {
-			return nil, fmt.Errorf("remoteFolder is required")
-		}
 		source := resolveUploadSource(req.LocalPath, localDir)
-		if err := svc.UploadFile(ctx, workspaceID, sessionID, source, req.RemoteFolder); err != nil {
+		dest := resolveRemoteUploadFolder(req.RemoteFolder)
+		if err := svc.UploadFile(ctx, workspaceID, sessionID, source, dest); err != nil {
 			return nil, err
 		}
-		return map[string]any{"uploaded": true, "localPath": absOrSelf(source), "remoteFolder": req.RemoteFolder}, nil
+		return map[string]any{"uploaded": true, "localPath": absOrSelf(source), "remoteFolder": dest}, nil
 	}
 }
 
@@ -195,6 +201,16 @@ func resolveDownloadDest(localDest, localDir, sessionID string) string {
 		return localDest
 	}
 	return filepath.Join(localDir, localDest)
+}
+
+// resolveRemoteUploadFolder picks the session-side destination for an upload:
+// the caller's remoteFolder when given, otherwise the neutral temp dir so the
+// file doesn't land in the session's working directory.
+func resolveRemoteUploadFolder(remoteFolder string) string {
+	if remoteFolder == "" {
+		return defaultRemoteUploadDir
+	}
+	return remoteFolder
 }
 
 // resolveUploadSource resolves the local file/dir to upload: absolute paths are

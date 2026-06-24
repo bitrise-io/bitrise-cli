@@ -156,25 +156,25 @@ func TestDownloadActionRequiresRemotePath(t *testing.T) {
 	}
 }
 
-func TestUploadActionRequiresFields(t *testing.T) {
+func TestUploadActionRequiresLocalPath(t *testing.T) {
 	action := uploadAction(failBackend(t), "ws-1", "s-1", "/repo")
-	tests := []struct {
-		name string
-		body string
-		want string
-	}{
-		{"missing localPath", `{"remoteFolder":"/tmp"}`, "localPath is required"},
-		{"missing remoteFolder", `{"localPath":"x"}`, "remoteFolder is required"},
-		{"empty body", ``, "localPath is required"},
+	for _, body := range []string{`{"remoteFolder":"/tmp"}`, ``} {
+		req := httptest.NewRequest(http.MethodPost, "/upload", strings.NewReader(body))
+		_, err := action(context.Background(), req)
+		if err == nil || !strings.Contains(err.Error(), "localPath is required") {
+			t.Fatalf("body %q: err = %v, want localPath required", body, err)
+		}
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			req := httptest.NewRequest(http.MethodPost, "/upload", strings.NewReader(tt.body))
-			_, err := action(context.Background(), req)
-			if err == nil || !strings.Contains(err.Error(), tt.want) {
-				t.Fatalf("err = %v, want %q", err, tt.want)
-			}
-		})
+}
+
+func TestResolveRemoteUploadFolder(t *testing.T) {
+	// Omitted destination defaults to the neutral temp dir, not the session's
+	// working directory; an explicit folder is used as-is.
+	if got := resolveRemoteUploadFolder(""); got != defaultRemoteUploadDir {
+		t.Errorf("empty remoteFolder = %q, want %q", got, defaultRemoteUploadDir)
+	}
+	if got := resolveRemoteUploadFolder("/home/ubuntu/project"); got != "/home/ubuntu/project" {
+		t.Errorf("explicit remoteFolder = %q, want it unchanged", got)
 	}
 }
 
