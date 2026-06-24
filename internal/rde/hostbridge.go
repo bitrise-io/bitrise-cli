@@ -21,6 +21,15 @@ import (
 // segment doubles as the route the in-session skill calls.
 const ActionOpenVNC = "open-vnc"
 
+// ActionDownload and ActionUpload move files between the session and the user's
+// local machine. Unlike open-vnc they apply to every session (not just ones
+// that expose a VNC endpoint). The path segment doubles as the route the
+// in-session skill calls.
+const (
+	ActionDownload = "download"
+	ActionUpload   = "upload"
+)
+
 // Fixed remote paths. They are trusted constants with shell-safe characters and
 // a leading ~, so they are written into remote commands UNQUOTED — quoting them
 // would suppress the shell's tilde expansion.
@@ -68,6 +77,12 @@ type HostAction struct {
 	// session lacks. (Reserved for future metadata too, e.g. a confirmation
 	// policy for side-effecting actions like a file download.)
 	SkillSection string
+
+	// Timeout caps how long this action's Handle may run. Zero means use
+	// bridgeActionTimeout (the 30s default suited to quick actions like
+	// open-vnc); file transfers set a much larger value since a single archive
+	// can take minutes to move through cloud storage.
+	Timeout time.Duration
 }
 
 // HostBridge exposes a fixed allowlist of "host actions" to the Claude Code
@@ -139,7 +154,12 @@ func (b *HostBridge) Start(ctx context.Context) error {
 		Handler:           b.handler(),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       15 * time.Second,
-		WriteTimeout:      bridgeActionTimeout + 5*time.Second,
+		// No write deadline: each action bounds its own duration via
+		// serveAction's per-action timeout, and a file transfer can legitimately
+		// run for minutes. The read side stays bounded (bodies are tiny JSON read
+		// immediately), and the listener is loopback-only and token-gated, so a
+		// slow-write attack is not a concern.
+		WriteTimeout: 0,
 	}
 	return nil
 }
@@ -412,7 +432,11 @@ func (b *HostBridge) authorized(r *http.Request) bool {
 }
 
 func (b *HostBridge) serveAction(w http.ResponseWriter, r *http.Request, action HostAction) {
-	ctx, cancel := context.WithTimeout(r.Context(), bridgeActionTimeout)
+	timeout := action.Timeout
+	if timeout <= 0 {
+		timeout = bridgeActionTimeout
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), timeout)
 	defer cancel()
 
 	result, err := action.Handle(ctx, r)
