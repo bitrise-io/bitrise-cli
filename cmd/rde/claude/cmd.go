@@ -393,22 +393,28 @@ func attachClaude(ctx context.Context, svc *internalrde.Service, log *stepLogger
 	go mon.Run(monCtx)
 
 	// Best-effort host bridge: lets the in-session Claude trigger local actions
-	// (currently, open a VNC viewer on the user's machine showing the session's
-	// desktop). The action set depends on the session — open-vnc only applies to
-	// sessions that expose a VNC endpoint (macOS today; Linux sessions have
-	// none). When the session offers no host actions, skip the bridge entirely so
-	// Claude is never told about a capability it can't use. Otherwise start it —
-	// and write its skill — before the interactive attach, so the capability is
-	// in place when Claude launches; it degrades silently if the session does not
-	// permit the reverse forward, and never disrupts the attach.
-	if actions := localHostActions(monCtx, svc, p.workspaceID, p.sessionID); len(actions) > 0 {
+	// (transfer files to/from the user's machine, and on VNC-capable sessions
+	// open a viewer showing the session's desktop). The action set depends on the
+	// session — transfers apply everywhere, open-vnc only to sessions that expose
+	// a VNC endpoint (macOS today; Linux sessions have none). Start it — and write
+	// its skill — before the interactive attach, so the capability is in place
+	// when Claude launches; it degrades silently if the session does not permit
+	// the reverse forward, and never disrupts the attach. localDir is the local
+	// working dir, used to resolve relative transfer paths.
+	localDir := p.record.RepoPath
+	if localDir == "" {
+		if wd, err := os.Getwd(); err == nil {
+			localDir = wd
+		}
+	}
+	if actions := localHostActions(monCtx, svc, p.workspaceID, p.sessionID, localDir); len(actions) > 0 {
 		bridge := newHostBridge(svc, p.workspaceID, p.sessionID, actions)
 		if bridgeErr := bridge.Start(monCtx); bridgeErr != nil {
 			log.step("Host actions unavailable in this session")
 		} else {
 			defer bridge.Close()
 			go bridge.Serve(monCtx)
-			log.step("Host actions enabled (Claude can open a VNC viewer on your machine)")
+			log.step("%s", hostActionsMessage(actions))
 		}
 	}
 

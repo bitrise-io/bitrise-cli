@@ -29,6 +29,9 @@ and `token` you just read:
 curl -sS -X POST "$URL/<action>" -H "Authorization: Bearer $TOKEN"
 ```
 
+Some actions take parameters as a JSON request body (`-H "Content-Type:
+application/json" -d '{…}'`); each action's section below shows its exact form.
+
 Report what the bridge returns — on a non-2xx response the body explains what
 went wrong.
 
