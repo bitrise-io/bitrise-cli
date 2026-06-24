@@ -138,7 +138,7 @@ Example values:
 				if !cmdutil.IsQuiet(cmd) && format != output.JSON {
 					_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Waiting for session %s to become ready (timeout %s)…\n", res.Session.ID, waitTimeout)
 				}
-				ready, waitErr := svc.WaitForReady(waitCtx, workspaceID, res.Session.ID, 0)
+				ready, waitErr := svc.WaitForReady(waitCtx, workspaceID, res.Session.ID, 0, nil)
 				if waitErr != nil {
 					return fmt.Errorf("waiting for session: %w", waitErr)
 				}

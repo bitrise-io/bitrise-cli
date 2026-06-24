@@ -259,14 +259,19 @@ func runFresh(ctx context.Context, cmd *cobra.Command, opts freshOptions) error 
 	// it can be restored later.
 	defer terminateOnExit(svc, log, workspaceID, sessionID, name)()
 
-	log.step("Waiting for it to start (timeout %s)…", opts.waitTimeout)
 	// The whole startup wait — reaching "running" and then SSH
 	// credentials being issued — shares one timeout budget.
 	waitCtx, cancel := context.WithTimeout(ctx, opts.waitTimeout)
 	defer cancel()
 
-	ready, err := svc.WaitForReady(waitCtx, workspaceID, sessionID, 0)
-	if err != nil {
+	var ready internalrde.Session
+	if err := log.await(waitCtx,
+		fmt.Sprintf("Booting session (timeout %s)…", opts.waitTimeout), "Session booted",
+		func(c context.Context, status func(string)) error {
+			var e error
+			ready, e = svc.WaitForReady(c, workspaceID, sessionID, 0, status)
+			return e
+		}); err != nil {
 		return fmt.Errorf("waiting for session: %w", err)
 	}
 	if ready.Status != "running" {
@@ -277,8 +282,11 @@ func runFresh(ctx context.Context, cmd *cobra.Command, opts freshOptions) error 
 	// "running" does not mean SSH is reachable yet — the backend
 	// issues credentials a few seconds later. Wait for them before
 	// dialing in.
-	log.step("Waiting for remote access…")
-	if _, err := svc.WaitForSSHReady(waitCtx, workspaceID, sessionID, 0); err != nil {
+	if err := log.await(waitCtx, "Waiting for remote access…", "Remote access ready",
+		func(c context.Context, _ func(string)) error {
+			_, e := svc.WaitForSSHReady(c, workspaceID, sessionID, 0)
+			return e
+		}); err != nil {
 		return fmt.Errorf("waiting for SSH access: %w", err)
 	}
 	log.done("Session ready")
