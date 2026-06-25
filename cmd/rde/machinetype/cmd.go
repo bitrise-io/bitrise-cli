@@ -4,6 +4,7 @@ package machinetype
 import (
 	"fmt"
 	"io"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -87,27 +88,41 @@ func renderList(w io.Writer, res listResult) error {
 	s := style.New(w)
 	var headers []string
 	var rows [][]string
+	const idCol = 3 // NAME, TITLE, SPECS, ID, [CLUSTER]
 	if ambiguous {
-		headers = []string{"NAME", "ID", "CLUSTER"}
+		headers = []string{"NAME", "TITLE", "SPECS", "ID", "CLUSTER"}
 		for _, mt := range res.Items {
-			rows = append(rows, []string{mt.Name, mt.ID, mt.ClusterName})
+			rows = append(rows, []string{mt.Name, mt.Title, specOf(mt), mt.ID, mt.ClusterName})
 		}
 	} else {
-		headers = []string{"NAME", "ID"}
+		headers = []string{"NAME", "TITLE", "SPECS", "ID"}
 		seen := make(map[string]struct{}, len(res.Items))
 		for _, mt := range res.Items {
 			if _, ok := seen[mt.Name]; ok {
 				continue
 			}
 			seen[mt.Name] = struct{}{}
-			rows = append(rows, []string{mt.Name, mt.ID})
+			rows = append(rows, []string{mt.Name, mt.Title, specOf(mt), mt.ID})
 		}
 	}
 	styler := func(_, col int, content string) string {
-		if col == 1 {
+		if col == idCol {
 			return s.Slug.Render(content)
 		}
 		return content
 	}
 	return style.Table(w, headers, rows, s.Header, styler)
+}
+
+// specOf renders the "<cpu> · <ram>" specs column from the backend's structured
+// fields, or "" when none are provided.
+func specOf(mt internalrde.MachineType) string {
+	parts := make([]string, 0, 2)
+	if mt.CPU != "" {
+		parts = append(parts, mt.CPU)
+	}
+	if mt.RAM != "" {
+		parts = append(parts, mt.RAM)
+	}
+	return strings.Join(parts, " · ")
 }

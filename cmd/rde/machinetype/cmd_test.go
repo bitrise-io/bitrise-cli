@@ -60,8 +60,8 @@ func TestListCmd_HidesClusterWhenUnambiguous(t *testing.T) {
 	srv := catalogServer(t,
 		`{"stacks":[{"id":"osx-xcode-16.0.x-edge","clusterNames":["c1"]}]}`,
 		`{"machineTypes":[
-			{"id":"m-1","name":"g2.mac.m2pro.4c","clusterName":"c1"},
-			{"id":"m-2","name":"g2.mac.m1.8c","clusterName":"c1"}
+			{"id":"m-1","name":"g2.mac.m2pro.4c","clusterName":"c1","title":"M2 Pro Large","cpu":"4 vCPU","ram":"6 GB"},
+			{"id":"m-2","name":"g2.mac.m1.8c","clusterName":"c1","title":"M1 Large","cpu":"8 vCPU","ram":"16 GB"}
 		]}`,
 	)
 	defer srv.Close()
@@ -70,7 +70,8 @@ func TestListCmd_HidesClusterWhenUnambiguous(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
-	for _, want := range []string{"g2.mac.m2pro.4c", "g2.mac.m1.8c"} {
+	// Shows the contract name plus the backend's friendly title and specs.
+	for _, want := range []string{"g2.mac.m2pro.4c", "M2 Pro Large", "4 vCPU", "6 GB"} {
 		if !strings.Contains(stdout, want) {
 			t.Errorf("stdout missing %q:\n%s", want, stdout)
 		}
@@ -143,7 +144,7 @@ func TestListCmd_UnknownStack(t *testing.T) {
 func TestListCmd_JSONOutput(t *testing.T) {
 	srv := catalogServer(t,
 		`{"stacks":[{"id":"osx-xcode-16.0.x-edge","clusterNames":["c1"]}]}`,
-		`{"machineTypes":[{"id":"m-1","name":"g2.mac","clusterName":"c1"}]}`,
+		`{"machineTypes":[{"id":"m-1","name":"g2.mac","clusterName":"c1","title":"M2 Pro Large","cpu":"4 vCPU","ram":"6 GB","os":"macos"}]}`,
 	)
 	defer srv.Close()
 
@@ -156,13 +157,21 @@ func TestListCmd_JSONOutput(t *testing.T) {
 			ID          string `json:"id"`
 			Name        string `json:"name"`
 			ClusterName string `json:"cluster_name"`
+			Title       string `json:"title"`
+			CPU         string `json:"cpu"`
+			RAM         string `json:"ram"`
+			OS          string `json:"os"`
 		} `json:"items"`
 	}
 	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
 		t.Fatalf("unmarshal JSON output: %v\n%s", err, stdout)
 	}
-	if len(got.Items) != 1 || got.Items[0].ID != "m-1" || got.Items[0].Name != "g2.mac" {
-		t.Errorf("unexpected JSON items: %+v", got.Items)
+	if len(got.Items) != 1 {
+		t.Fatalf("unexpected JSON items: %+v", got.Items)
+	}
+	it := got.Items[0]
+	if it.ID != "m-1" || it.Name != "g2.mac" || it.Title != "M2 Pro Large" || it.CPU != "4 vCPU" || it.RAM != "6 GB" || it.OS != "macos" {
+		t.Errorf("unexpected JSON item: %+v", it)
 	}
 }
 

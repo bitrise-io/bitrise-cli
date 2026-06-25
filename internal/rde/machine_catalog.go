@@ -3,6 +3,8 @@ package rde
 import (
 	"context"
 	"fmt"
+
+	rdeapi "github.com/bitrise-io/bitrise-cli/bitriseapi/rde"
 )
 
 // Stack is a machine stack available in the workspace. The ID is the stable
@@ -23,13 +25,19 @@ type Stack struct {
 	DescriptionLink string `json:"description_link,omitempty"`
 }
 
-// MachineType is a machine size available in the workspace.
+// MachineType is a machine size available in the workspace. Name is the
+// contract (what templates/sessions store); Title/CPU/RAM are human-friendly
+// display metadata and may be empty when the backend has none.
 type MachineType struct {
 	ID          string `json:"id"`
 	Name        string `json:"name"`
 	ClusterName string `json:"cluster_name,omitempty"`
 	// IsDefault is set by the backend on the deployment's default machine type.
-	IsDefault bool `json:"is_default,omitempty"`
+	IsDefault bool   `json:"is_default,omitempty"`
+	Title     string `json:"title,omitempty"`
+	CPU       string `json:"cpu,omitempty"`
+	RAM       string `json:"ram,omitempty"`
+	OS        string `json:"os,omitempty"`
 }
 
 // ListStacks returns every machine stack available in the workspace.
@@ -70,9 +78,22 @@ func (s *Service) ListMachineTypes(ctx context.Context, workspaceID string) ([]M
 	}
 	out := make([]MachineType, 0, len(wire))
 	for _, w := range wire {
-		out = append(out, MachineType{ID: w.ID, Name: w.Name, ClusterName: w.ClusterName, IsDefault: w.IsDefault})
+		out = append(out, machineTypeFromAPI(w))
 	}
 	return out, nil
+}
+
+func machineTypeFromAPI(w rdeapi.MachineType) MachineType {
+	return MachineType{
+		ID:          w.ID,
+		Name:        w.Name,
+		ClusterName: w.ClusterName,
+		IsDefault:   w.IsDefault,
+		Title:       w.Title,
+		CPU:         w.CPU,
+		RAM:         w.RAM,
+		OS:          w.OS,
+	}
 }
 
 // MachineTypesForStack returns the machine types whose cluster overlaps with

@@ -24,7 +24,7 @@ func TestListStacks_PathAndParse(t *testing.T) {
 }
 
 func TestListMachineTypes_PathAndParse(t *testing.T) {
-	rs := newRecordingServer(t, `{"machineTypes":[{"id":"m1","name":"g2.mac"}]}`)
+	rs := newRecordingServer(t, `{"machineTypes":[{"id":"m1","name":"g2.mac","title":"M2 Pro Large","cpu":"4 vCPU","ram":"6 GB","os":"macos"}]}`)
 
 	types, err := rs.client().ListMachineTypes(context.Background(), "ws-1")
 	if err != nil {
@@ -35,6 +35,9 @@ func TestListMachineTypes_PathAndParse(t *testing.T) {
 	}
 	if len(types) != 1 || types[0].Name != "g2.mac" {
 		t.Errorf("machine types = %+v", types)
+	}
+	if types[0].Title != "M2 Pro Large" || types[0].CPU != "4 vCPU" || types[0].RAM != "6 GB" || types[0].OS != "macos" {
+		t.Errorf("machine-type metadata = %+v", types[0])
 	}
 }
 

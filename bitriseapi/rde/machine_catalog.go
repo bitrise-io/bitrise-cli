@@ -24,13 +24,19 @@ type Stack struct {
 	DescriptionLink string `json:"descriptionLink,omitempty"`
 }
 
-// MachineType is a machine size available for templates/sessions.
+// MachineType is a machine size available for templates/sessions. Name is the
+// contract (what templates/sessions store); Title/CPU/RAM are human-friendly
+// display metadata and may be empty when the backend has none.
 type MachineType struct {
 	ID          string `json:"id"`
 	Name        string `json:"name"`
 	ClusterName string `json:"clusterName,omitempty"`
 	// IsDefault is set by the backend on the deployment's default machine type.
-	IsDefault bool `json:"isDefault,omitempty"`
+	IsDefault bool   `json:"isDefault,omitempty"`
+	Title     string `json:"title,omitempty"`
+	CPU       string `json:"cpu,omitempty"`
+	RAM       string `json:"ram,omitempty"`
+	OS        string `json:"os,omitempty"`
 }
 
 type listStacksResp struct {

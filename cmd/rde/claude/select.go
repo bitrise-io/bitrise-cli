@@ -32,58 +32,64 @@ var errSelectionCancelled = errors.New("selection cancelled")
 // else the backend default, else the first). When stdin/stderr isn't a terminal
 // the default is used without prompting.
 //
-// It returns the chosen stack ID (ready for CreateSession), the stack's
-// human-friendly title (for display), and the machine type name.
-func selectStackAndMachineType(ctx context.Context, cmd *cobra.Command, svc *internalrde.Service, log *stepLogger, workspaceID, repoPath, flagStack, flagMachineType string) (string, string, string, error) {
+// It returns the chosen stack ID and machine type NAME (the contracts, ready for
+// CreateSession), plus human-friendly labels for each (for display).
+func selectStackAndMachineType(ctx context.Context, cmd *cobra.Command, svc *internalrde.Service, log *stepLogger, workspaceID, repoPath, flagStack, flagMachineType string) (stack, stackLabel, machineType, machineLbl string, err error) {
 	// Best-effort: a missing/corrupt prefs file yields the zero value, i.e.
 	// "no prior choice", so we fall through to the backend default / first item.
 	prefs, _ := localsession.LoadPrefs(repoPath)
 
 	stacks, err := svc.ListStacks(ctx, workspaceID)
 	if err != nil {
-		return "", "", "", fmt.Errorf("list stacks: %w", err)
+		return "", "", "", "", fmt.Errorf("list stacks: %w", err)
 	}
 	if len(stacks) == 0 {
-		return "", "", "", fmt.Errorf("no stacks are available in this workspace")
+		return "", "", "", "", fmt.Errorf("no stacks are available in this workspace")
 	}
 	stackIDs, titleByID, backendDefaultStack := uniqueStacks(stacks)
 
 	// Fast path: reuse the remembered combo for this project in one step.
 	if flagStack == "" && flagMachineType == "" && interactivePicker(cmd) && prefs.Stack != "" && prefs.MachineType != "" {
-		stack, machineType, done, err := offerReuse(ctx, cmd, svc, log, workspaceID, stackIDs, titleByID, prefs)
+		stack, machineType, machineLbl, done, err := offerReuse(ctx, cmd, svc, log, workspaceID, stackIDs, titleByID, prefs)
 		if err != nil || done {
-			return stack, stackTitle(titleByID, stack), machineType, err
+			return stack, stackTitle(titleByID, stack), machineType, machineLbl, err
 		}
 		// The remembered combo is stale, or the user chose "Change stack" — fall
 		// through to the full pick below (saved values still seed the defaults).
 	}
 
-	stack, err := chooseOne(ctx, cmd, log, "stack", "Select a stack", stackIDs, prefs.Stack, backendDefaultStack, flagStack, stackItem(titleByID))
+	stack, err = chooseOne(ctx, cmd, log, "stack", "Select a stack", stackIDs, prefs.Stack, backendDefaultStack, flagStack, stackItem(titleByID))
 	if err != nil {
-		return "", "", "", err
+		return "", "", "", "", err
 	}
 
-	machineType, err := chooseMachineForStack(ctx, cmd, svc, log, workspaceID, stack, prefs.MachineType, flagMachineType)
+	machineType, machineLbl, err = chooseMachineForStack(ctx, cmd, svc, log, workspaceID, stack, prefs.MachineType, flagMachineType)
 	if err != nil {
-		return "", "", "", err
+		return "", "", "", "", err
 	}
-	return stack, stackTitle(titleByID, stack), machineType, nil
+	return stack, stackTitle(titleByID, stack), machineType, machineLbl, nil
 }
 
 // chooseMachineForStack resolves the machine type for the chosen stack: it
 // fetches the compatible types and defers to chooseOne, which auto-selects when
 // only one is available — so a single compatible machine type starts the session
-// without a machine-type prompt.
-func chooseMachineForStack(ctx context.Context, cmd *cobra.Command, svc *internalrde.Service, log *stepLogger, workspaceID, stack, prefMachineType, flagMachineType string) (string, error) {
+// without a machine-type prompt. It returns the chosen machine type's contract
+// name and a human-friendly label for display.
+func chooseMachineForStack(ctx context.Context, cmd *cobra.Command, svc *internalrde.Service, log *stepLogger, workspaceID, stack, prefMachineType, flagMachineType string) (name, label string, err error) {
 	mts, err := svc.MachineTypesForStack(ctx, workspaceID, stack)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	if len(mts) == 0 {
-		return "", fmt.Errorf("no machine types are compatible with stack %q", stack)
+		return "", "", fmt.Errorf("no machine types are compatible with stack %q", stack)
 	}
+	mtByName := indexMachineTypes(mts)
 	mtNames, backendDefaultMT := uniqueMachineTypeNames(mts)
-	return chooseOne(ctx, cmd, log, "machine type", "Select a machine type", mtNames, prefMachineType, backendDefaultMT, flagMachineType, machineItem)
+	name, err = chooseOne(ctx, cmd, log, "machine type", "Select a machine type", mtNames, prefMachineType, backendDefaultMT, flagMachineType, machineItem(mtByName))
+	if err != nil {
+		return "", "", err
+	}
+	return name, machineLabel(mtByName[name]), nil
 }
 
 // chooseOne resolves a single selection. An explicit flag is validated against
@@ -154,31 +160,32 @@ const (
 // final; done=false with a nil error means the remembered combo is stale or the
 // user asked to change the stack, so the caller should run the full pick. A
 // non-nil error (e.g. the user cancelled) aborts selection.
-func offerReuse(ctx context.Context, cmd *cobra.Command, svc *internalrde.Service, log *stepLogger, workspaceID string, stackIDs []string, titleByID map[string]string, prefs localsession.Prefs) (stack, machineType string, done bool, err error) {
+func offerReuse(ctx context.Context, cmd *cobra.Command, svc *internalrde.Service, log *stepLogger, workspaceID string, stackIDs []string, titleByID map[string]string, prefs localsession.Prefs) (stack, machineType, machineLbl string, done bool, err error) {
 	// The remembered stack must still be offered…
 	if indexOf(stackIDs, prefs.Stack) < 0 {
-		return "", "", false, nil
+		return "", "", "", false, nil
 	}
 	mts, err := svc.MachineTypesForStack(ctx, workspaceID, prefs.Stack)
 	if err != nil {
-		return "", "", false, err
+		return "", "", "", false, err
 	}
 	mtNames, _ := uniqueMachineTypeNames(mts)
 	// …and the remembered machine type must still be compatible with it.
 	if indexOf(mtNames, prefs.MachineType) < 0 {
-		return "", "", false, nil
+		return "", "", "", false, nil
 	}
+	mtByName := indexMachineTypes(mts)
 
 	items, actions := buildReuseMenu(len(stackIDs) > 1, len(mtNames) > 1)
 	// Nothing to customize (a single stack and a single machine type): reuse
 	// without prompting.
 	if len(actions) == 1 {
-		return prefs.Stack, prefs.MachineType, true, nil
+		return prefs.Stack, prefs.MachineType, machineLabel(mtByName[prefs.MachineType]), true, nil
 	}
 
 	idx, err := picker.Select(ctx, picker.Config{
 		Prompt:     "Last used for this project",
-		Note:       reuseDetail(stackTitle(titleByID, prefs.Stack), prefs.MachineType),
+		Note:       reuseDetail(stackTitle(titleByID, prefs.Stack), machineDisplayName(mtByName[prefs.MachineType]), machineSpec(mtByName[prefs.MachineType])),
 		Items:      items,
 		Cursor:     0,
 		DefaultIdx: 0,
@@ -186,24 +193,24 @@ func offerReuse(ctx context.Context, cmd *cobra.Command, svc *internalrde.Servic
 		Out:        cmd.ErrOrStderr(),
 	})
 	if errors.Is(err, picker.ErrCancelled) {
-		return "", "", false, errSelectionCancelled
+		return "", "", "", false, errSelectionCancelled
 	}
 	if err != nil {
-		return "", "", false, err
+		return "", "", "", false, err
 	}
 
 	switch actions[idx] {
 	case reuseChangeStack:
 		// Caller runs the full stack + machine pick.
-		return "", "", false, nil
+		return "", "", "", false, nil
 	case reuseChangeMachine:
-		mt, err := chooseOne(ctx, cmd, log, "machine type", "Select a machine type", mtNames, prefs.MachineType, "", "", machineItem)
+		mt, err := chooseOne(ctx, cmd, log, "machine type", "Select a machine type", mtNames, prefs.MachineType, "", "", machineItem(mtByName))
 		if err != nil {
-			return "", "", false, err
+			return "", "", "", false, err
 		}
-		return prefs.Stack, mt, true, nil
+		return prefs.Stack, mt, machineLabel(mtByName[mt]), true, nil
 	default: // reuseUse
-		return prefs.Stack, prefs.MachineType, true, nil
+		return prefs.Stack, prefs.MachineType, machineLabel(mtByName[prefs.MachineType]), true, nil
 	}
 }
 
@@ -227,18 +234,19 @@ func buildReuseMenu(multiStack, multiMachine bool) ([]picker.Item, []reuseAction
 
 // reuseDetail is the two-line "Stack / Machine type" summary shown under the
 // reuse-menu prompt, so the user can see exactly what "Use this setup" launches.
-func reuseDetail(stackTitle, machineType string) string {
-	machine := machineType
-	if hint := machineSpecHint(machineType); hint != "" {
-		machine += "  (" + hint + ")"
+func reuseDetail(stackTitle, machineDisplay, machineSpec string) string {
+	machine := machineDisplay
+	if machineSpec != "" {
+		machine += "  (" + machineSpec + ")"
 	}
 	return fmt.Sprintf("  %-13s %s\n  %-13s %s", "Stack", stackTitle, "Machine type", machine)
 }
 
 // stackItem and machineItem build the picker rows for the stack and machine-type
 // pickers: stacks show their friendly title with the stack id as dim secondary
-// text, machine types show their spec hint. The picker still returns the raw
-// option string (the stack id / machine type name).
+// text; machine types show their friendly title (or raw name) with the specs —
+// and the raw name when a title replaced it — as dim secondary text. The picker
+// still returns the raw option string (the stack id / machine type name).
 func stackItem(titleByID map[string]string) func(string) picker.Item {
 	return func(id string) picker.Item {
 		title := stackTitle(titleByID, id)
@@ -250,8 +258,72 @@ func stackItem(titleByID map[string]string) func(string) picker.Item {
 	}
 }
 
-func machineItem(name string) picker.Item {
-	return picker.Item{Title: name, Desc: machineSpecHint(name)}
+func machineItem(byName map[string]internalrde.MachineType) func(string) picker.Item {
+	return func(name string) picker.Item {
+		mt, ok := byName[name]
+		if !ok {
+			return picker.Item{Title: name, Desc: machineSpecHint(name)}
+		}
+		title := machineDisplayName(mt)
+		desc := machineSpec(mt)
+		// Keep the contract name discoverable when a friendly title replaced it.
+		if title != name {
+			if desc != "" {
+				desc += " · " + name
+			} else {
+				desc = name
+			}
+		}
+		return picker.Item{Title: title, Desc: desc}
+	}
+}
+
+// indexMachineTypes maps machine-type name to its (first-seen) record, so the
+// picker and reuse summary can look up the backend's friendly title/cpu/ram.
+func indexMachineTypes(mts []internalrde.MachineType) map[string]internalrde.MachineType {
+	out := make(map[string]internalrde.MachineType, len(mts))
+	for _, mt := range mts {
+		if _, ok := out[mt.Name]; !ok {
+			out[mt.Name] = mt
+		}
+	}
+	return out
+}
+
+// machineDisplayName returns the backend's friendly machine-type title, falling
+// back to the raw name when none is provided.
+func machineDisplayName(mt internalrde.MachineType) string {
+	if mt.Title != "" {
+		return mt.Title
+	}
+	return mt.Name
+}
+
+// machineLabel is the one-line, human-friendly machine-type label for
+// confirmations — the friendly name plus its specs in parentheses, e.g.
+// "M2 Pro Large (12 vCPU · 28 GB)".
+func machineLabel(mt internalrde.MachineType) string {
+	name := machineDisplayName(mt)
+	if spec := machineSpec(mt); spec != "" {
+		return name + " (" + spec + ")"
+	}
+	return name
+}
+
+// machineSpec returns the "<cpu> · <ram>" display, preferring the backend's
+// structured fields and falling back to the spec parsed from the name.
+func machineSpec(mt internalrde.MachineType) string {
+	parts := make([]string, 0, 2)
+	if mt.CPU != "" {
+		parts = append(parts, mt.CPU)
+	}
+	if mt.RAM != "" {
+		parts = append(parts, mt.RAM)
+	}
+	if len(parts) > 0 {
+		return strings.Join(parts, " · ")
+	}
+	return machineSpecHint(mt.Name)
 }
 
 // stackTitle returns the human-friendly title for a stack id, falling back to

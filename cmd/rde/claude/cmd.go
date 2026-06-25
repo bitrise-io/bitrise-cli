@@ -192,7 +192,7 @@ func runFresh(ctx context.Context, cmd *cobra.Command, opts freshOptions) error 
 	// bad --stack/--machine-type fails fast, before the auth step that can open
 	// a browser). The choice is remembered per repo and used on the next run.
 	log.group("Stack & machine type")
-	stack, stackTitle, machineType, err := selectStackAndMachineType(ctx, cmd, svc, log, workspaceID, repoPath, opts.stack, opts.machineType)
+	stack, stackTitle, machineType, machineLbl, err := selectStackAndMachineType(ctx, cmd, svc, log, workspaceID, repoPath, opts.stack, opts.machineType)
 	if errors.Is(err, errSelectionCancelled) {
 		_, _ = fmt.Fprintln(cmd.ErrOrStderr(), "Cancelled.")
 		return nil
@@ -200,7 +200,7 @@ func runFresh(ctx context.Context, cmd *cobra.Command, opts freshOptions) error 
 	if err != nil {
 		return err
 	}
-	log.done("Stack %s, machine type %s", stackTitle, machineType)
+	log.done("Stack %s, machine type %s", stackTitle, machineLbl)
 
 	// ── Claude Code auth ───────────────────────────────────────────
 	// Ensure a Claude Code token exists on the control plane *before*

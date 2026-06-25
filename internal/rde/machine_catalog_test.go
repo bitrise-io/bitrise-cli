@@ -23,7 +23,7 @@ func catalogServer(t *testing.T) *Service {
 	const machineTypes = `{"machineTypes":[
 		{"id":"small-a","name":"small","clusterName":"a"},
 		{"id":"big-b","name":"big","clusterName":"b"},
-		{"id":"m2-c","name":"m2","clusterName":"c"}
+		{"id":"m2-c","name":"m2","clusterName":"c","title":"M2 Pro","cpu":"4 vCPU","ram":"6 GB","os":"macos"}
 	]}`
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
@@ -70,6 +70,10 @@ func TestMachineTypesForStack_SingleCluster(t *testing.T) {
 	}
 	if len(got) != 1 || got[0].Name != "m2" {
 		t.Errorf("expected only m2 for mac, got %+v", got)
+	}
+	// The backend's friendly metadata flows through the mapper.
+	if got[0].Title != "M2 Pro" || got[0].CPU != "4 vCPU" || got[0].RAM != "6 GB" || got[0].OS != "macos" {
+		t.Errorf("machine-type metadata not mapped: %+v", got[0])
 	}
 }
 
