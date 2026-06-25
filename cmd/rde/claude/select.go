@@ -259,7 +259,7 @@ func stackItem(byID map[string]internalrde.Stack) func(string) picker.Item {
 // when absent.
 func stackSecondary(st internalrde.Stack) string {
 	parts := make([]string, 0, 2)
-	if osPart := osLabel(st.OS); osPart != "" {
+	if osPart := cmdutil.OSDisplayName(st.OS); osPart != "" {
 		if st.OSVersion > 0 {
 			osPart += " " + strconv.Itoa(int(st.OSVersion))
 		}
@@ -269,19 +269,6 @@ func stackSecondary(st internalrde.Stack) string {
 		parts = append(parts, st.Status)
 	}
 	return strings.Join(parts, " · ")
-}
-
-// osLabel maps the backend OS token to a human-friendly display name
-// (e.g. "macos" → "macOS"); unknown values pass through unchanged.
-func osLabel(os string) string {
-	switch os {
-	case "macos":
-		return "macOS"
-	case "linux":
-		return "Linux"
-	default:
-		return os
-	}
 }
 
 func machineItem(byName map[string]internalrde.MachineType) func(string) picker.Item {
