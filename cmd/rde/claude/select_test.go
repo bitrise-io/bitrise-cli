@@ -37,7 +37,7 @@ func TestUniqueStacks(t *testing.T) {
 		{ID: "mac", Title: "Xcode 16.0", IsDefault: true},
 		{ID: "win", Title: "Windows"},
 	}
-	ids, titleByID, backendDefault := uniqueStacks(stacks)
+	ids, byID, backendDefault := uniqueStacks(stacks)
 	want := []string{"linux", "mac", "win"}
 	if len(ids) != len(want) {
 		t.Fatalf("ids = %v, want %v", ids, want)
@@ -50,8 +50,8 @@ func TestUniqueStacks(t *testing.T) {
 	if backendDefault != "mac" {
 		t.Errorf("backendDefault = %q, want mac", backendDefault)
 	}
-	if titleByID["mac"] != "Xcode 16.0" {
-		t.Errorf("titleByID[mac] = %q, want Xcode 16.0", titleByID["mac"])
+	if byID["mac"].Title != "Xcode 16.0" {
+		t.Errorf("byID[mac].Title = %q, want Xcode 16.0", byID["mac"].Title)
 	}
 }
 
@@ -123,10 +123,10 @@ func TestIndexOf(t *testing.T) {
 }
 
 func TestStackTitle(t *testing.T) {
-	titleByID := map[string]string{
-		"osx-xcode-16.0.x-edge": "Xcode 16.0",
-		"linux-ubuntu-24.04":    "Ubuntu 24.04",
-		"osx-no-title":          "", // backend supplied no title
+	byID := map[string]internalrde.Stack{
+		"osx-xcode-16.0.x-edge": {ID: "osx-xcode-16.0.x-edge", Title: "Xcode 16.0"},
+		"linux-ubuntu-24.04":    {ID: "linux-ubuntu-24.04", Title: "Ubuntu 24.04"},
+		"osx-no-title":          {ID: "osx-no-title"}, // backend supplied no title
 	}
 	for in, want := range map[string]string{
 		"osx-xcode-16.0.x-edge": "Xcode 16.0",
@@ -134,9 +134,44 @@ func TestStackTitle(t *testing.T) {
 		"osx-no-title":          "osx-no-title",  // empty title → raw id
 		"unknown-stack":         "unknown-stack", // absent → raw id
 	} {
-		if got := stackTitle(titleByID, in); got != want {
+		if got := stackTitle(byID, in); got != want {
 			t.Errorf("stackTitle(%q) = %q, want %q", in, got, want)
 		}
+	}
+}
+
+func TestStackSecondary(t *testing.T) {
+	cases := map[string]struct {
+		st   internalrde.Stack
+		want string
+	}{
+		"macos with version and status": {
+			internalrde.Stack{OS: "macos", OSVersion: 26, Status: "edge"},
+			"macOS 26 · edge",
+		},
+		"linux with version and status": {
+			internalrde.Stack{OS: "linux", OSVersion: 24, Status: "stable"},
+			"Linux 24 · stable",
+		},
+		"no version still shows os and status": {
+			internalrde.Stack{OS: "macos", Status: "frozen"},
+			"macOS · frozen",
+		},
+		"status only": {
+			internalrde.Stack{Status: "edge"},
+			"edge",
+		},
+		"os only": {
+			internalrde.Stack{OS: "macos", OSVersion: 26},
+			"macOS 26",
+		},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			if got := stackSecondary(tc.st); got != tc.want {
+				t.Errorf("stackSecondary = %q, want %q", got, tc.want)
+			}
+		})
 	}
 }
 
