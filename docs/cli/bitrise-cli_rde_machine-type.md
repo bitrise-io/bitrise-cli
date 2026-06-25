@@ -1,6 +1,6 @@
 ## bitrise-cli rde machine-type
 
-List machine types compatible with a given image
+List machine types compatible with a given stack
 
 ```
 bitrise-cli rde machine-type [flags]
@@ -25,5 +25,5 @@ bitrise-cli rde machine-type [flags]
 ### SEE ALSO
 
 * [bitrise-cli rde](bitrise-cli_rde.md)	 - Manage Bitrise Remote Dev Environments (sessions, templates, …)
-* [bitrise-cli rde machine-type list](bitrise-cli_rde_machine-type_list.md)	 - List machine types compatible with a given image
+* [bitrise-cli rde machine-type list](bitrise-cli_rde_machine-type_list.md)	 - List machine types compatible with a given stack
 

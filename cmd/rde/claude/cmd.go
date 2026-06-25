@@ -22,7 +22,7 @@ import (
 	"github.com/bitrise-io/bitrise-cli/internal/rde/localsession"
 )
 
-// The command provisions a templateless session from a chosen image + machine
+// The command provisions a templateless session from a chosen stack + machine
 // type, so there's no template to resolve or keep in sync.
 
 // NewCmd returns the `bitrise-cli rde claude` command.
@@ -31,7 +31,7 @@ func NewCmd() *cobra.Command {
 		waitTimeout    time.Duration
 		resume         bool
 		continueLatest bool
-		image          string
+		stack          string
 		machineType    string
 	)
 
@@ -41,9 +41,9 @@ func NewCmd() *cobra.Command {
 		Long: `Create a fresh RDE session, wait for it to start, then SSH in and drop you
 directly into Claude Code (not a shell).
 
-You pick the image first, then a machine type compatible with it. Your choice
+You pick the stack first, then a machine type compatible with it. Your choice
 is remembered per repository and preselected next time, so you can just press
-Enter. Pass --image / --machine-type to skip the prompts
+Enter. Pass --stack / --machine-type to skip the prompts
 (useful for scripts); when stdin isn't a terminal the remembered or default
 selection is used without prompting.
 
@@ -88,7 +88,7 @@ or minted with 'claude setup-token' (browser auth). The control plane uses that
 token to install Claude Code and tmux during provisioning and to authenticate
 the in-session claude; once saved, future sessions reuse it.`,
 		Example: `  bitrise-cli rde claude --workspace WORKSPACE_ID
-  bitrise-cli rde claude --image osx-26-edge --machine-type g2.mac.m2pro.4c-6g
+  bitrise-cli rde claude --stack osx-xcode-16.0.x-edge --machine-type g2.mac.m2pro.4c-6g
   bitrise-cli rde claude --continue
   bitrise-cli rde claude --resume`,
 		Args: cobra.MaximumNArgs(1),
@@ -118,7 +118,7 @@ the in-session claude; once saved, future sessions reuse it.`,
 			}
 			return runFresh(ctx, cmd, freshOptions{
 				waitTimeout: waitTimeout,
-				image:       image,
+				stack:       stack,
 				machineType: machineType,
 			})
 		},
@@ -127,7 +127,7 @@ the in-session claude; once saved, future sessions reuse it.`,
 	c.Flags().DurationVar(&waitTimeout, "wait-timeout", 10*time.Minute, "max time to wait for the session to start (uses Go duration syntax: 30s, 5m, 1h)")
 	c.Flags().BoolVar(&resume, "resume", false, "resume a previous session for this repo; with no SESSION_ID, pick one from a list")
 	c.Flags().BoolVar(&continueLatest, "continue", false, "resume the most recent session started from this repo")
-	c.Flags().StringVar(&image, "image", "", "image to use (skips the image prompt); see 'rde image list'")
+	c.Flags().StringVar(&stack, "stack", "", "stack to use (skips the stack prompt); see 'rde stack list'")
 	c.Flags().StringVar(&machineType, "machine-type", "", "machine type to use (skips the machine-type prompt); see 'rde machine-type list'")
 	c.MarkFlagsMutuallyExclusive("resume", "continue")
 	return c
@@ -136,7 +136,7 @@ the in-session claude; once saved, future sessions reuse it.`,
 // freshOptions configures a fresh `rde claude` run.
 type freshOptions struct {
 	waitTimeout time.Duration
-	image       string // --image override ("" = prompt/default)
+	stack       string // --stack override ("" = prompt/default)
 	machineType string // --machine-type override ("" = prompt/default)
 }
 
@@ -187,12 +187,12 @@ func runFresh(ctx context.Context, cmd *cobra.Command, opts freshOptions) error 
 
 	log := newStepLogger(cmd)
 
-	// ── Image & machine type ───────────────────────────────────────
+	// ── Stack & machine type ───────────────────────────────────────
 	// Choose before auth so all interactive input is gathered up front (and a
-	// bad --image/--machine-type fails fast, before the auth step that can open
+	// bad --stack/--machine-type fails fast, before the auth step that can open
 	// a browser). The choice is remembered per repo and used on the next run.
-	log.group("Image & machine type")
-	image, machineType, err := selectImageAndMachineType(ctx, cmd, svc, log, workspaceID, repoPath, opts.image, opts.machineType)
+	log.group("Stack & machine type")
+	stack, stackTitle, machineType, err := selectStackAndMachineType(ctx, cmd, svc, log, workspaceID, repoPath, opts.stack, opts.machineType)
 	if errors.Is(err, errSelectionCancelled) {
 		_, _ = fmt.Fprintln(cmd.ErrOrStderr(), "Cancelled.")
 		return nil
@@ -200,7 +200,7 @@ func runFresh(ctx context.Context, cmd *cobra.Command, opts freshOptions) error 
 	if err != nil {
 		return err
 	}
-	log.done("Image %s, machine type %s", imageLabel(image), machineType)
+	log.done("Stack %s, machine type %s", stackTitle, machineType)
 
 	// ── Claude Code auth ───────────────────────────────────────────
 	// Ensure a Claude Code token exists on the control plane *before*
@@ -219,7 +219,7 @@ func runFresh(ctx context.Context, cmd *cobra.Command, opts freshOptions) error 
 	log.step("Creating session %q…", name)
 	res, err := svc.CreateSession(ctx, workspaceID, internalrde.CreateSessionRequest{
 		Name:        name,
-		Image:       image,
+		StackID:     stack,
 		MachineType: machineType,
 		// Auth is guaranteed present by now, so map the token saved
 		// input in: provisioning installs claude + tmux and the session
@@ -233,8 +233,8 @@ func runFresh(ctx context.Context, cmd *cobra.Command, opts freshOptions) error 
 
 	// Remember the selection so the next run in this repo preselects it.
 	// Best-effort: a failure only costs the preselect convenience.
-	if err := localsession.SavePrefs(repoPath, localsession.Prefs{Image: image, MachineType: machineType}); err != nil {
-		log.warn("Could not save image/machine-type choice for next time: %v", err)
+	if err := localsession.SavePrefs(repoPath, localsession.Prefs{Stack: stack, MachineType: machineType}); err != nil {
+		log.warn("Could not save stack/machine-type choice for next time: %v", err)
 	}
 
 	// Persist a local record immediately so the session is resumable even if

@@ -152,11 +152,11 @@ func renderSessionDetail(w io.Writer, sess internalrde.Session) error {
 		ew.F("%s%s\n", lbl("Updated:"), formatTime(sess.UpdatedAt))
 	}
 	if snap := sess.TemplateSnapshot; snap != nil {
-		if snap.Image != "" || snap.MachineType != "" {
+		if snap.StackID != "" || snap.MachineType != "" {
 			ew.Ln()
 			ew.Ln(s.Dim.Render("Template snapshot"))
-			if snap.Image != "" {
-				ew.F("%s%s\n", lbl("  Image:"), snap.Image)
+			if snap.StackID != "" {
+				ew.F("%s%s\n", lbl("  Stack:"), snap.StackID)
 			}
 			if snap.MachineType != "" {
 				ew.F("%s%s\n", lbl("  Machine type:"), snap.MachineType)

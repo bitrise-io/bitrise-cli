@@ -16,15 +16,15 @@ import (
 	"github.com/bitrise-io/bitrise-cli/internal/rde/localsession"
 )
 
-// errSelectionCancelled signals the user backed out of the image / machine-type
+// errSelectionCancelled signals the user backed out of the stack / machine-type
 // picker (empty-with-no-default impossible, "q", EOF, or Ctrl-C). The command
 // treats it as a clean exit, like the resume picker's cancel.
 var errSelectionCancelled = errors.New("selection cancelled")
 
-// selectImageAndMachineType resolves the image and machine type for a fresh
-// session, mirroring the RDE web UI: pick an image first, then a machine type
-// compatible with that image. When a still-valid combo is remembered for this
-// project (and neither --image nor --machine-type is set), it first offers a
+// selectStackAndMachineType resolves the stack and machine type for a fresh
+// session, mirroring the RDE web UI: pick a stack first, then a machine type
+// compatible with that stack. When a still-valid combo is remembered for this
+// project (and neither --stack nor --machine-type is set), it first offers a
 // one-step "use your last setup" menu so returning users don't re-pick the same
 // pair. For each pick the choice is, in order: an explicit flag, the only option
 // when there's just one (so a single machine type starts the session without a
@@ -32,54 +32,55 @@ var errSelectionCancelled = errors.New("selection cancelled")
 // else the backend default, else the first). When stdin/stderr isn't a terminal
 // the default is used without prompting.
 //
-// The returned values are image and machine type NAMES, ready for CreateSession.
-func selectImageAndMachineType(ctx context.Context, cmd *cobra.Command, svc *internalrde.Service, log *stepLogger, workspaceID, repoPath, flagImage, flagMachineType string) (string, string, error) {
+// It returns the chosen stack ID (ready for CreateSession), the stack's
+// human-friendly title (for display), and the machine type name.
+func selectStackAndMachineType(ctx context.Context, cmd *cobra.Command, svc *internalrde.Service, log *stepLogger, workspaceID, repoPath, flagStack, flagMachineType string) (string, string, string, error) {
 	// Best-effort: a missing/corrupt prefs file yields the zero value, i.e.
 	// "no prior choice", so we fall through to the backend default / first item.
 	prefs, _ := localsession.LoadPrefs(repoPath)
 
-	images, err := svc.ListImages(ctx, workspaceID)
+	stacks, err := svc.ListStacks(ctx, workspaceID)
 	if err != nil {
-		return "", "", fmt.Errorf("list images: %w", err)
+		return "", "", "", fmt.Errorf("list stacks: %w", err)
 	}
-	if len(images) == 0 {
-		return "", "", fmt.Errorf("no images are available in this workspace")
+	if len(stacks) == 0 {
+		return "", "", "", fmt.Errorf("no stacks are available in this workspace")
 	}
-	imageNames, backendDefaultImage := uniqueImageNames(images)
+	stackIDs, titleByID, backendDefaultStack := uniqueStacks(stacks)
 
 	// Fast path: reuse the remembered combo for this project in one step.
-	if flagImage == "" && flagMachineType == "" && interactivePicker(cmd) && prefs.Image != "" && prefs.MachineType != "" {
-		image, machineType, done, err := offerReuse(ctx, cmd, svc, log, workspaceID, imageNames, prefs)
+	if flagStack == "" && flagMachineType == "" && interactivePicker(cmd) && prefs.Stack != "" && prefs.MachineType != "" {
+		stack, machineType, done, err := offerReuse(ctx, cmd, svc, log, workspaceID, stackIDs, titleByID, prefs)
 		if err != nil || done {
-			return image, machineType, err
+			return stack, stackTitle(titleByID, stack), machineType, err
 		}
-		// The remembered combo is stale, or the user chose "Change image" — fall
+		// The remembered combo is stale, or the user chose "Change stack" — fall
 		// through to the full pick below (saved values still seed the defaults).
 	}
 
-	image, err := chooseOne(ctx, cmd, log, "image", "Select an image", imageNames, prefs.Image, backendDefaultImage, flagImage, imageItem)
+	stack, err := chooseOne(ctx, cmd, log, "stack", "Select a stack", stackIDs, prefs.Stack, backendDefaultStack, flagStack, stackItem(titleByID))
 	if err != nil {
-		return "", "", err
+		return "", "", "", err
 	}
 
-	machineType, err := chooseMachineForImage(ctx, cmd, svc, log, workspaceID, image, prefs.MachineType, flagMachineType)
+	machineType, err := chooseMachineForStack(ctx, cmd, svc, log, workspaceID, stack, prefs.MachineType, flagMachineType)
 	if err != nil {
-		return "", "", err
+		return "", "", "", err
 	}
-	return image, machineType, nil
+	return stack, stackTitle(titleByID, stack), machineType, nil
 }
 
-// chooseMachineForImage resolves the machine type for the chosen image: it
+// chooseMachineForStack resolves the machine type for the chosen stack: it
 // fetches the compatible types and defers to chooseOne, which auto-selects when
 // only one is available — so a single compatible machine type starts the session
 // without a machine-type prompt.
-func chooseMachineForImage(ctx context.Context, cmd *cobra.Command, svc *internalrde.Service, log *stepLogger, workspaceID, image, prefMachineType, flagMachineType string) (string, error) {
-	mts, err := svc.MachineTypesForImage(ctx, workspaceID, image)
+func chooseMachineForStack(ctx context.Context, cmd *cobra.Command, svc *internalrde.Service, log *stepLogger, workspaceID, stack, prefMachineType, flagMachineType string) (string, error) {
+	mts, err := svc.MachineTypesForStack(ctx, workspaceID, stack)
 	if err != nil {
 		return "", err
 	}
 	if len(mts) == 0 {
-		return "", fmt.Errorf("no machine types are compatible with image %q", image)
+		return "", fmt.Errorf("no machine types are compatible with stack %q", stack)
 	}
 	mtNames, backendDefaultMT := uniqueMachineTypeNames(mts)
 	return chooseOne(ctx, cmd, log, "machine type", "Select a machine type", mtNames, prefMachineType, backendDefaultMT, flagMachineType, machineItem)
@@ -89,8 +90,8 @@ func chooseMachineForImage(ctx context.Context, cmd *cobra.Command, svc *interna
 // the options and used as-is; a single option is auto-selected; a
 // non-interactive stdin/stderr uses the resolved default without prompting;
 // otherwise it shows the interactive picker. noun is used in messages
-// ("image"); label heads the picker. itemize, when non-nil, builds the picker
-// row for each option (e.g. a human-friendly image title, or a machine-type
+// ("stack"); label heads the picker. itemize, when non-nil, builds the picker
+// row for each option (e.g. a human-friendly stack title, or a machine-type
 // spec hint); the raw option string is always what's returned. options must be
 // non-empty.
 func chooseOne(ctx context.Context, cmd *cobra.Command, log *stepLogger, noun, label string, options []string, prefName, backendDefault, flag string, itemize func(string) picker.Item) (string, error) {
@@ -143,22 +144,22 @@ type reuseAction int
 
 const (
 	reuseUse reuseAction = iota
-	reuseChangeImage
+	reuseChangeStack
 	reuseChangeMachine
 )
 
 // offerReuse shows the one-step "use your last setup" menu for a project that
-// has a remembered image+machine combo. done=true means the combo was resolved
+// has a remembered stack+machine combo. done=true means the combo was resolved
 // here (reused, or customized through the menu) and the returned values are
 // final; done=false with a nil error means the remembered combo is stale or the
-// user asked to change the image, so the caller should run the full pick. A
+// user asked to change the stack, so the caller should run the full pick. A
 // non-nil error (e.g. the user cancelled) aborts selection.
-func offerReuse(ctx context.Context, cmd *cobra.Command, svc *internalrde.Service, log *stepLogger, workspaceID string, imageNames []string, prefs localsession.Prefs) (image, machineType string, done bool, err error) {
-	// The remembered image must still be offered…
-	if indexOf(imageNames, prefs.Image) < 0 {
+func offerReuse(ctx context.Context, cmd *cobra.Command, svc *internalrde.Service, log *stepLogger, workspaceID string, stackIDs []string, titleByID map[string]string, prefs localsession.Prefs) (stack, machineType string, done bool, err error) {
+	// The remembered stack must still be offered…
+	if indexOf(stackIDs, prefs.Stack) < 0 {
 		return "", "", false, nil
 	}
-	mts, err := svc.MachineTypesForImage(ctx, workspaceID, prefs.Image)
+	mts, err := svc.MachineTypesForStack(ctx, workspaceID, prefs.Stack)
 	if err != nil {
 		return "", "", false, err
 	}
@@ -168,16 +169,16 @@ func offerReuse(ctx context.Context, cmd *cobra.Command, svc *internalrde.Servic
 		return "", "", false, nil
 	}
 
-	items, actions := buildReuseMenu(len(imageNames) > 1, len(mtNames) > 1)
-	// Nothing to customize (a single image and a single machine type): reuse
+	items, actions := buildReuseMenu(len(stackIDs) > 1, len(mtNames) > 1)
+	// Nothing to customize (a single stack and a single machine type): reuse
 	// without prompting.
 	if len(actions) == 1 {
-		return prefs.Image, prefs.MachineType, true, nil
+		return prefs.Stack, prefs.MachineType, true, nil
 	}
 
 	idx, err := picker.Select(ctx, picker.Config{
 		Prompt:     "Last used for this project",
-		Note:       reuseDetail(prefs.Image, prefs.MachineType),
+		Note:       reuseDetail(stackTitle(titleByID, prefs.Stack), prefs.MachineType),
 		Items:      items,
 		Cursor:     0,
 		DefaultIdx: 0,
@@ -192,30 +193,30 @@ func offerReuse(ctx context.Context, cmd *cobra.Command, svc *internalrde.Servic
 	}
 
 	switch actions[idx] {
-	case reuseChangeImage:
-		// Caller runs the full image + machine pick.
+	case reuseChangeStack:
+		// Caller runs the full stack + machine pick.
 		return "", "", false, nil
 	case reuseChangeMachine:
 		mt, err := chooseOne(ctx, cmd, log, "machine type", "Select a machine type", mtNames, prefs.MachineType, "", "", machineItem)
 		if err != nil {
 			return "", "", false, err
 		}
-		return prefs.Image, mt, true, nil
+		return prefs.Stack, mt, true, nil
 	default: // reuseUse
-		return prefs.Image, prefs.MachineType, true, nil
+		return prefs.Stack, prefs.MachineType, true, nil
 	}
 }
 
 // buildReuseMenu assembles the rows and matching actions for offerReuse. The
-// "Change image" row appears only when more than one image exists, and "Change
-// machine type" only when the remembered image has more than one compatible
+// "Change stack" row appears only when more than one stack exists, and "Change
+// machine type" only when the remembered stack has more than one compatible
 // type — so we never offer a change with nothing to change.
-func buildReuseMenu(multiImage, multiMachine bool) ([]picker.Item, []reuseAction) {
+func buildReuseMenu(multiStack, multiMachine bool) ([]picker.Item, []reuseAction) {
 	items := []picker.Item{{Title: "Use this setup"}}
 	actions := []reuseAction{reuseUse}
-	if multiImage {
-		items = append(items, picker.Item{Title: "Change image"})
-		actions = append(actions, reuseChangeImage)
+	if multiStack {
+		items = append(items, picker.Item{Title: "Change stack"})
+		actions = append(actions, reuseChangeStack)
 	}
 	if multiMachine {
 		items = append(items, picker.Item{Title: "Change machine type"})
@@ -224,49 +225,42 @@ func buildReuseMenu(multiImage, multiMachine bool) ([]picker.Item, []reuseAction
 	return items, actions
 }
 
-// reuseDetail is the two-line "Image / Machine type" summary shown under the
+// reuseDetail is the two-line "Stack / Machine type" summary shown under the
 // reuse-menu prompt, so the user can see exactly what "Use this setup" launches.
-func reuseDetail(image, machineType string) string {
+func reuseDetail(stackTitle, machineType string) string {
 	machine := machineType
 	if hint := machineSpecHint(machineType); hint != "" {
 		machine += "  (" + hint + ")"
 	}
-	return fmt.Sprintf("  %-13s %s\n  %-13s %s", "Image", imageLabel(image), "Machine type", machine)
+	return fmt.Sprintf("  %-13s %s\n  %-13s %s", "Stack", stackTitle, "Machine type", machine)
 }
 
-// imageItem and machineItem build the picker rows for the image and machine-type
-// pickers: images show a human-friendly label, machine types show their spec
-// hint as dim secondary text. The picker still returns the raw option string.
-func imageItem(name string) picker.Item { return picker.Item{Title: imageLabel(name)} }
+// stackItem and machineItem build the picker rows for the stack and machine-type
+// pickers: stacks show their friendly title with the stack id as dim secondary
+// text, machine types show their spec hint. The picker still returns the raw
+// option string (the stack id / machine type name).
+func stackItem(titleByID map[string]string) func(string) picker.Item {
+	return func(id string) picker.Item {
+		title := stackTitle(titleByID, id)
+		desc := ""
+		if title != id {
+			desc = id
+		}
+		return picker.Item{Title: title, Desc: desc}
+	}
+}
+
 func machineItem(name string) picker.Item {
 	return picker.Item{Title: name, Desc: machineSpecHint(name)}
 }
 
-// imageDisplayNames maps RDE image names to human-friendly labels. This is a
-// stopgap until the backend serves proper descriptions; unmapped names fall
-// back to the raw name so new images still display. The trailing osx number is
-// the Xcode version; "-edge" images are labeled by Xcode version only (no macOS
-// codename yet). Refine the wording here as the catalog evolves.
-var imageDisplayNames = map[string]string{
-	"linux-bitvirt-2026":   "Ubuntu 24.04",
-	"linux-docker-bitvirt": "Ubuntu 24.04 (Docker)",
-	"osx-sequoia-16":       "macOS Sequoia (Xcode 16)",
-	"osx-sequoia-26":       "macOS Sequoia (Xcode 26)",
-	"osx-sonoma-15":        "macOS Sonoma (Xcode 15)",
-	"osx-sonoma-16":        "macOS Sonoma (Xcode 16)",
-	"osx-ventura-15":       "macOS Ventura (Xcode 15)",
-	"osx-tahoe-26":         "macOS Tahoe (Xcode 26)",
-	"osx-26-edge":          "Edge (Xcode 26)",
-	"osx-27-edge":          "Edge (Xcode 27)",
-}
-
-// imageLabel returns the human-friendly label for an image name, or the raw
-// name when there's no mapping.
-func imageLabel(name string) string {
-	if label, ok := imageDisplayNames[name]; ok {
-		return label
+// stackTitle returns the human-friendly title for a stack id, falling back to
+// the raw id when the backend supplied no title.
+func stackTitle(titleByID map[string]string, id string) string {
+	if t := titleByID[id]; t != "" {
+		return t
 	}
-	return name
+	return id
 }
 
 // interactivePicker reports whether an interactive picker can run: it reads keys
@@ -313,7 +307,7 @@ func moveToFront(options []string, idx int) []string {
 // precedence saved-pref → backend default → first. A pref or backend default
 // absent from names is skipped, so the result is always a valid index (names
 // must be non-empty). This is also what makes a saved/backend-default machine
-// type that isn't compatible with the chosen image fall back to first-available.
+// type that isn't compatible with the chosen stack fall back to first-available.
 func resolveDefault(names []string, prefName, backendDefaultName string) int {
 	if i := indexOf(names, prefName); i >= 0 {
 		return i
@@ -338,24 +332,28 @@ func indexOf(names []string, target string) int {
 	return -1
 }
 
-// uniqueImageNames returns the image names in catalog order with duplicates
-// removed (a name can be offered by several clusters), plus the first name the
-// backend flagged as default ("" if none).
-func uniqueImageNames(images []internalrde.Image) (names []string, backendDefault string) {
-	seen := make(map[string]bool, len(images))
-	for _, im := range images {
-		if !seen[im.Name] {
-			seen[im.Name] = true
-			names = append(names, im.Name)
+// uniqueStacks returns the stack ids in catalog order with duplicates removed,
+// a lookup from stack id to its title, and the first id the backend flagged as
+// default ("" if none).
+func uniqueStacks(stacks []internalrde.Stack) (ids []string, titleByID map[string]string, backendDefault string) {
+	titleByID = make(map[string]string, len(stacks))
+	seen := make(map[string]bool, len(stacks))
+	for _, st := range stacks {
+		if !seen[st.ID] {
+			seen[st.ID] = true
+			ids = append(ids, st.ID)
+			titleByID[st.ID] = st.Title
 		}
-		if im.IsDefault && backendDefault == "" {
-			backendDefault = im.Name
+		if st.IsDefault && backendDefault == "" {
+			backendDefault = st.ID
 		}
 	}
-	return names, backendDefault
+	return ids, titleByID, backendDefault
 }
 
-// uniqueMachineTypeNames is uniqueImageNames for machine types.
+// uniqueMachineTypeNames returns the machine type names in catalog order with
+// duplicates removed (a name can be offered by several clusters), plus the first
+// name the backend flagged as default ("" if none).
 func uniqueMachineTypeNames(mts []internalrde.MachineType) (names []string, backendDefault string) {
 	seen := make(map[string]bool, len(mts))
 	for _, mt := range mts {

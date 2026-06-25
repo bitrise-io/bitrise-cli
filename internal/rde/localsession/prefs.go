@@ -10,17 +10,17 @@ import (
 	"time"
 )
 
-// prefsFileName is the per-project file holding the last image / machine type
+// prefsFileName is the per-project file holding the last stack / machine type
 // chosen for `rde claude`, so the next run in the same repo can preselect them.
 // It sits at the per-project root <config-dir>/rde/projects/<key>/prefs.json,
 // beside the sessions/ subdirectory that holds the session records.
 const prefsFileName = "prefs.json"
 
 // Prefs is the remembered `rde claude` selection for one local repo. Values are
-// the image and machine type NAMES (what CreateSession takes on the wire and
-// what the picker displays), not cluster-specific IDs.
+// the stack ID and machine type NAME (what CreateSession takes on the wire),
+// not cluster-specific IDs.
 type Prefs struct {
-	Image       string    `json:"image,omitempty"`
+	Stack       string    `json:"stack,omitempty"`
 	MachineType string    `json:"machine_type,omitempty"`
 	UpdatedAt   time.Time `json:"updated_at,omitempty"`
 }

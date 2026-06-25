@@ -51,8 +51,8 @@ func renderDetail(w io.Writer, t internalrde.Template) error {
 	if t.Description != "" {
 		ew.F("%s%s\n", lbl("Description:"), t.Description)
 	}
-	if t.Image != "" {
-		ew.F("%s%s\n", lbl("Image:"), t.Image)
+	if t.StackID != "" {
+		ew.F("%s%s\n", lbl("Stack:"), t.StackID)
 	}
 	if t.MachineType != "" {
 		ew.F("%s%s\n", lbl("Machine type:"), t.MachineType)

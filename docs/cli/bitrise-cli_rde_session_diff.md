@@ -9,7 +9,7 @@ creation time and the template's current config. Most useful when a session
 reports template_outdated=true.
 
 Lists which template variable keys changed (values are never exposed) and
-the simple per-field differences (image, machine type, scripts, working
+the simple per-field differences (stack, machine type, scripts, working
 directory). When the template was deleted, only the snapshot is shown.
 
 ```

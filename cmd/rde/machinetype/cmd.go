@@ -21,7 +21,7 @@ type listResult struct {
 func NewCmd() *cobra.Command {
 	c := &cobra.Command{
 		Use:   "machine-type",
-		Short: "List machine types compatible with a given image",
+		Short: "List machine types compatible with a given stack",
 		RunE:  cmdutil.DelegateToList,
 	}
 	c.AddCommand(newListCmd())
@@ -29,17 +29,17 @@ func NewCmd() *cobra.Command {
 }
 
 func newListCmd() *cobra.Command {
-	var imageName string
+	var stackID string
 	c := &cobra.Command{
-		Use:   "list --image NAME",
-		Short: "List machine types compatible with a given image",
-		Long: `List machine types compatible with the image given by --image.
+		Use:   "list --stack STACK_ID",
+		Short: "List machine types compatible with a given stack",
+		Long: `List machine types compatible with the stack given by --stack.
 
 Each machine type is offered by one or more clusters. The cluster name is
 shown only when a machine type is offered by more than one cluster for the
-selected image — pass that name as --cluster to 'rde session create' to
+selected stack — pass that name as --cluster to 'rde session create' to
 pin a target.`,
-		Example: `  bitrise-cli rde machine-type list --image osx-xcode-edge`,
+		Example: `  bitrise-cli rde machine-type list --stack osx-xcode-16.0.x-edge`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			workspaceID, err := cmdutil.ResolveWorkspaceID(cmd)
 			if err != nil {
@@ -50,21 +50,21 @@ pin a target.`,
 			if err != nil {
 				return err
 			}
-			items, err := internalrde.NewService(client).MachineTypesForImage(cmd.Context(), workspaceID, imageName)
+			items, err := internalrde.NewService(client).MachineTypesForStack(cmd.Context(), workspaceID, stackID)
 			if err != nil {
 				return err
 			}
 			return output.Render(cmd.OutOrStdout(), format, listResult{Items: items}, renderList)
 		},
 	}
-	c.Flags().StringVar(&imageName, "image", "", "image name to list compatible machine types for (required)")
-	_ = c.MarkFlagRequired("image")
+	c.Flags().StringVar(&stackID, "stack", "", "stack ID to list compatible machine types for (required)")
+	_ = c.MarkFlagRequired("stack")
 	return c
 }
 
 func renderList(w io.Writer, res listResult) error {
 	if len(res.Items) == 0 {
-		_, err := fmt.Fprintln(w, "No machine types available for that image.")
+		_, err := fmt.Fprintln(w, "No machine types available for that stack.")
 		return err
 	}
 	clustersPerName := make(map[string]map[string]struct{}, len(res.Items))

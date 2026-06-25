@@ -1,31 +1,31 @@
 ## bitrise-cli rde machine-type list
 
-List machine types compatible with a given image
+List machine types compatible with a given stack
 
 ### Synopsis
 
-List machine types compatible with the image given by --image.
+List machine types compatible with the stack given by --stack.
 
 Each machine type is offered by one or more clusters. The cluster name is
 shown only when a machine type is offered by more than one cluster for the
-selected image — pass that name as --cluster to 'rde session create' to
+selected stack — pass that name as --cluster to 'rde session create' to
 pin a target.
 
 ```
-bitrise-cli rde machine-type list --image NAME [flags]
+bitrise-cli rde machine-type list --stack STACK_ID [flags]
 ```
 
 ### Examples
 
 ```
-  bitrise-cli rde machine-type list --image osx-xcode-edge
+  bitrise-cli rde machine-type list --stack osx-xcode-16.0.x-edge
 ```
 
 ### Options
 
 ```
   -h, --help           help for list
-      --image string   image name to list compatible machine types for (required)
+      --stack string   stack ID to list compatible machine types for (required)
 ```
 
 ### Options inherited from parent commands
@@ -40,5 +40,5 @@ bitrise-cli rde machine-type list --image NAME [flags]
 
 ### SEE ALSO
 
-* [bitrise-cli rde machine-type](bitrise-cli_rde_machine-type.md)	 - List machine types compatible with a given image
+* [bitrise-cli rde machine-type](bitrise-cli_rde_machine-type.md)	 - List machine types compatible with a given stack
 
