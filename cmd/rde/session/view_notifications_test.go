@@ -19,7 +19,7 @@ func TestViewCmd_HappyPath(t *testing.T) {
 		_, _ = io.WriteString(w, `{"session":{
 			"id":"s-1","name":"dev","status":"SESSION_STATUS_RUNNING",
 			"templateId":"t-1","sshAddress":"ssh://host:22",
-			"templateSnapshot":{"image":"osx","machineType":"g2.mac"}
+			"templateSnapshot":{"stackId":"osx-xcode-16.0.x-edge","machineType":"g2.mac"}
 		}}`)
 	}))
 	defer srv.Close()
@@ -28,7 +28,7 @@ func TestViewCmd_HappyPath(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
-	for _, want := range []string{"dev", "s-1", "running", "ssh://host:22", "osx", "g2.mac"} {
+	for _, want := range []string{"dev", "s-1", "running", "ssh://host:22", "osx-xcode-16.0.x-edge", "g2.mac"} {
 		if !strings.Contains(stdout, want) {
 			t.Errorf("stdout missing %q:\n%s", want, stdout)
 		}

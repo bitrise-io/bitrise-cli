@@ -1,4 +1,4 @@
-package image
+package stack
 
 import (
 	"os"

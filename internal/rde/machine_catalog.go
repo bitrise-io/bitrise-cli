@@ -3,38 +3,66 @@ package rde
 import (
 	"context"
 	"fmt"
+
+	rdeapi "github.com/bitrise-io/bitrise-cli/bitriseapi/rde"
 )
 
-// Image is a machine image available in the workspace.
-type Image struct {
-	ID          string `json:"id"`
-	Name        string `json:"name"`
-	ClusterName string `json:"cluster_name,omitempty"`
-	// IsDefault is set by the backend on the deployment's default image.
+// Stack is a machine stack available in the workspace. The ID is the stable
+// contract stored on a template/session; the rest is human-friendly metadata.
+type Stack struct {
+	ID           string `json:"id"`
+	Title        string `json:"title,omitempty"`
+	Description  string `json:"description,omitempty"`
+	OS           string `json:"os,omitempty"`
+	OSVersion    int32  `json:"os_version,omitempty"`
+	Status       string `json:"status,omitempty"`
+	XcodeVersion string `json:"xcode_version,omitempty"`
+	// IsDefault is set by the backend on the deployment's default stack.
 	IsDefault bool `json:"is_default,omitempty"`
+	// ClusterNames are the clusters where this stack can be provisioned.
+	ClusterNames []string `json:"cluster_names,omitempty"`
+	// DescriptionLink points at the stack's pre-installed tools / system report.
+	DescriptionLink string `json:"description_link,omitempty"`
 }
 
-// MachineType is a machine size available in the workspace.
+// MachineType is a machine size available in the workspace. Name is the
+// contract (what templates/sessions store); Title/CPU/RAM are human-friendly
+// display metadata and may be empty when the backend has none.
 type MachineType struct {
 	ID          string `json:"id"`
 	Name        string `json:"name"`
 	ClusterName string `json:"cluster_name,omitempty"`
 	// IsDefault is set by the backend on the deployment's default machine type.
-	IsDefault bool `json:"is_default,omitempty"`
+	IsDefault bool   `json:"is_default,omitempty"`
+	Title     string `json:"title,omitempty"`
+	CPU       string `json:"cpu,omitempty"`
+	RAM       string `json:"ram,omitempty"`
+	OS        string `json:"os,omitempty"`
 }
 
-// ListImages returns every machine image available in the workspace.
-func (s *Service) ListImages(ctx context.Context, workspaceID string) ([]Image, error) {
+// ListStacks returns every machine stack available in the workspace.
+func (s *Service) ListStacks(ctx context.Context, workspaceID string) ([]Stack, error) {
 	if s.client == nil {
 		return nil, errClient()
 	}
-	wire, err := s.client.ListImages(ctx, workspaceID)
+	wire, err := s.client.ListStacks(ctx, workspaceID)
 	if err != nil {
 		return nil, err
 	}
-	out := make([]Image, 0, len(wire))
+	out := make([]Stack, 0, len(wire))
 	for _, w := range wire {
-		out = append(out, Image{ID: w.ID, Name: w.Name, ClusterName: w.ClusterName, IsDefault: w.IsDefault})
+		out = append(out, Stack{
+			ID:              w.ID,
+			Title:           w.Title,
+			Description:     w.Description,
+			OS:              w.OS,
+			OSVersion:       w.OSVersion,
+			Status:          w.Status,
+			XcodeVersion:    w.XcodeVersion,
+			IsDefault:       w.IsDefault,
+			ClusterNames:    w.ClusterNames,
+			DescriptionLink: w.DescriptionLink,
+		})
 	}
 	return out, nil
 }
@@ -50,31 +78,47 @@ func (s *Service) ListMachineTypes(ctx context.Context, workspaceID string) ([]M
 	}
 	out := make([]MachineType, 0, len(wire))
 	for _, w := range wire {
-		out = append(out, MachineType{ID: w.ID, Name: w.Name, ClusterName: w.ClusterName, IsDefault: w.IsDefault})
+		out = append(out, machineTypeFromAPI(w))
 	}
 	return out, nil
 }
 
-// MachineTypesForImage returns the machine types whose cluster overlaps with
-// the clusters offering the image named imageName. An image is offered by one
-// or more clusters; a machine type is compatible when it's offered by at least
-// one of those same clusters. Mirrors the FE's client-side join (see
-// frontend/src/hooks/useClusterFiltering.ts).
+func machineTypeFromAPI(w rdeapi.MachineType) MachineType {
+	return MachineType{
+		ID:          w.ID,
+		Name:        w.Name,
+		ClusterName: w.ClusterName,
+		IsDefault:   w.IsDefault,
+		Title:       w.Title,
+		CPU:         w.CPU,
+		RAM:         w.RAM,
+		OS:          w.OS,
+	}
+}
+
+// MachineTypesForStack returns the machine types whose cluster overlaps with
+// the clusters offering the stack with the given ID. A stack is provisionable
+// in one or more clusters; a machine type is compatible when it's offered by at
+// least one of those same clusters. Mirrors the FE's client-side join.
 //
-// It errors if imageName isn't available in the workspace.
-func (s *Service) MachineTypesForImage(ctx context.Context, workspaceID, imageName string) ([]MachineType, error) {
-	images, err := s.ListImages(ctx, workspaceID)
+// It errors if stackID isn't available in the workspace.
+func (s *Service) MachineTypesForStack(ctx context.Context, workspaceID, stackID string) ([]MachineType, error) {
+	stacks, err := s.ListStacks(ctx, workspaceID)
 	if err != nil {
 		return nil, err
 	}
-	imageClusters := make(map[string]struct{})
-	for _, im := range images {
-		if im.Name == imageName {
-			imageClusters[im.ClusterName] = struct{}{}
+	stackClusters := make(map[string]struct{})
+	found := false
+	for _, st := range stacks {
+		if st.ID == stackID {
+			found = true
+			for _, c := range st.ClusterNames {
+				stackClusters[c] = struct{}{}
+			}
 		}
 	}
-	if len(imageClusters) == 0 {
-		return nil, fmt.Errorf("image %q not found in this workspace", imageName)
+	if !found {
+		return nil, fmt.Errorf("stack %q not found in this workspace", stackID)
 	}
 	machineTypes, err := s.ListMachineTypes(ctx, workspaceID)
 	if err != nil {
@@ -82,7 +126,7 @@ func (s *Service) MachineTypesForImage(ctx context.Context, workspaceID, imageNa
 	}
 	out := make([]MachineType, 0, len(machineTypes))
 	for _, mt := range machineTypes {
-		if _, ok := imageClusters[mt.ClusterName]; ok {
+		if _, ok := stackClusters[mt.ClusterName]; ok {
 			out = append(out, mt)
 		}
 	}

@@ -69,7 +69,7 @@ func (s Session) Resumable() bool {
 // without the masked secret bag.
 type SessionTemplateSnapshot struct {
 	TemplateName     string          `json:"template_name,omitempty"`
-	Image            string          `json:"image,omitempty"`
+	StackID          string          `json:"stack_id,omitempty"`
 	MachineType      string          `json:"machine_type,omitempty"`
 	WorkingDirectory string          `json:"working_directory,omitempty"`
 	HasStartupScript bool            `json:"has_startup_script,omitempty"`
@@ -121,7 +121,7 @@ type CreateSessionRequest struct {
 	Name                    string
 	Description             string
 	TemplateID              string
-	Image                   string
+	StackID                 string
 	MachineType             string
 	SessionInputs           []SessionInputValue
 	EnabledFeatureFlagNames []string
@@ -214,7 +214,7 @@ func (s *Service) ResolveSessionID(ctx context.Context, workspaceID, value strin
 }
 
 // CreateSession creates a session. Provide either a TemplateID or, for a
-// templateless session, an Image + MachineType.
+// templateless session, a StackID + MachineType.
 func (s *Service) CreateSession(ctx context.Context, workspaceID string, req CreateSessionRequest) (CreateSessionResult, error) {
 	if s.client == nil {
 		return CreateSessionResult{}, errClient()
@@ -232,7 +232,7 @@ func (s *Service) CreateSession(ctx context.Context, workspaceID string, req Cre
 		Name:                    req.Name,
 		Description:             req.Description,
 		TemplateID:              req.TemplateID,
-		Image:                   req.Image,
+		StackID:                 req.StackID,
 		MachineType:             req.MachineType,
 		SessionInputs:           wireInputs,
 		EnabledFeatureFlagNames: req.EnabledFeatureFlagNames,
@@ -301,7 +301,7 @@ func (s *Service) TerminateSession(ctx context.Context, workspaceID, sessionID s
 // a session's template diff.
 type TemplateConfig struct {
 	TemplateName      string                   `json:"template_name,omitempty"`
-	Image             string                   `json:"image,omitempty"`
+	StackID           string                   `json:"stack_id,omitempty"`
 	MachineType       string                   `json:"machine_type,omitempty"`
 	WorkingDirectory  string                   `json:"working_directory,omitempty"`
 	StartupScript     string                   `json:"startup_script,omitempty"`
@@ -369,7 +369,7 @@ func (s *Service) DiffSessionTemplate(ctx context.Context, workspaceID, sessionI
 func templateConfigFromAPI(w rdeapi.TemplateConfig) TemplateConfig {
 	out := TemplateConfig{
 		TemplateName:     w.TemplateName,
-		Image:            w.Image,
+		StackID:          firstNonEmpty(w.StackID, w.Image),
 		MachineType:      w.MachineType,
 		WorkingDirectory: w.WorkingDirectory,
 		StartupScript:    w.StartupScript,
@@ -580,7 +580,7 @@ func sessionFromAPI(w rdeapi.Session) Session {
 func snapshotFromAPI(w rdeapi.SessionTemplateSnapshot) SessionTemplateSnapshot {
 	out := SessionTemplateSnapshot{
 		TemplateName:     w.TemplateName,
-		Image:            w.Image,
+		StackID:          firstNonEmpty(w.StackID, w.Image),
 		MachineType:      w.MachineType,
 		WorkingDirectory: w.WorkingDirectory,
 		HasStartupScript: w.HasStartupScript,

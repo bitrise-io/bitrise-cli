@@ -1,4 +1,4 @@
-package image
+package stack
 
 import (
 	"bytes"
@@ -34,10 +34,10 @@ func run(t *testing.T, c *cobra.Command, srvURL, workspaceID string, args []stri
 
 func TestListCmd_HappyPath(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/v1/workspaces/ws-1/images" {
+		if r.URL.Path != "/v1/workspaces/ws-1/stacks" {
 			t.Errorf("unexpected path: %s", r.URL.Path)
 		}
-		_, _ = io.WriteString(w, `{"images":[{"id":"i-1","name":"osx-xcode","clusterName":"c1"}]}`)
+		_, _ = io.WriteString(w, `{"stacks":[{"id":"osx-xcode-16.0.x-edge","title":"Xcode 16.0","os":"macos","osVersion":26,"status":"edge","clusterNames":["c1"]}]}`)
 	}))
 	defer srv.Close()
 
@@ -45,7 +45,7 @@ func TestListCmd_HappyPath(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
-	for _, want := range []string{"i-1", "osx-xcode"} {
+	for _, want := range []string{"osx-xcode-16.0.x-edge", "Xcode 16.0", "macos 26", "edge"} {
 		if !strings.Contains(stdout, want) {
 			t.Errorf("stdout missing %q:\n%s", want, stdout)
 		}
@@ -55,31 +55,9 @@ func TestListCmd_HappyPath(t *testing.T) {
 	}
 }
 
-func TestListCmd_DedupesByName(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = io.WriteString(w, `{"images":[
-			{"id":"i-1","name":"osx-xcode","clusterName":"c1"},
-			{"id":"i-2","name":"osx-xcode","clusterName":"c2"},
-			{"id":"i-3","name":"linux-ubuntu","clusterName":"c1"}
-		]}`)
-	}))
-	defer srv.Close()
-
-	stdout, _, err := run(t, newListCmd(), srv.URL, "ws-1", nil, output.Human)
-	if err != nil {
-		t.Fatalf("Execute: %v", err)
-	}
-	if got := strings.Count(stdout, "osx-xcode"); got != 1 {
-		t.Errorf("osx-xcode should appear exactly once after dedupe, got %d:\n%s", got, stdout)
-	}
-	if !strings.Contains(stdout, "linux-ubuntu") {
-		t.Errorf("stdout missing linux-ubuntu:\n%s", stdout)
-	}
-}
-
 func TestListCmd_JSONOutput(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = io.WriteString(w, `{"images":[{"id":"i-1","name":"osx-xcode","clusterName":"c1"}]}`)
+		_, _ = io.WriteString(w, `{"stacks":[{"id":"osx-xcode-16.0.x-edge","title":"Xcode 16.0","os":"macos","osVersion":26,"status":"edge","clusterNames":["c1"]}]}`)
 	}))
 	defer srv.Close()
 
@@ -89,22 +67,28 @@ func TestListCmd_JSONOutput(t *testing.T) {
 	}
 	var got struct {
 		Items []struct {
-			ID          string `json:"id"`
-			Name        string `json:"name"`
-			ClusterName string `json:"cluster_name"`
+			ID        string `json:"id"`
+			Title     string `json:"title"`
+			OS        string `json:"os"`
+			OSVersion int32  `json:"os_version"`
+			Status    string `json:"status"`
 		} `json:"items"`
 	}
 	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
 		t.Fatalf("unmarshal JSON output: %v\n%s", err, stdout)
 	}
-	if len(got.Items) != 1 || got.Items[0].ID != "i-1" || got.Items[0].ClusterName != "c1" {
-		t.Errorf("unexpected JSON items: %+v", got.Items)
+	if len(got.Items) != 1 {
+		t.Fatalf("unexpected JSON items: %+v", got.Items)
+	}
+	it := got.Items[0]
+	if it.ID != "osx-xcode-16.0.x-edge" || it.Title != "Xcode 16.0" || it.OS != "macos" || it.OSVersion != 26 || it.Status != "edge" {
+		t.Errorf("unexpected JSON item: %+v", it)
 	}
 }
 
 func TestListCmd_EmptyHuman(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = io.WriteString(w, `{"images":[]}`)
+		_, _ = io.WriteString(w, `{"stacks":[]}`)
 	}))
 	defer srv.Close()
 
@@ -112,7 +96,7 @@ func TestListCmd_EmptyHuman(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
-	if !strings.Contains(stdout, "No images found.") {
+	if !strings.Contains(stdout, "No stacks found.") {
 		t.Errorf("expected empty-state message, got: %q", stdout)
 	}
 }

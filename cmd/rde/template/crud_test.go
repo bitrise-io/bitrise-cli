@@ -24,18 +24,18 @@ func TestCreateCmd_HappyPath(t *testing.T) {
 			t.Errorf("unexpected: %s %s", r.Method, r.URL.Path)
 		}
 		_ = json.NewDecoder(r.Body).Decode(&gotBody)
-		_, _ = io.WriteString(w, `{"template":{"id":"t-new","name":"Dev","image":"ubuntu","machineType":"standard"}}`)
+		_, _ = io.WriteString(w, `{"template":{"id":"t-new","name":"Dev","stackId":"linux-ubuntu-24.04","machineType":"standard"}}`)
 	}))
 	defer srv.Close()
 
 	c := newCreateCmd()
-	c.SetIn(strings.NewReader(`{"name":"Dev","image":"ubuntu","machine_type":"standard","session_inputs":[{"key":"repo","required":true}]}`))
+	c.SetIn(strings.NewReader(`{"name":"Dev","stack_id":"linux-ubuntu-24.04","machine_type":"standard","session_inputs":[{"key":"repo","required":true}]}`))
 	stdout, _, err := run(t, c, srv.URL, "ws-1", []string{"--file", "-"}, output.Human)
 	if err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
 	// The spec's snake_case fields must map onto the camelCase wire body.
-	if gotBody["name"] != "Dev" || gotBody["image"] != "ubuntu" || gotBody["machineType"] != "standard" {
+	if gotBody["name"] != "Dev" || gotBody["stackId"] != "linux-ubuntu-24.04" || gotBody["machineType"] != "standard" {
 		t.Errorf("unexpected create body: %v", gotBody)
 	}
 	if !strings.Contains(stdout, "t-new") {
@@ -59,7 +59,7 @@ func TestCreateCmd_MissingRequiredSpecField(t *testing.T) {
 	defer srv.Close()
 
 	c := newCreateCmd()
-	c.SetIn(strings.NewReader(`{"name":"Dev","image":"ubuntu"}`))
+	c.SetIn(strings.NewReader(`{"name":"Dev","stack_id":"linux-ubuntu-24.04"}`))
 	_, _, err := run(t, c, srv.URL, "ws-1", []string{"--file", "-"}, output.Human)
 	if err == nil || !strings.Contains(err.Error(), "machine_type") {
 		t.Errorf("error = %v, want machine_type-required", err)

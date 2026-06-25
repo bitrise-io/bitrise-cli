@@ -19,7 +19,7 @@ func newCreateCmd() *cobra.Command {
 	var (
 		description          string
 		templateID           string
-		image                string
+		stack                string
 		machineType          string
 		inputs               []string
 		secretInputs         []string
@@ -38,15 +38,15 @@ func newCreateCmd() *cobra.Command {
 		Use:   "create NAME",
 		Short: "Create a new RDE session",
 		Long: `Create a new RDE session, either from a template or from a bare
-image + machine type (a template-less session, with no warmup/startup scripts
+stack + machine type (a template-less session, with no warmup/startup scripts
 or other template configuration).
 
 NAME is a human-readable label for the session; you can use it in place of the
 session ID in later commands (view, terminate, …) as long as it stays unique.
 
 Pass --template to create the session from a template (by ID or name). To
-create a session without a template, omit --template and pass both --image and
---machine-type instead. --image / --machine-type may also be given alongside
+create a session without a template, omit --template and pass both --stack and
+--machine-type instead. --stack / --machine-type may also be given alongside
 --template to override the template's defaults for this session.
 
 Provide session input values via --input (one --input per key), --secret-input
@@ -66,8 +66,8 @@ Example values:
   --secret-input api-key=VALUE               # inline; avoid for real secrets`,
 		Example: `  bitrise-cli rde session create dev --template TEMPLATE_ID
   bitrise-cli rde session create dev --template TEMPLATE_ID --input repo=my-app
-  # Template-less: pick an image and machine type directly.
-  bitrise-cli rde session create dev --image osx-sequoia-26 --machine-type g2.mac.m2pro.6c-14g
+  # Template-less: pick a stack and machine type directly.
+  bitrise-cli rde session create dev --stack osx-xcode-16.0.x-edge --machine-type g2.mac.m2pro.6c-14g
   # Keep secrets off the command line: store once, then reference by ID.
   echo -n "ghp_xxx" | bitrise-cli rde saved-input create --key gh-token --value-stdin --secret
   bitrise-cli rde session create dev --template TEMPLATE_ID --saved-input gh-token=SAVED_INPUT_ID
@@ -79,10 +79,10 @@ Example values:
 				return fmt.Errorf("NAME must not be empty")
 			}
 			// A session needs either a template or, for a template-less
-			// session, an explicit image + machine type. (image/machine type
+			// session, an explicit stack + machine type. (stack/machine type
 			// may also accompany a template to override its defaults.)
-			if templateID == "" && (image == "" || machineType == "") {
-				return fmt.Errorf("provide --template, or both --image and --machine-type to create a session without a template")
+			if templateID == "" && (stack == "" || machineType == "") {
+				return fmt.Errorf("provide --template, or both --stack and --machine-type to create a session without a template")
 			}
 			workspaceID, err := cmdutil.ResolveWorkspaceID(cmd)
 			if err != nil {
@@ -96,7 +96,7 @@ Example values:
 				Name:                    name,
 				Description:             description,
 				TemplateID:              templateID,
-				Image:                   image,
+				StackID:                 stack,
 				MachineType:             machineType,
 				SessionInputs:           sessionInputs,
 				EnabledFeatureFlagNames: featureFlags,
@@ -157,14 +157,14 @@ Example values:
 	}
 
 	c.Flags().StringVar(&description, "description", "", "session description")
-	c.Flags().StringVar(&templateID, "template", "", "template ID or name to create the session from (omit to create a template-less session with --image and --machine-type)")
-	c.Flags().StringVar(&image, "image", "", "machine image name for a template-less session, or to override the template's image (see 'rde image list')")
-	c.Flags().StringVar(&machineType, "machine-type", "", "machine type name for a template-less session, or to override the template's machine type (see 'rde machine-type list --image NAME')")
+	c.Flags().StringVar(&templateID, "template", "", "template ID or name to create the session from (omit to create a template-less session with --stack and --machine-type)")
+	c.Flags().StringVar(&stack, "stack", "", "stack ID for a template-less session, or to override the template's stack (see 'rde stack list')")
+	c.Flags().StringVar(&machineType, "machine-type", "", "machine type name for a template-less session, or to override the template's machine type (see 'rde machine-type list --stack STACK_ID')")
 	c.Flags().StringArrayVar(&inputs, "input", nil, "session input as key=value (repeatable)")
 	c.Flags().StringArrayVar(&secretInputs, "secret-input", nil, "session input as key=value, stored as a secret at rest (repeatable; the value is visible in shell history and process args — prefer --saved-input)")
 	c.Flags().StringArrayVar(&savedInputs, "saved-input", nil, "session input as key=savedInputID — uses a stored saved-input value (repeatable)")
 	c.Flags().StringArrayVar(&featureFlags, "feature-flag", nil, "name of a feature flag to enable on the session (repeatable)")
-	c.Flags().StringVar(&cluster, "cluster", "", "target cluster name (use 'rde machine-type list --image NAME' to find candidates when the image + machine type combo is ambiguous)")
+	c.Flags().StringVar(&cluster, "cluster", "", "target cluster name (use 'rde machine-type list --stack STACK_ID' to find candidates when the stack + machine type combo is ambiguous)")
 	c.Flags().StringVar(&aiPrompt, "ai-prompt", "", "initial AI prompt passed to Claude Code on session start")
 	c.Flags().IntVar(&autoTerminateMinutes, "auto-terminate-minutes", 0, "minutes until auto-termination; 0 disables; omitted uses backend default (~5 days)")
 	c.Flags().BoolVar(&mapSavedInputs, "map-saved-inputs", false, "auto-fill template session inputs from the user's saved inputs (matched by key)")

@@ -11,10 +11,13 @@ import (
 // (list, view); create/update/delete is deferred to Phase 3 along with the
 // nested *Create variants.
 type Template struct {
-	ID                string             `json:"id"`
-	WorkspaceID       string             `json:"workspaceId,omitempty"`
-	Name              string             `json:"name"`
-	Description       string             `json:"description,omitempty"`
+	ID          string `json:"id"`
+	WorkspaceID string `json:"workspaceId,omitempty"`
+	Name        string `json:"name"`
+	Description string `json:"description,omitempty"`
+	StackID     string `json:"stackId,omitempty"`
+	// Image is retained only as a read fallback for templates created before
+	// stackId was populated.
 	Image             string             `json:"image,omitempty"`
 	MachineType       string             `json:"machineType,omitempty"`
 	WorkingDirectory  string             `json:"workingDirectory,omitempty"`
@@ -116,7 +119,7 @@ type WorkspaceLinkCreate struct {
 type CreateTemplateRequest struct {
 	Name              string                   `json:"name"`
 	Description       string                   `json:"description,omitempty"`
-	Image             string                   `json:"image"`
+	StackID           string                   `json:"stackId"`
 	MachineType       string                   `json:"machineType"`
 	WorkingDirectory  string                   `json:"workingDirectory,omitempty"`
 	StartupScript     string                   `json:"startupScript,omitempty"`
@@ -132,7 +135,7 @@ type CreateTemplateRequest struct {
 type UpdateTemplateRequest struct {
 	Name             *string `json:"name,omitempty"`
 	Description      *string `json:"description,omitempty"`
-	Image            *string `json:"image,omitempty"`
+	StackID          *string `json:"stackId,omitempty"`
 	MachineType      *string `json:"machineType,omitempty"`
 	WorkingDirectory *string `json:"workingDirectory,omitempty"`
 	StartupScript    *string `json:"startupScript,omitempty"`

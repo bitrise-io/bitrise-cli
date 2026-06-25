@@ -123,7 +123,7 @@ func TestCreateSession_TemplateLess(t *testing.T) {
 
 	if _, err := rs.service().CreateSession(context.Background(), "ws-1", CreateSessionRequest{
 		Name:        "dev",
-		Image:       "osx-sequoia-26",
+		StackID:     "osx-xcode-16.0.x-edge",
 		MachineType: "g2.mac.m2pro.6c-14g",
 	}); err != nil {
 		t.Fatalf("CreateSession: %v", err)
@@ -136,8 +136,8 @@ func TestCreateSession_TemplateLess(t *testing.T) {
 	if sent.TemplateID != "" {
 		t.Errorf("sent templateId = %q, want empty for a template-less session", sent.TemplateID)
 	}
-	if sent.Image != "osx-sequoia-26" || sent.MachineType != "g2.mac.m2pro.6c-14g" {
-		t.Errorf("sent image/machineType = %q/%q", sent.Image, sent.MachineType)
+	if sent.StackID != "osx-xcode-16.0.x-edge" || sent.MachineType != "g2.mac.m2pro.6c-14g" {
+		t.Errorf("sent stackId/machineType = %q/%q", sent.StackID, sent.MachineType)
 	}
 }
 
@@ -323,8 +323,8 @@ func TestResolveTemplateID_UUIDShortCircuits(t *testing.T) {
 
 func TestResolveTemplateID_NameLookup(t *testing.T) {
 	rs := newRecordingServer(t, `{"templates":[
-		{"id":"t1","name":"Linux Dev","image":"ubuntu","machineType":"m1"},
-		{"id":"t2","name":"macOS Dev","image":"osx","machineType":"m2"}
+		{"id":"t1","name":"Linux Dev","stackId":"linux-ubuntu-24.04","machineType":"m1"},
+		{"id":"t2","name":"macOS Dev","stackId":"osx-xcode-16.0.x-edge","machineType":"m2"}
 	]}`)
 	got, err := rs.service().ResolveTemplateID(context.Background(), "ws-1", "macOS Dev")
 	if err != nil {
@@ -418,5 +418,20 @@ func TestStatusFromAPI(t *testing.T) {
 		if got := statusFromAPI(in); got != want {
 			t.Errorf("statusFromAPI(%q) = %q, want %q", in, got, want)
 		}
+	}
+}
+
+// TestLegacyImageFallsBackToStackID locks in the read fallback for templates
+// and sessions created before stack_id existed: the resolved image id surfaces
+// as the stack id so they still display, while a populated stack_id always wins.
+func TestLegacyImageFallsBackToStackID(t *testing.T) {
+	if got := templateFromAPI(rdeapi.Template{ID: "t1", Image: "osx-26-edge"}); got.StackID != "osx-26-edge" {
+		t.Errorf("template StackID = %q, want fallback to image osx-26-edge", got.StackID)
+	}
+	if got := templateFromAPI(rdeapi.Template{ID: "t2", Image: "osx-26-edge", StackID: "osx-xcode-16.0.x-edge"}); got.StackID != "osx-xcode-16.0.x-edge" {
+		t.Errorf("template StackID = %q, want stack id to win over image", got.StackID)
+	}
+	if got := snapshotFromAPI(rdeapi.SessionTemplateSnapshot{Image: "osx-26-edge"}); got.StackID != "osx-26-edge" {
+		t.Errorf("snapshot StackID = %q, want fallback to image osx-26-edge", got.StackID)
 	}
 }

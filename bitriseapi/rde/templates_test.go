@@ -9,8 +9,8 @@ import (
 
 func TestListTemplates_PathAndParse(t *testing.T) {
 	rs := newRecordingServer(t, `{"templates":[
-		{"id":"t1","name":"Linux Dev","image":"ubuntu","machineType":"m1"},
-		{"id":"t2","name":"macOS Dev","image":"osx","machineType":"m2"}
+		{"id":"t1","name":"Linux Dev","stackId":"linux-ubuntu-24.04","machineType":"m1"},
+		{"id":"t2","name":"macOS Dev","stackId":"osx-xcode-16.0.x-edge","machineType":"m2"}
 	]}`)
 
 	tmpls, err := rs.client().ListTemplates(context.Background(), "ws-1")
@@ -45,7 +45,7 @@ func TestCreateTemplate_BodyAndPath(t *testing.T) {
 
 	tmpl, err := rs.client().CreateTemplate(context.Background(), "ws-1", CreateTemplateRequest{
 		Name:        "Dev",
-		Image:       "osx-xcode",
+		StackID:     "osx-xcode-16.0.x-edge",
 		MachineType: "g2.mac",
 		SessionInputs: []SessionInputCreate{
 			{Key: "repo", Required: true},
@@ -64,7 +64,7 @@ func TestCreateTemplate_BodyAndPath(t *testing.T) {
 	if err := json.Unmarshal(rs.lastBody, &sent); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
-	if sent.Image != "osx-xcode" || sent.MachineType != "g2.mac" {
+	if sent.StackID != "osx-xcode-16.0.x-edge" || sent.MachineType != "g2.mac" {
 		t.Errorf("sent = %+v", sent)
 	}
 	if len(sent.SessionInputs) != 1 || !sent.SessionInputs[0].Required {
@@ -97,8 +97,8 @@ func TestUpdateTemplate_OmitsUnsetAndCarriesReplaceFlags(t *testing.T) {
 		t.Errorf("name = %v, want Renamed", sent["name"])
 	}
 	// Unset scalar pointers drop out entirely.
-	if _, ok := sent["image"]; ok {
-		t.Errorf("image should be omitted, body = %s", rs.lastBody)
+	if _, ok := sent["stackId"]; ok {
+		t.Errorf("stackId should be omitted, body = %s", rs.lastBody)
 	}
 	// The replace-flag must accompany the array it gates.
 	if sent["updateSessionInputs"] != true {

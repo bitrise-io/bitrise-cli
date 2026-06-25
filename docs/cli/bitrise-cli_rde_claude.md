@@ -7,9 +7,9 @@ Create an RDE session and attach to Claude Code
 Create a fresh RDE session, wait for it to start, then SSH in and drop you
 directly into Claude Code (not a shell).
 
-You pick the image first, then a machine type compatible with it. Your choice
+You pick the stack first, then a machine type compatible with it. Your choice
 is remembered per repository and preselected next time, so you can just press
-Enter. Pass --image / --machine-type to skip the prompts
+Enter. Pass --stack / --machine-type to skip the prompts
 (useful for scripts); when stdin isn't a terminal the remembered or default
 selection is used without prompting.
 
@@ -62,7 +62,7 @@ bitrise-cli rde claude [SESSION_ID] [flags]
 
 ```
   bitrise-cli rde claude --workspace WORKSPACE_ID
-  bitrise-cli rde claude --image osx-26-edge --machine-type g2.mac.m2pro.4c-6g
+  bitrise-cli rde claude --stack osx-xcode-16.0.x-edge --machine-type g2.mac.m2pro.4c-6g
   bitrise-cli rde claude --continue
   bitrise-cli rde claude --resume
 ```
@@ -72,9 +72,9 @@ bitrise-cli rde claude [SESSION_ID] [flags]
 ```
       --continue                resume the most recent session started from this repo
   -h, --help                    help for claude
-      --image string            image to use (skips the image prompt); see 'rde image list'
       --machine-type string     machine type to use (skips the machine-type prompt); see 'rde machine-type list'
       --resume                  resume a previous session for this repo; with no SESSION_ID, pick one from a list
+      --stack string            stack to use (skips the stack prompt); see 'rde stack list'
       --wait-timeout duration   max time to wait for the session to start (uses Go duration syntax: 30s, 5m, 1h) (default 10m0s)
 ```
 

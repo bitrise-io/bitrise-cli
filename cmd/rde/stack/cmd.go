@@ -1,9 +1,10 @@
-// Package image wires `bitrise-cli rde image` subcommands.
-package image
+// Package stack wires `bitrise-cli rde stack` subcommands.
+package stack
 
 import (
 	"fmt"
 	"io"
+	"strconv"
 
 	"github.com/spf13/cobra"
 
@@ -14,14 +15,14 @@ import (
 )
 
 type listResult struct {
-	Items []internalrde.Image `json:"items"`
+	Items []internalrde.Stack `json:"items"`
 }
 
-// NewCmd returns the `rde image` parent command.
+// NewCmd returns the `rde stack` parent command.
 func NewCmd() *cobra.Command {
 	c := &cobra.Command{
-		Use:   "image",
-		Short: "List machine images available to the workspace",
+		Use:   "stack",
+		Short: "List machine stacks available to the workspace",
 		RunE:  cmdutil.DelegateToList,
 	}
 	c.AddCommand(newListCmd())
@@ -31,7 +32,9 @@ func NewCmd() *cobra.Command {
 func newListCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "list",
-		Short: "List machine images",
+		Short: "List machine stacks",
+		Example: `  bitrise-cli rde stack list
+  bitrise-cli rde stack list --output json | jq '.items[].id'`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			workspaceID, err := cmdutil.ResolveWorkspaceID(cmd)
 			if err != nil {
@@ -42,7 +45,7 @@ func newListCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			items, err := internalrde.NewService(client).ListImages(cmd.Context(), workspaceID)
+			items, err := internalrde.NewService(client).ListStacks(cmd.Context(), workspaceID)
 			if err != nil {
 				return err
 			}
@@ -53,25 +56,32 @@ func newListCmd() *cobra.Command {
 
 func renderList(w io.Writer, res listResult) error {
 	if len(res.Items) == 0 {
-		_, err := fmt.Fprintln(w, "No images found.")
+		_, err := fmt.Fprintln(w, "No stacks found.")
 		return err
 	}
 	s := style.New(w)
-	headers := []string{"NAME", "ID"}
-	seen := make(map[string]struct{}, len(res.Items))
+	headers := []string{"ID", "TITLE", "OS", "STATUS"}
 	rows := make([][]string, 0, len(res.Items))
-	for _, im := range res.Items {
-		if _, ok := seen[im.Name]; ok {
-			continue
-		}
-		seen[im.Name] = struct{}{}
-		rows = append(rows, []string{im.Name, im.ID})
+	for _, st := range res.Items {
+		rows = append(rows, []string{st.ID, st.Title, osLabel(st), st.Status})
 	}
 	styler := func(_, col int, content string) string {
-		if col == 1 {
+		if col == 0 {
 			return s.Slug.Render(content)
 		}
 		return content
 	}
 	return style.Table(w, headers, rows, s.Header, styler)
+}
+
+// osLabel renders the OS column, appending the numeric OS version when present
+// (e.g. "macos 26"), so the table conveys both at a glance.
+func osLabel(st internalrde.Stack) string {
+	if st.OS == "" {
+		return ""
+	}
+	if st.OSVersion > 0 {
+		return st.OS + " " + strconv.Itoa(int(st.OSVersion))
+	}
+	return st.OS
 }

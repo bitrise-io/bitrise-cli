@@ -1,15 +1,22 @@
-## bitrise-cli rde image
+## bitrise-cli rde stack list
 
-List machine images available to the workspace
+List machine stacks
 
 ```
-bitrise-cli rde image [flags]
+bitrise-cli rde stack list [flags]
+```
+
+### Examples
+
+```
+  bitrise-cli rde stack list
+  bitrise-cli rde stack list --output json | jq '.items[].id'
 ```
 
 ### Options
 
 ```
-  -h, --help   help for image
+  -h, --help   help for list
 ```
 
 ### Options inherited from parent commands
@@ -24,6 +31,5 @@ bitrise-cli rde image [flags]
 
 ### SEE ALSO
 
-* [bitrise-cli rde](bitrise-cli_rde.md)	 - Manage Bitrise Remote Dev Environments (sessions, templates, …)
-* [bitrise-cli rde image list](bitrise-cli_rde_image_list.md)	 - List machine images
+* [bitrise-cli rde stack](bitrise-cli_rde_stack.md)	 - List machine stacks available to the workspace
 

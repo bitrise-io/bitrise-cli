@@ -33,13 +33,13 @@ func run(t *testing.T, c *cobra.Command, srvURL, workspaceID string, args []stri
 }
 
 // catalogServer returns a test server that serves the two upstream endpoints
-// (/images and /machine-types) the command joins on.
-func catalogServer(t *testing.T, imagesJSON, machineTypesJSON string) *httptest.Server {
+// (/stacks and /machine-types) the command joins on.
+func catalogServer(t *testing.T, stacksJSON, machineTypesJSON string) *httptest.Server {
 	t.Helper()
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/v1/workspaces/ws-1/images":
-			_, _ = io.WriteString(w, imagesJSON)
+		case "/v1/workspaces/ws-1/stacks":
+			_, _ = io.WriteString(w, stacksJSON)
 		case "/v1/workspaces/ws-1/machine-types":
 			_, _ = io.WriteString(w, machineTypesJSON)
 		default:
@@ -49,28 +49,29 @@ func catalogServer(t *testing.T, imagesJSON, machineTypesJSON string) *httptest.
 	}))
 }
 
-func TestListCmd_RequiresImageFlag(t *testing.T) {
+func TestListCmd_RequiresStackFlag(t *testing.T) {
 	_, _, err := run(t, newListCmd(), "http://unused", "ws-1", nil, output.Human)
-	if err == nil || !strings.Contains(err.Error(), "image") {
-		t.Fatalf("error = %v, want it to mention required --image flag", err)
+	if err == nil || !strings.Contains(err.Error(), "stack") {
+		t.Fatalf("error = %v, want it to mention required --stack flag", err)
 	}
 }
 
 func TestListCmd_HidesClusterWhenUnambiguous(t *testing.T) {
 	srv := catalogServer(t,
-		`{"images":[{"id":"i-1","name":"osx-xcode","clusterName":"c1"}]}`,
+		`{"stacks":[{"id":"osx-xcode-16.0.x-edge","clusterNames":["c1"]}]}`,
 		`{"machineTypes":[
-			{"id":"m-1","name":"g2.mac.m2pro.4c","clusterName":"c1"},
-			{"id":"m-2","name":"g2.mac.m1.8c","clusterName":"c1"}
+			{"id":"m-1","name":"g2.mac.m2pro.4c","clusterName":"c1","title":"M2 Pro Large","cpu":"4 vCPU","ram":"6 GB"},
+			{"id":"m-2","name":"g2.mac.m1.8c","clusterName":"c1","title":"M1 Large","cpu":"8 vCPU","ram":"16 GB"}
 		]}`,
 	)
 	defer srv.Close()
 
-	stdout, _, err := run(t, newListCmd(), srv.URL, "ws-1", []string{"--image", "osx-xcode"}, output.Human)
+	stdout, _, err := run(t, newListCmd(), srv.URL, "ws-1", []string{"--stack", "osx-xcode-16.0.x-edge"}, output.Human)
 	if err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
-	for _, want := range []string{"g2.mac.m2pro.4c", "g2.mac.m1.8c"} {
+	// Shows the contract name plus the backend's friendly title and specs.
+	for _, want := range []string{"g2.mac.m2pro.4c", "M2 Pro Large", "4 vCPU", "6 GB"} {
 		if !strings.Contains(stdout, want) {
 			t.Errorf("stdout missing %q:\n%s", want, stdout)
 		}
@@ -82,10 +83,7 @@ func TestListCmd_HidesClusterWhenUnambiguous(t *testing.T) {
 
 func TestListCmd_ShowsClusterWhenAmbiguous(t *testing.T) {
 	srv := catalogServer(t,
-		`{"images":[
-			{"id":"i-1","name":"osx-xcode","clusterName":"c1"},
-			{"id":"i-2","name":"osx-xcode","clusterName":"c2"}
-		]}`,
+		`{"stacks":[{"id":"osx-xcode-16.0.x-edge","clusterNames":["c1","c2"]}]}`,
 		`{"machineTypes":[
 			{"id":"m-1","name":"g2.mac.m2pro.4c","clusterName":"c1"},
 			{"id":"m-2","name":"g2.mac.m2pro.4c","clusterName":"c2"},
@@ -94,7 +92,7 @@ func TestListCmd_ShowsClusterWhenAmbiguous(t *testing.T) {
 	)
 	defer srv.Close()
 
-	stdout, _, err := run(t, newListCmd(), srv.URL, "ws-1", []string{"--image", "osx-xcode"}, output.Human)
+	stdout, _, err := run(t, newListCmd(), srv.URL, "ws-1", []string{"--stack", "osx-xcode-16.0.x-edge"}, output.Human)
 	if err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
@@ -108,9 +106,9 @@ func TestListCmd_ShowsClusterWhenAmbiguous(t *testing.T) {
 	}
 }
 
-func TestListCmd_FiltersByImageCluster(t *testing.T) {
+func TestListCmd_FiltersByStackCluster(t *testing.T) {
 	srv := catalogServer(t,
-		`{"images":[{"id":"i-1","name":"osx-xcode","clusterName":"c1"}]}`,
+		`{"stacks":[{"id":"osx-xcode-16.0.x-edge","clusterNames":["c1"]}]}`,
 		`{"machineTypes":[
 			{"id":"m-1","name":"g2.mac.m2pro.4c","clusterName":"c1"},
 			{"id":"m-2","name":"g3.linux.8c","clusterName":"c2"}
@@ -118,7 +116,7 @@ func TestListCmd_FiltersByImageCluster(t *testing.T) {
 	)
 	defer srv.Close()
 
-	stdout, _, err := run(t, newListCmd(), srv.URL, "ws-1", []string{"--image", "osx-xcode"}, output.Human)
+	stdout, _, err := run(t, newListCmd(), srv.URL, "ws-1", []string{"--stack", "osx-xcode-16.0.x-edge"}, output.Human)
 	if err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
@@ -130,27 +128,27 @@ func TestListCmd_FiltersByImageCluster(t *testing.T) {
 	}
 }
 
-func TestListCmd_UnknownImage(t *testing.T) {
+func TestListCmd_UnknownStack(t *testing.T) {
 	srv := catalogServer(t,
-		`{"images":[{"id":"i-1","name":"osx-xcode","clusterName":"c1"}]}`,
+		`{"stacks":[{"id":"osx-xcode-16.0.x-edge","clusterNames":["c1"]}]}`,
 		`{"machineTypes":[]}`,
 	)
 	defer srv.Close()
 
-	_, _, err := run(t, newListCmd(), srv.URL, "ws-1", []string{"--image", "does-not-exist"}, output.Human)
+	_, _, err := run(t, newListCmd(), srv.URL, "ws-1", []string{"--stack", "does-not-exist"}, output.Human)
 	if err == nil || !strings.Contains(err.Error(), "not found") {
-		t.Errorf("error = %v, want it to mention image not found", err)
+		t.Errorf("error = %v, want it to mention stack not found", err)
 	}
 }
 
 func TestListCmd_JSONOutput(t *testing.T) {
 	srv := catalogServer(t,
-		`{"images":[{"id":"i-1","name":"osx-xcode","clusterName":"c1"}]}`,
-		`{"machineTypes":[{"id":"m-1","name":"g2.mac","clusterName":"c1"}]}`,
+		`{"stacks":[{"id":"osx-xcode-16.0.x-edge","clusterNames":["c1"]}]}`,
+		`{"machineTypes":[{"id":"m-1","name":"g2.mac","clusterName":"c1","title":"M2 Pro Large","cpu":"4 vCPU","ram":"6 GB","os":"macos"}]}`,
 	)
 	defer srv.Close()
 
-	stdout, _, err := run(t, newListCmd(), srv.URL, "ws-1", []string{"--image", "osx-xcode"}, output.JSON)
+	stdout, _, err := run(t, newListCmd(), srv.URL, "ws-1", []string{"--stack", "osx-xcode-16.0.x-edge"}, output.JSON)
 	if err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
@@ -159,24 +157,32 @@ func TestListCmd_JSONOutput(t *testing.T) {
 			ID          string `json:"id"`
 			Name        string `json:"name"`
 			ClusterName string `json:"cluster_name"`
+			Title       string `json:"title"`
+			CPU         string `json:"cpu"`
+			RAM         string `json:"ram"`
+			OS          string `json:"os"`
 		} `json:"items"`
 	}
 	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
 		t.Fatalf("unmarshal JSON output: %v\n%s", err, stdout)
 	}
-	if len(got.Items) != 1 || got.Items[0].ID != "m-1" || got.Items[0].Name != "g2.mac" {
-		t.Errorf("unexpected JSON items: %+v", got.Items)
+	if len(got.Items) != 1 {
+		t.Fatalf("unexpected JSON items: %+v", got.Items)
+	}
+	it := got.Items[0]
+	if it.ID != "m-1" || it.Name != "g2.mac" || it.Title != "M2 Pro Large" || it.CPU != "4 vCPU" || it.RAM != "6 GB" || it.OS != "macos" {
+		t.Errorf("unexpected JSON item: %+v", it)
 	}
 }
 
 func TestListCmd_EmptyHuman(t *testing.T) {
 	srv := catalogServer(t,
-		`{"images":[{"id":"i-1","name":"osx-xcode","clusterName":"c1"}]}`,
+		`{"stacks":[{"id":"osx-xcode-16.0.x-edge","clusterNames":["c1"]}]}`,
 		`{"machineTypes":[]}`,
 	)
 	defer srv.Close()
 
-	stdout, _, err := run(t, newListCmd(), srv.URL, "ws-1", []string{"--image", "osx-xcode"}, output.Human)
+	stdout, _, err := run(t, newListCmd(), srv.URL, "ws-1", []string{"--stack", "osx-xcode-16.0.x-edge"}, output.Human)
 	if err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
@@ -189,7 +195,7 @@ func TestListCmd_MissingWorkspace(t *testing.T) {
 	c := newListCmd()
 	c.SetOut(io.Discard)
 	c.SetErr(io.Discard)
-	c.SetArgs([]string{"--image", "osx-xcode"})
+	c.SetArgs([]string{"--stack", "osx-xcode-16.0.x-edge"})
 	c.SetContext(config.WithResolved(context.Background(), config.Resolved{
 		RDEAPIBaseURL: "http://unused",
 		Token:         "tok",

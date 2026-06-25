@@ -52,6 +52,16 @@ func parseTime(s string) *time.Time {
 // guards against. Kept here to avoid copy-paste across files.
 func errClient() error { return fmt.Errorf("RDE client not configured") }
 
+// firstNonEmpty returns a if it is non-empty, otherwise b. Used by the
+// fromAPI mappers to prefer the stack id and fall back to a legacy image id
+// for records snapshotted before the stack id was populated.
+func firstNonEmpty(a, b string) string {
+	if a != "" {
+		return a
+	}
+	return b
+}
+
 // statusFromAPI converts the backend's SESSION_STATUS_* enum into a stable
 // lowercase string. Falls back to the raw value (lowercased, prefix-stripped)
 // for any status added after this code was written, so new statuses don't
