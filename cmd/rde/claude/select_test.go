@@ -260,16 +260,17 @@ func TestMachineItem_UsesBackendTitleAndSpecs(t *testing.T) {
 	})
 	item := machineItem(byName)
 
-	// Friendly title becomes the row title; the specs and the contract name
-	// fill the dim secondary text so the name stays discoverable.
+	// Friendly title becomes the row title; the specs are the dim secondary
+	// text. The raw contract name is intentionally NOT shown — it's just noise.
 	got := item("g2.mac.m2pro.4c-6g")
 	if got.Title != "M2 Pro Large" {
 		t.Errorf("title = %q, want M2 Pro Large", got.Title)
 	}
-	for _, want := range []string{"4 vCPU", "6 GB", "g2.mac.m2pro.4c-6g"} {
-		if !strings.Contains(got.Desc, want) {
-			t.Errorf("desc %q missing %q", got.Desc, want)
-		}
+	if got.Desc != "4 vCPU · 6 GB" {
+		t.Errorf("desc = %q, want %q", got.Desc, "4 vCPU · 6 GB")
+	}
+	if strings.Contains(got.Desc, "g2.mac.m2pro.4c-6g") {
+		t.Errorf("desc %q should not include the raw machine-type name", got.Desc)
 	}
 
 	// No backend metadata → row title is the raw name (no name duplicated in desc).

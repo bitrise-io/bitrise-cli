@@ -246,9 +246,8 @@ func reuseDetail(stackTitle, machineDisplay, machineSpec string) string {
 // stackItem and machineItem build the picker rows for the stack and machine-type
 // pickers: stacks show their friendly title with "<OS> <version> · <status>"
 // (e.g. "macOS 26 · edge") as dim secondary text; machine types show their
-// friendly title (or raw name) with the specs — and the raw name when a title
-// replaced it — as dim secondary text. The picker still returns the raw option
-// string (the stack id / machine type name).
+// friendly title (or raw name) with the specs as dim secondary text. The picker
+// still returns the raw option string (the stack id / machine type name).
 func stackItem(byID map[string]internalrde.Stack) func(string) picker.Item {
 	return func(id string) picker.Item {
 		return picker.Item{Title: stackTitle(byID, id), Desc: stackSecondary(byID[id])}
@@ -291,17 +290,7 @@ func machineItem(byName map[string]internalrde.MachineType) func(string) picker.
 		if !ok {
 			return picker.Item{Title: name, Desc: machineSpecHint(name)}
 		}
-		title := machineDisplayName(mt)
-		desc := machineSpec(mt)
-		// Keep the contract name discoverable when a friendly title replaced it.
-		if title != name {
-			if desc != "" {
-				desc += " · " + name
-			} else {
-				desc = name
-			}
-		}
-		return picker.Item{Title: title, Desc: desc}
+		return picker.Item{Title: machineDisplayName(mt), Desc: machineSpec(mt)}
 	}
 }
 
