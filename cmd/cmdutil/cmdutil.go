@@ -223,12 +223,13 @@ func SilenceRootErrors(cmd *cobra.Command) {
 	}
 }
 
-// terminalFd returns r's file descriptor and reports whether r is an
-// interactive terminal (an *os.File backed by a TTY). It is the single place
-// that inspects the underlying *os.File; IsTerminal and ReadSecretInput both
+// terminalFd returns the stream's file descriptor and reports whether it is an
+// interactive terminal (an *os.File backed by a TTY). It accepts either a
+// reader or a writer — it only needs the concrete *os.File — and is the single
+// place that inspects it; IsTerminal, IsTerminalWriter, and ReadSecretInput all
 // build on it. fd is only meaningful when isTerminal is true.
-func terminalFd(r io.Reader) (fd int, isTerminal bool) {
-	f, ok := r.(*os.File)
+func terminalFd(stream any) (fd int, isTerminal bool) {
+	f, ok := stream.(*os.File)
 	if !ok {
 		return 0, false
 	}
@@ -242,6 +243,14 @@ func terminalFd(r io.Reader) (fd int, isTerminal bool) {
 // non-interactive stdin (CI, pipes) working.
 func IsTerminal(r io.Reader) bool {
 	_, ok := terminalFd(r)
+	return ok
+}
+
+// IsTerminalWriter reports whether w is an interactive terminal. Used to gate
+// stderr-only chrome (e.g. the update notice) so it never lands in pipes or
+// redirected logs.
+func IsTerminalWriter(w io.Writer) bool {
+	_, ok := terminalFd(w)
 	return ok
 }
 
