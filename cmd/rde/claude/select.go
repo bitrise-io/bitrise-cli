@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -46,19 +47,19 @@ func selectStackAndMachineType(ctx context.Context, cmd *cobra.Command, svc *int
 	if len(stacks) == 0 {
 		return "", "", "", "", fmt.Errorf("no stacks are available in this workspace")
 	}
-	stackIDs, titleByID, backendDefaultStack := uniqueStacks(stacks)
+	stackIDs, stacksByID, backendDefaultStack := uniqueStacks(stacks)
 
 	// Fast path: reuse the remembered combo for this project in one step.
 	if flagStack == "" && flagMachineType == "" && interactivePicker(cmd) && prefs.Stack != "" && prefs.MachineType != "" {
-		stack, machineType, machineLbl, done, err := offerReuse(ctx, cmd, svc, log, workspaceID, stackIDs, titleByID, prefs)
+		stack, machineType, machineLbl, done, err := offerReuse(ctx, cmd, svc, log, workspaceID, stackIDs, stacksByID, prefs)
 		if err != nil || done {
-			return stack, stackTitle(titleByID, stack), machineType, machineLbl, err
+			return stack, stackTitle(stacksByID, stack), machineType, machineLbl, err
 		}
 		// The remembered combo is stale, or the user chose "Change stack" — fall
 		// through to the full pick below (saved values still seed the defaults).
 	}
 
-	stack, err = chooseOne(ctx, cmd, log, "stack", "Select a stack", stackIDs, prefs.Stack, backendDefaultStack, flagStack, stackItem(titleByID))
+	stack, err = chooseOne(ctx, cmd, log, "stack", "Select a stack", stackIDs, prefs.Stack, backendDefaultStack, flagStack, stackItem(stacksByID))
 	if err != nil {
 		return "", "", "", "", err
 	}
@@ -67,7 +68,7 @@ func selectStackAndMachineType(ctx context.Context, cmd *cobra.Command, svc *int
 	if err != nil {
 		return "", "", "", "", err
 	}
-	return stack, stackTitle(titleByID, stack), machineType, machineLbl, nil
+	return stack, stackTitle(stacksByID, stack), machineType, machineLbl, nil
 }
 
 // chooseMachineForStack resolves the machine type for the chosen stack: it
@@ -160,7 +161,7 @@ const (
 // final; done=false with a nil error means the remembered combo is stale or the
 // user asked to change the stack, so the caller should run the full pick. A
 // non-nil error (e.g. the user cancelled) aborts selection.
-func offerReuse(ctx context.Context, cmd *cobra.Command, svc *internalrde.Service, log *stepLogger, workspaceID string, stackIDs []string, titleByID map[string]string, prefs localsession.Prefs) (stack, machineType, machineLbl string, done bool, err error) {
+func offerReuse(ctx context.Context, cmd *cobra.Command, svc *internalrde.Service, log *stepLogger, workspaceID string, stackIDs []string, byID map[string]internalrde.Stack, prefs localsession.Prefs) (stack, machineType, machineLbl string, done bool, err error) {
 	// The remembered stack must still be offered…
 	if indexOf(stackIDs, prefs.Stack) < 0 {
 		return "", "", "", false, nil
@@ -185,7 +186,7 @@ func offerReuse(ctx context.Context, cmd *cobra.Command, svc *internalrde.Servic
 
 	idx, err := picker.Select(ctx, picker.Config{
 		Prompt:     "Last used for this project",
-		Note:       reuseDetail(stackTitle(titleByID, prefs.Stack), machineDisplayName(mtByName[prefs.MachineType]), machineSpec(mtByName[prefs.MachineType])),
+		Note:       reuseDetail(stackTitle(byID, prefs.Stack), machineDisplayName(mtByName[prefs.MachineType]), machineSpec(mtByName[prefs.MachineType])),
 		Items:      items,
 		Cursor:     0,
 		DefaultIdx: 0,
@@ -243,19 +244,31 @@ func reuseDetail(stackTitle, machineDisplay, machineSpec string) string {
 }
 
 // stackItem and machineItem build the picker rows for the stack and machine-type
-// pickers: stacks show their friendly title with the stack id as dim secondary
-// text; machine types show their friendly title (or raw name) with the specs —
-// and the raw name when a title replaced it — as dim secondary text. The picker
+// pickers: stacks show their friendly title with "<OS> <version> · <status>"
+// (e.g. "macOS 26 · edge") as dim secondary text; machine types show their
+// friendly title (or raw name) with the specs as dim secondary text. The picker
 // still returns the raw option string (the stack id / machine type name).
-func stackItem(titleByID map[string]string) func(string) picker.Item {
+func stackItem(byID map[string]internalrde.Stack) func(string) picker.Item {
 	return func(id string) picker.Item {
-		title := stackTitle(titleByID, id)
-		desc := ""
-		if title != id {
-			desc = id
-		}
-		return picker.Item{Title: title, Desc: desc}
+		return picker.Item{Title: stackTitle(byID, id), Desc: stackSecondary(byID[id])}
 	}
+}
+
+// stackSecondary builds the dim secondary line for a stack row:
+// "<OS> <version> · <status>", e.g. "macOS 26 · edge". Each part is omitted
+// when absent.
+func stackSecondary(st internalrde.Stack) string {
+	parts := make([]string, 0, 2)
+	if osPart := cmdutil.OSDisplayName(st.OS); osPart != "" {
+		if st.OSVersion > 0 {
+			osPart += " " + strconv.Itoa(int(st.OSVersion))
+		}
+		parts = append(parts, osPart)
+	}
+	if st.Status != "" {
+		parts = append(parts, st.Status)
+	}
+	return strings.Join(parts, " · ")
 }
 
 func machineItem(byName map[string]internalrde.MachineType) func(string) picker.Item {
@@ -264,17 +277,7 @@ func machineItem(byName map[string]internalrde.MachineType) func(string) picker.
 		if !ok {
 			return picker.Item{Title: name, Desc: machineSpecHint(name)}
 		}
-		title := machineDisplayName(mt)
-		desc := machineSpec(mt)
-		// Keep the contract name discoverable when a friendly title replaced it.
-		if title != name {
-			if desc != "" {
-				desc += " · " + name
-			} else {
-				desc = name
-			}
-		}
-		return picker.Item{Title: title, Desc: desc}
+		return picker.Item{Title: machineDisplayName(mt), Desc: machineSpec(mt)}
 	}
 }
 
@@ -328,9 +331,9 @@ func machineSpec(mt internalrde.MachineType) string {
 
 // stackTitle returns the human-friendly title for a stack id, falling back to
 // the raw id when the backend supplied no title.
-func stackTitle(titleByID map[string]string, id string) string {
-	if t := titleByID[id]; t != "" {
-		return t
+func stackTitle(byID map[string]internalrde.Stack, id string) string {
+	if st, ok := byID[id]; ok && st.Title != "" {
+		return st.Title
 	}
 	return id
 }
@@ -405,22 +408,22 @@ func indexOf(names []string, target string) int {
 }
 
 // uniqueStacks returns the stack ids in catalog order with duplicates removed,
-// a lookup from stack id to its title, and the first id the backend flagged as
+// a lookup from stack id to its record, and the first id the backend flagged as
 // default ("" if none).
-func uniqueStacks(stacks []internalrde.Stack) (ids []string, titleByID map[string]string, backendDefault string) {
-	titleByID = make(map[string]string, len(stacks))
+func uniqueStacks(stacks []internalrde.Stack) (ids []string, byID map[string]internalrde.Stack, backendDefault string) {
+	byID = make(map[string]internalrde.Stack, len(stacks))
 	seen := make(map[string]bool, len(stacks))
 	for _, st := range stacks {
 		if !seen[st.ID] {
 			seen[st.ID] = true
 			ids = append(ids, st.ID)
-			titleByID[st.ID] = st.Title
+			byID[st.ID] = st
 		}
 		if st.IsDefault && backendDefault == "" {
 			backendDefault = st.ID
 		}
 	}
-	return ids, titleByID, backendDefault
+	return ids, byID, backendDefault
 }
 
 // uniqueMachineTypeNames returns the machine type names in catalog order with

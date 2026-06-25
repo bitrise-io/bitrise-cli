@@ -45,7 +45,7 @@ func TestListCmd_HappyPath(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
-	for _, want := range []string{"osx-xcode-16.0.x-edge", "Xcode 16.0", "macos 26", "edge"} {
+	for _, want := range []string{"osx-xcode-16.0.x-edge", "Xcode 16.0", "macOS 26", "edge"} {
 		if !strings.Contains(stdout, want) {
 			t.Errorf("stdout missing %q:\n%s", want, stdout)
 		}

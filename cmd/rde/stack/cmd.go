@@ -74,14 +74,16 @@ func renderList(w io.Writer, res listResult) error {
 	return style.Table(w, headers, rows, s.Header, styler)
 }
 
-// osLabel renders the OS column, appending the numeric OS version when present
-// (e.g. "macos 26"), so the table conveys both at a glance.
+// osLabel renders the OS column with a human-friendly OS name, appending the
+// numeric OS version when present (e.g. "macOS 26"), so the table conveys both
+// at a glance.
 func osLabel(st internalrde.Stack) string {
-	if st.OS == "" {
+	os := cmdutil.OSDisplayName(st.OS)
+	if os == "" {
 		return ""
 	}
 	if st.OSVersion > 0 {
-		return st.OS + " " + strconv.Itoa(int(st.OSVersion))
+		return os + " " + strconv.Itoa(int(st.OSVersion))
 	}
-	return st.OS
+	return os
 }
