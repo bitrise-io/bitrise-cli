@@ -47,10 +47,10 @@ func renderList(w io.Writer, res listResult) error {
 		return err
 	}
 	s := style.New(w)
-	headers := []string{"NAME", "IMAGE", "MACHINE", "OWNER", "ID"}
+	headers := []string{"NAME", "STACK", "MACHINE", "OWNER", "ID"}
 	rows := make([][]string, 0, len(res.Items))
 	for _, t := range res.Items {
-		rows = append(rows, []string{t.Name, t.Image, t.MachineType, t.CreatedByEmail, t.ID})
+		rows = append(rows, []string{t.Name, t.StackID, t.MachineType, t.CreatedByEmail, t.ID})
 	}
 	const colID = 4
 	styler := func(_, col int, content string) string {

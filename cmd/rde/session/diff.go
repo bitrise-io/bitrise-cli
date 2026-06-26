@@ -21,7 +21,7 @@ creation time and the template's current config. Most useful when a session
 reports template_outdated=true.
 
 Lists which template variable keys changed (values are never exposed) and
-the simple per-field differences (image, machine type, scripts, working
+the simple per-field differences (stack, machine type, scripts, working
 directory). When the template was deleted, only the snapshot is shown.`,
 		Args: cmdutil.RequireArgs("SESSION_ID"),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -72,7 +72,7 @@ func renderDiff(w io.Writer, d internalrde.SessionTemplateDiff) error {
 	}
 
 	if d.Snapshot != nil && d.Current != nil {
-		writeFieldDiff(ew, lbl, "Image", d.Snapshot.Image, d.Current.Image)
+		writeFieldDiff(ew, lbl, "Stack", d.Snapshot.StackID, d.Current.StackID)
 		writeFieldDiff(ew, lbl, "Machine type", d.Snapshot.MachineType, d.Current.MachineType)
 		writeFieldDiff(ew, lbl, "Working dir", d.Snapshot.WorkingDirectory, d.Current.WorkingDirectory)
 		writeBoolDiff(ew, lbl, "Startup script set", d.Snapshot.StartupScript != "", d.Current.StartupScript != "")
@@ -115,7 +115,7 @@ func valueOrPlaceholder(v string) string {
 // fields the human diff inspects. Scripts compared by presence (not text)
 // because the human output reports only "set/unset" for scripts.
 func configsEqual(a, b internalrde.TemplateConfig) bool {
-	return a.Image == b.Image &&
+	return a.StackID == b.StackID &&
 		a.MachineType == b.MachineType &&
 		a.WorkingDirectory == b.WorkingDirectory &&
 		(a.StartupScript != "") == (b.StartupScript != "") &&

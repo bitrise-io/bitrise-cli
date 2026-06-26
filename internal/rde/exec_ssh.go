@@ -8,6 +8,7 @@ import (
 	"io"
 	"net"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -282,15 +283,123 @@ func buildLoginShellCmd(userCmd string) string {
 	return "bash -i -l -c '" + strings.ReplaceAll(userCmd, "'", `'\''`) + "'"
 }
 
-// defaultTermType is used when $TERM is unset (e.g. some CI shells); a sane
-// 256-color default keeps the remote program's rendering correct.
+// defaultTermType is the TERM requested for the remote PTY when the local
+// $TERM is unset (e.g. some CI shells) or when forwarding its terminfo entry to
+// the session fails. A sane 256-color default keeps the remote program's
+// rendering correct on any image (every ncurses install ships xterm-256color).
 const defaultTermType = "xterm-256color"
+
+// ubiquitousTerms ship with essentially every ncurses terminfo database, so
+// forwarding their entry to the session would only waste a round-trip. Anything
+// else — xterm-ghostty (Ghostty), xterm-kitty, wezterm, alacritty, … — may be
+// absent on the session image, which breaks TUI rendering, so it's worth
+// forwarding (see resolveRemoteTerm).
+var ubiquitousTerms = map[string]bool{
+	"xterm":          true,
+	"xterm-256color": true,
+	"vt100":          true,
+	"vt220":          true,
+	"ansi":           true,
+	"linux":          true,
+	"dumb":           true,
+}
+
+// resolveRemoteTerm decides which TERM value to request for the remote PTY.
+//
+// The client allocates the PTY directly over golang.org/x/crypto/ssh — it never
+// execs the system `ssh` binary — so a terminal's own SSH terminfo-forwarding
+// shell integration (e.g. Ghostty's ssh-terminfo) never fires. We replicate it
+// here: for a non-standard local terminal we compile its terminfo entry and
+// install it into the session's ~/.terminfo (the `infocmp -x | ssh tic -x -`
+// recipe), then request that exact TERM so the remote program renders with the
+// real entry. If $TERM is unset, ubiquitous, or forwarding fails, we fall back
+// to a universally available default so rendering stays correct either way.
+func (c *sshClient) resolveRemoteTerm(ctx context.Context, localTerm string) string {
+	if localTerm == "" {
+		return defaultTermType
+	}
+	if ubiquitousTerms[localTerm] {
+		return localTerm
+	}
+	if err := c.forwardTerminfo(ctx, localTerm); err != nil {
+		return defaultTermType
+	}
+	return localTerm
+}
+
+// forwardTerminfo compiles the local terminfo entry for termType and installs
+// it into the remote user's ~/.terminfo over a dedicated session, mirroring
+// `infocmp -x | ssh host -- tic -x -`. Best-effort: it returns an error if the
+// local entry can't be dumped or the remote install fails, and the caller falls
+// back to a standard TERM.
+func (c *sshClient) forwardTerminfo(ctx context.Context, termType string) error {
+	src, err := localTerminfoSource(ctx, termType)
+	if err != nil {
+		return err
+	}
+
+	session, err := c.client.NewSession()
+	if err != nil {
+		return fmt.Errorf("ssh new session: %w", err)
+	}
+	defer session.Close() //nolint:errcheck // best-effort; nothing actionable on close failure
+
+	session.Stdin = bytes.NewReader(src)
+	var stderr bytes.Buffer
+	session.Stderr = &stderr
+
+	done := make(chan struct{})
+	go func() {
+		select {
+		case <-ctx.Done():
+			_ = session.Close()
+		case <-done:
+		}
+	}()
+	defer close(done)
+
+	// `tic -x -` reads a terminfo source from stdin and compiles it (with
+	// extended/user-defined capabilities) into ~/.terminfo. No login shell:
+	// tic is a system binary on PATH and we want its stdin wired straight to
+	// the forwarded source, not to an interactive bash.
+	if runErr := session.Run("tic -x -"); runErr != nil {
+		if msg := strings.TrimSpace(stderr.String()); msg != "" {
+			return fmt.Errorf("remote tic -x -: %w: %s", runErr, msg)
+		}
+		return fmt.Errorf("remote tic -x -: %w", runErr)
+	}
+	return nil
+}
+
+// localTerminfoSource returns the terminfo source for termType as produced by
+// `infocmp -x`, ready to pipe into a remote `tic -x -`. The -x flag preserves
+// the extended/user-defined capabilities that non-standard terminals rely on.
+func localTerminfoSource(ctx context.Context, termType string) ([]byte, error) {
+	var stdout, stderr bytes.Buffer
+	// termType is the caller's own $TERM, passed as a discrete argv element to a
+	// constant binary (no shell) — there is no command-injection vector.
+	cmd := exec.CommandContext(ctx, "infocmp", "-x", termType) //nolint:gosec // see comment above
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		if msg := strings.TrimSpace(stderr.String()); msg != "" {
+			return nil, fmt.Errorf("infocmp -x %s: %w: %s", termType, err, msg)
+		}
+		return nil, fmt.Errorf("infocmp -x %s: %w", termType, err)
+	}
+	if stdout.Len() == 0 {
+		return nil, fmt.Errorf("infocmp -x %s: empty terminfo", termType)
+	}
+	return stdout.Bytes(), nil
+}
 
 // runInteractive runs userCmd in a forced-interactive login bash shell on a
 // fresh SSH session, streaming the caller's stdin/stdout/stderr live and
 // blocking until the remote program exits. When stdin is a terminal, it
-// allocates a PTY, puts the local terminal into raw mode, and forwards
-// SIGWINCH so the remote program reflows on resize.
+// allocates a PTY, puts the local terminal into raw mode, forwards the local
+// terminfo entry to the session (so non-standard terminals like Ghostty render
+// correctly — see resolveRemoteTerm), and forwards SIGWINCH so the remote
+// program reflows on resize.
 //
 // Unlike run, output is NOT captured and there is no timeout — this is meant
 // for long-lived interactive programs. The `-i -l` shell is used for the same
@@ -334,10 +443,7 @@ func (c *sshClient) runInteractive(ctx context.Context, userCmd string, stdin io
 			w, h = 80, 24
 		}
 
-		termType := os.Getenv("TERM")
-		if termType == "" {
-			termType = defaultTermType
-		}
+		termType := c.resolveRemoteTerm(ctx, os.Getenv("TERM"))
 		modes := ssh.TerminalModes{
 			ssh.ECHO:          1,
 			ssh.TTY_OP_ISPEED: 14400,

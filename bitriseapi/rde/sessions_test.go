@@ -9,7 +9,7 @@ import (
 
 func TestListSessions_PathAndParse(t *testing.T) {
 	rs := newRecordingServer(t, `{"sessions":[
-		{"id":"s1","name":"dev","status":"SESSION_STATUS_RUNNING","templateSnapshot":{"templateName":"tmpl","image":"osx"}},
+		{"id":"s1","name":"dev","status":"SESSION_STATUS_RUNNING","templateSnapshot":{"templateName":"tmpl","stackId":"osx-xcode-16.0.x-edge"}},
 		{"id":"s2","name":"old","status":"SESSION_STATUS_TERMINATED"}
 	]}`)
 
@@ -111,7 +111,7 @@ func TestCreateSession_TemplatelessOmitsTemplateID(t *testing.T) {
 
 	if _, _, err := rs.client().CreateSession(context.Background(), "ws-1", CreateSessionRequest{
 		Name:        "dev",
-		Image:       "linux-bitvirt-2026",
+		StackID:     "linux-ubuntu-24.04",
 		MachineType: "g2.linux.amd-zen5.8c-32g",
 	}); err != nil {
 		t.Fatalf("CreateSession: %v", err)
@@ -124,8 +124,8 @@ func TestCreateSession_TemplatelessOmitsTemplateID(t *testing.T) {
 	if _, ok := sent["templateId"]; ok {
 		t.Errorf("templateId should be omitted, body = %s", rs.lastBody)
 	}
-	if sent["image"] != "linux-bitvirt-2026" {
-		t.Errorf("image = %v, want linux-bitvirt-2026", sent["image"])
+	if sent["stackId"] != "linux-ubuntu-24.04" {
+		t.Errorf("stackId = %v, want linux-ubuntu-24.04", sent["stackId"])
 	}
 	if sent["machineType"] != "g2.linux.amd-zen5.8c-32g" {
 		t.Errorf("machineType = %v, want g2.linux.amd-zen5.8c-32g", sent["machineType"])
@@ -217,8 +217,8 @@ func TestDeleteTerminatedSessions_PathAndCount(t *testing.T) {
 
 func TestCompareSessionTemplate_PathAndParse(t *testing.T) {
 	rs := newRecordingServer(t, `{
-		"snapshot":{"templateName":"tmpl","image":"osx"},
-		"current":{"templateName":"tmpl","image":"osx-edge"},
+		"snapshot":{"templateName":"tmpl","stackId":"osx-xcode-16.0.x-stable"},
+		"current":{"templateName":"tmpl","stackId":"osx-xcode-16.0.x-edge"},
 		"changedVariableKeys":["FOO"]
 	}`)
 
@@ -232,8 +232,8 @@ func TestCompareSessionTemplate_PathAndParse(t *testing.T) {
 	if resp.Snapshot == nil || resp.Current == nil {
 		t.Fatalf("snapshot/current missing: %+v", resp)
 	}
-	if resp.Snapshot.Image != "osx" || resp.Current.Image != "osx-edge" {
-		t.Errorf("images: snapshot=%q current=%q", resp.Snapshot.Image, resp.Current.Image)
+	if resp.Snapshot.StackID != "osx-xcode-16.0.x-stable" || resp.Current.StackID != "osx-xcode-16.0.x-edge" {
+		t.Errorf("stacks: snapshot=%q current=%q", resp.Snapshot.StackID, resp.Current.StackID)
 	}
 	if len(resp.ChangedVariableKeys) != 1 || resp.ChangedVariableKeys[0] != "FOO" {
 		t.Errorf("changed keys = %+v", resp.ChangedVariableKeys)

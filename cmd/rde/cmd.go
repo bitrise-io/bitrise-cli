@@ -7,10 +7,10 @@ import (
 
 	"github.com/bitrise-io/bitrise-cli/cmd/cmdutil"
 	rdeclaude "github.com/bitrise-io/bitrise-cli/cmd/rde/claude"
-	rdeimage "github.com/bitrise-io/bitrise-cli/cmd/rde/image"
 	rdemachinetype "github.com/bitrise-io/bitrise-cli/cmd/rde/machinetype"
 	rdesavedinput "github.com/bitrise-io/bitrise-cli/cmd/rde/savedinput"
 	rdesession "github.com/bitrise-io/bitrise-cli/cmd/rde/session"
+	rdestack "github.com/bitrise-io/bitrise-cli/cmd/rde/stack"
 	rdetemplate "github.com/bitrise-io/bitrise-cli/cmd/rde/template"
 )
 
@@ -20,7 +20,7 @@ func NewCmd() *cobra.Command {
 		Use:   "rde",
 		Short: "Manage Bitrise Remote Dev Environments (sessions, templates, …)",
 		Long: `Manage Bitrise Remote Dev Environments — sessions, templates, saved inputs,
-and the machine catalog (images, machine types).
+and the machine catalog (stacks, machine types).
 
 Workspace resolution (highest to lowest precedence):
   --workspace ID            flag on the rde command
@@ -40,7 +40,7 @@ Saved inputs are user-scoped — they do not require --workspace.`,
 		rdesession.NewCmd(),
 		rdetemplate.NewCmd(),
 		rdesavedinput.NewCmd(),
-		rdeimage.NewCmd(),
+		rdestack.NewCmd(),
 		rdemachinetype.NewCmd(),
 	)
 	return c

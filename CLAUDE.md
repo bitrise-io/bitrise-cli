@@ -104,6 +104,13 @@ new commands extend the services without touching the cmd layer's shape.
   secret-accepting command.
 - **`-q`/`--quiet`** suppresses non-error stderr ("Saved output", etc.).
   Errors and primary stdout output ignore it.
+- **Update checks**: best-effort "new release available" notice on **stderr**
+  (never stdout/JSON), at most once per 24h against GitHub's public Releases API
+  — nothing is sent to Bitrise. Gated to released builds on an interactive TTY;
+  skipped in CI, under `-q`, in `--output json`, and via
+  `BITRISE_CLI_NO_UPDATE_NOTIFIER`. Mechanics in `internal/update`; the
+  when-to-show policy is `shouldCheckForUpdate` in `cmd/`. Full spec:
+  `docs/output-scheme.md` §11.
 
 ## Deferred — don't add without a ticket
 
@@ -121,7 +128,7 @@ of an unrelated change:
   them as one opaque token. Add a type field back if/when cross-workspace
   operations gain WAT-aware warnings.
 - `bitrise.yml`-based context auto-detection
-- Telemetry, update checks, plugin system, `init` wizard
+- Telemetry, plugin system, `init` wizard
 - Per-directory config writing via `bitrise-cli config set` (currently
   set/unset only modify the global file; per-dir is hand-edited)
 

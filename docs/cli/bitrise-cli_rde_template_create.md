@@ -16,14 +16,14 @@ Pass --file - to read the JSON from stdin.
 
 Required fields:
   name           template name
-  image          machine image name (see 'rde image list')
+  stack_id       stack ID (see 'rde stack list')
   machine_type   machine type name (see 'rde machine-type list')
 
 Optional fields:
   description         free-text description
   working_directory   default working directory for sessions
   startup_script      bash script run on every session start
-  warmup_script       bash script baked into the image during pre-warming
+  warmup_script       bash script run once during pre-warming
   session_inputs      array of {key, description, required, default_value,
                       expose_as_env_var} — values callers supply at create time
   template_variables  array of {key, value, is_secret, expose_as_env_var} —
@@ -38,7 +38,7 @@ adjust to taste):
   {
     "name": "example-ios-app",
     "description": "Example macOS dev environment for an iOS app.",
-    "image": "osx-sequoia-26",
+    "stack_id": "osx-xcode-16.0.x-edge",
     "machine_type": "g2.mac.m2pro.6c-14g",
     "working_directory": "/Users/vagrant/git",
     "warmup_script": "set -euo pipefail\ncd ~\ngit clone \"https://${GITHUB_PAT}@github.com/example-org/example-app.git\" git\ncd git && bundle install && pod install --project-directory=ios\n",

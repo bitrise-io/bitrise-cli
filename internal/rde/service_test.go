@@ -118,6 +118,29 @@ func TestCreateSession_BodyAndAutoMapped(t *testing.T) {
 	}
 }
 
+func TestCreateSession_TemplateLess(t *testing.T) {
+	rs := newRecordingServer(t, `{"session":{"id":"new","name":"dev","status":"SESSION_STATUS_PENDING"}}`)
+
+	if _, err := rs.service().CreateSession(context.Background(), "ws-1", CreateSessionRequest{
+		Name:        "dev",
+		StackID:     "osx-xcode-16.0.x-edge",
+		MachineType: "g2.mac.m2pro.6c-14g",
+	}); err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+
+	var sent rdeapi.CreateSessionRequest
+	if err := json.Unmarshal(rs.lastBody, &sent); err != nil {
+		t.Fatalf("unmarshal sent body: %v", err)
+	}
+	if sent.TemplateID != "" {
+		t.Errorf("sent templateId = %q, want empty for a template-less session", sent.TemplateID)
+	}
+	if sent.StackID != "osx-xcode-16.0.x-edge" || sent.MachineType != "g2.mac.m2pro.6c-14g" {
+		t.Errorf("sent stackId/machineType = %q/%q", sent.StackID, sent.MachineType)
+	}
+}
+
 func TestUpdateSession_OmitsUnsetFields(t *testing.T) {
 	rs := newRecordingServer(t, `{"session":{"id":"s1","name":"renamed"}}`)
 
@@ -196,8 +219,13 @@ func TestWaitForReady_PollsUntilNonProvisioningStatus(t *testing.T) {
 	t.Cleanup(srv.Close)
 
 	svc := NewService(rdeapi.New(srv.URL, "tok"))
+	// onPoll should see the live status on every poll, including the
+	// intermediate provisioning state.
+	var seen []string
 	// 1ms interval keeps the test fast.
-	sess, err := svc.WaitForReady(context.Background(), "ws-1", "s1", time.Millisecond)
+	sess, err := svc.WaitForReady(context.Background(), "ws-1", "s1", time.Millisecond, func(status string) {
+		seen = append(seen, status)
+	})
 	if err != nil {
 		t.Fatalf("WaitForReady: %v", err)
 	}
@@ -206,6 +234,9 @@ func TestWaitForReady_PollsUntilNonProvisioningStatus(t *testing.T) {
 	}
 	if calls < 2 {
 		t.Errorf("expected at least 2 polls, got %d", calls)
+	}
+	if len(seen) < 2 || seen[0] != "pending" || seen[len(seen)-1] != "running" {
+		t.Errorf("onPoll statuses = %v, want pending…running", seen)
 	}
 }
 
@@ -218,7 +249,7 @@ func TestWaitForReady_ContextCancelled(t *testing.T) {
 	svc := NewService(rdeapi.New(srv.URL, "tok"))
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
 	defer cancel()
-	_, err := svc.WaitForReady(ctx, "ws-1", "s1", time.Millisecond)
+	_, err := svc.WaitForReady(ctx, "ws-1", "s1", time.Millisecond, nil)
 	if err == nil {
 		t.Fatal("expected timeout error, got nil")
 	}
@@ -292,8 +323,8 @@ func TestResolveTemplateID_UUIDShortCircuits(t *testing.T) {
 
 func TestResolveTemplateID_NameLookup(t *testing.T) {
 	rs := newRecordingServer(t, `{"templates":[
-		{"id":"t1","name":"Linux Dev","image":"ubuntu","machineType":"m1"},
-		{"id":"t2","name":"macOS Dev","image":"osx","machineType":"m2"}
+		{"id":"t1","name":"Linux Dev","stackId":"linux-ubuntu-24.04","machineType":"m1"},
+		{"id":"t2","name":"macOS Dev","stackId":"osx-xcode-16.0.x-edge","machineType":"m2"}
 	]}`)
 	got, err := rs.service().ResolveTemplateID(context.Background(), "ws-1", "macOS Dev")
 	if err != nil {
@@ -387,5 +418,20 @@ func TestStatusFromAPI(t *testing.T) {
 		if got := statusFromAPI(in); got != want {
 			t.Errorf("statusFromAPI(%q) = %q, want %q", in, got, want)
 		}
+	}
+}
+
+// TestLegacyImageFallsBackToStackID locks in the read fallback for templates
+// and sessions created before stack_id existed: the resolved image id surfaces
+// as the stack id so they still display, while a populated stack_id always wins.
+func TestLegacyImageFallsBackToStackID(t *testing.T) {
+	if got := templateFromAPI(rdeapi.Template{ID: "t1", Image: "osx-26-edge"}); got.StackID != "osx-26-edge" {
+		t.Errorf("template StackID = %q, want fallback to image osx-26-edge", got.StackID)
+	}
+	if got := templateFromAPI(rdeapi.Template{ID: "t2", Image: "osx-26-edge", StackID: "osx-xcode-16.0.x-edge"}); got.StackID != "osx-xcode-16.0.x-edge" {
+		t.Errorf("template StackID = %q, want stack id to win over image", got.StackID)
+	}
+	if got := snapshotFromAPI(rdeapi.SessionTemplateSnapshot{Image: "osx-26-edge"}); got.StackID != "osx-26-edge" {
+		t.Errorf("snapshot StackID = %q, want fallback to image osx-26-edge", got.StackID)
 	}
 }

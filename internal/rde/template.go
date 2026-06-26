@@ -13,7 +13,7 @@ type Template struct {
 	ID                string             `json:"id"`
 	Name              string             `json:"name"`
 	Description       string             `json:"description,omitempty"`
-	Image             string             `json:"image,omitempty"`
+	StackID           string             `json:"stack_id,omitempty"`
 	MachineType       string             `json:"machine_type,omitempty"`
 	WorkingDirectory  string             `json:"working_directory,omitempty"`
 	StartupScript     string             `json:"startup_script,omitempty"`
@@ -66,7 +66,7 @@ type WorkspaceLink struct {
 type TemplateSpec struct {
 	Name             *string `json:"name,omitempty"`
 	Description      *string `json:"description,omitempty"`
-	Image            *string `json:"image,omitempty"`
+	StackID          *string `json:"stack_id,omitempty"`
 	MachineType      *string `json:"machine_type,omitempty"`
 	WorkingDirectory *string `json:"working_directory,omitempty"`
 	StartupScript    *string `json:"startup_script,omitempty"`
@@ -118,15 +118,15 @@ func (s *Service) CreateTemplate(ctx context.Context, workspaceID string, spec T
 	if spec.Name == nil || *spec.Name == "" {
 		return Template{}, fmt.Errorf("name is required")
 	}
-	if spec.Image == nil || *spec.Image == "" {
-		return Template{}, fmt.Errorf("image is required")
+	if spec.StackID == nil || *spec.StackID == "" {
+		return Template{}, fmt.Errorf("stack_id is required")
 	}
 	if spec.MachineType == nil || *spec.MachineType == "" {
 		return Template{}, fmt.Errorf("machine_type is required")
 	}
 	req := rdeapi.CreateTemplateRequest{
 		Name:             *spec.Name,
-		Image:            *spec.Image,
+		StackID:          *spec.StackID,
 		MachineType:      *spec.MachineType,
 		Description:      deref(spec.Description),
 		WorkingDirectory: deref(spec.WorkingDirectory),
@@ -162,7 +162,7 @@ func (s *Service) UpdateTemplate(ctx context.Context, workspaceID, templateID st
 	req := rdeapi.UpdateTemplateRequest{
 		Name:             spec.Name,
 		Description:      spec.Description,
-		Image:            spec.Image,
+		StackID:          spec.StackID,
 		MachineType:      spec.MachineType,
 		WorkingDirectory: spec.WorkingDirectory,
 		StartupScript:    spec.StartupScript,
@@ -367,7 +367,7 @@ func templateFromAPI(w rdeapi.Template) Template {
 		ID:               w.ID,
 		Name:             w.Name,
 		Description:      w.Description,
-		Image:            w.Image,
+		StackID:          firstNonEmpty(w.StackID, w.Image),
 		MachineType:      w.MachineType,
 		WorkingDirectory: w.WorkingDirectory,
 		StartupScript:    w.StartupScript,

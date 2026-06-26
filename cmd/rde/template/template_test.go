@@ -40,7 +40,7 @@ func TestListCmd_HappyPath(t *testing.T) {
 			t.Errorf("unexpected path: %s", r.URL.Path)
 		}
 		_, _ = io.WriteString(w, `{"templates":[
-			{"id":"t-1","name":"Linux Dev","image":"ubuntu","machineType":"standard","createdByEmail":"a@b.io"}
+			{"id":"t-1","name":"Linux Dev","stackId":"linux-ubuntu-24.04","machineType":"standard","createdByEmail":"a@b.io"}
 		]}`)
 	}))
 	defer srv.Close()
@@ -49,7 +49,7 @@ func TestListCmd_HappyPath(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
-	for _, want := range []string{"Linux Dev", "ubuntu", "standard", "a@b.io", "t-1"} {
+	for _, want := range []string{"Linux Dev", "linux-ubuntu-24.04", "standard", "a@b.io", "t-1"} {
 		if !strings.Contains(stdout, want) {
 			t.Errorf("stdout missing %q:\n%s", want, stdout)
 		}
@@ -59,7 +59,7 @@ func TestListCmd_HappyPath(t *testing.T) {
 func TestListCmd_JSONOutput(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = io.WriteString(w, `{"templates":[
-			{"id":"t-1","name":"Linux Dev","image":"ubuntu","machineType":"standard"}
+			{"id":"t-1","name":"Linux Dev","stackId":"linux-ubuntu-24.04","machineType":"standard"}
 		]}`)
 	}))
 	defer srv.Close()
@@ -104,7 +104,7 @@ func TestViewCmd_HappyPath(t *testing.T) {
 			t.Errorf("unexpected path: %s", r.URL.Path)
 		}
 		_, _ = io.WriteString(w, `{"template":{
-			"id":"t-1","name":"Linux Dev","image":"ubuntu","machineType":"standard",
+			"id":"t-1","name":"Linux Dev","stackId":"linux-ubuntu-24.04","machineType":"standard",
 			"sessionInputs":[{"key":"repo","required":true,"description":"Repo to clone"}],
 			"templateVariables":[{"key":"TOKEN","isSecret":true}]
 		}}`)
@@ -115,7 +115,7 @@ func TestViewCmd_HappyPath(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
-	for _, want := range []string{"Linux Dev", "t-1", "ubuntu", "repo", "(required)", "TOKEN", "(secret)"} {
+	for _, want := range []string{"Linux Dev", "t-1", "linux-ubuntu-24.04", "repo", "(required)", "TOKEN", "(secret)"} {
 		if !strings.Contains(stdout, want) {
 			t.Errorf("stdout missing %q:\n%s", want, stdout)
 		}

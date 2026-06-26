@@ -42,7 +42,10 @@ type Session struct {
 // creation time. The CLI surfaces this only as nested data on `session
 // view`; full diffing lives behind `session diff` (Phase 2).
 type SessionTemplateSnapshot struct {
-	TemplateName     string          `json:"templateName,omitempty"`
+	TemplateName string `json:"templateName,omitempty"`
+	StackID      string `json:"stackId,omitempty"`
+	// Image is the resolved image id, retained only as a read fallback for
+	// snapshots taken before stackId was populated.
 	Image            string          `json:"image,omitempty"`
 	MachineType      string          `json:"machineType,omitempty"`
 	WorkingDirectory string          `json:"workingDirectory,omitempty"`
@@ -101,14 +104,14 @@ type AutoMappedInput struct {
 }
 
 // CreateSessionRequest is the POST body for creating a session. TemplateID is
-// optional: omit it (and supply Image + MachineType) to create a session
-// without a template. When a template is given, Image / MachineType optionally
+// optional: omit it (and supply StackID + MachineType) to create a session
+// without a template. When a template is given, StackID / MachineType optionally
 // override the template's defaults for this session.
 type CreateSessionRequest struct {
 	Name                    string              `json:"name"`
 	Description             string              `json:"description,omitempty"`
 	TemplateID              string              `json:"templateId,omitempty"`
-	Image                   string              `json:"image,omitempty"`
+	StackID                 string              `json:"stackId,omitempty"`
 	MachineType             string              `json:"machineType,omitempty"`
 	SessionInputs           []SessionInputValue `json:"sessionInputs,omitempty"`
 	EnabledFeatureFlagNames []string            `json:"enabledFeatureFlagNames,omitempty"`
@@ -149,7 +152,10 @@ type deleteTerminatedResp struct {
 // because the diff uses its own *Config-variant sub-types (secret values
 // are always stripped).
 type TemplateConfig struct {
-	TemplateName      string                   `json:"templateName,omitempty"`
+	TemplateName string `json:"templateName,omitempty"`
+	StackID      string `json:"stackId,omitempty"`
+	// Image is retained only as a read fallback for configs from before
+	// stackId was populated.
 	Image             string                   `json:"image,omitempty"`
 	MachineType       string                   `json:"machineType,omitempty"`
 	WorkingDirectory  string                   `json:"workingDirectory,omitempty"`

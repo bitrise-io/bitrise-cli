@@ -22,7 +22,7 @@ import (
 	"github.com/bitrise-io/bitrise-cli/internal/rde/localsession"
 )
 
-// The command provisions a templateless session from a chosen image + machine
+// The command provisions a templateless session from a chosen stack + machine
 // type, so there's no template to resolve or keep in sync.
 
 // NewCmd returns the `bitrise-cli rde claude` command.
@@ -31,7 +31,7 @@ func NewCmd() *cobra.Command {
 		waitTimeout    time.Duration
 		resume         bool
 		continueLatest bool
-		image          string
+		stack          string
 		machineType    string
 	)
 
@@ -41,9 +41,9 @@ func NewCmd() *cobra.Command {
 		Long: `Create a fresh RDE session, wait for it to start, then SSH in and drop you
 directly into Claude Code (not a shell).
 
-You pick the image first, then a machine type compatible with it. Your choice
+You pick the stack first, then a machine type compatible with it. Your choice
 is remembered per repository and preselected next time, so you can just press
-Enter. Pass --image / --machine-type to skip the prompts
+Enter. Pass --stack / --machine-type to skip the prompts
 (useful for scripts); when stdin isn't a terminal the remembered or default
 selection is used without prompting.
 
@@ -77,7 +77,9 @@ date both locally and on the session itself.
 A local SSH agent ($SSH_AUTH_SOCK), if present, is forwarded into the session
 so the clone (and git-over-SSH inside the session) uses your local keys. If the
 repo's origin is an HTTPS GitHub/GitLab/Bitbucket URL, it's rewritten to its
-SSH form so the forwarded agent can authenticate.
+SSH form so the forwarded agent can authenticate. Your local git identity
+(user.name / user.email) is also copied into the session and set globally, so
+commits made there are attributed to you rather than the session's account.
 
 Unless a Claude Code token is already configured on the control plane, a local
 credential is saved there before the session is created — taken from
@@ -86,7 +88,7 @@ or minted with 'claude setup-token' (browser auth). The control plane uses that
 token to install Claude Code and tmux during provisioning and to authenticate
 the in-session claude; once saved, future sessions reuse it.`,
 		Example: `  bitrise-cli rde claude --workspace WORKSPACE_ID
-  bitrise-cli rde claude --image osx-26-edge --machine-type g2.mac.m2pro.4c-6g
+  bitrise-cli rde claude --stack osx-xcode-16.0.x-edge --machine-type g2.mac.m2pro.4c-6g
   bitrise-cli rde claude --continue
   bitrise-cli rde claude --resume`,
 		Args: cobra.MaximumNArgs(1),
@@ -116,7 +118,7 @@ the in-session claude; once saved, future sessions reuse it.`,
 			}
 			return runFresh(ctx, cmd, freshOptions{
 				waitTimeout: waitTimeout,
-				image:       image,
+				stack:       stack,
 				machineType: machineType,
 			})
 		},
@@ -125,7 +127,7 @@ the in-session claude; once saved, future sessions reuse it.`,
 	c.Flags().DurationVar(&waitTimeout, "wait-timeout", 10*time.Minute, "max time to wait for the session to start (uses Go duration syntax: 30s, 5m, 1h)")
 	c.Flags().BoolVar(&resume, "resume", false, "resume a previous session for this repo; with no SESSION_ID, pick one from a list")
 	c.Flags().BoolVar(&continueLatest, "continue", false, "resume the most recent session started from this repo")
-	c.Flags().StringVar(&image, "image", "", "image to use (skips the image prompt); see 'rde image list'")
+	c.Flags().StringVar(&stack, "stack", "", "stack to use (skips the stack prompt); see 'rde stack list'")
 	c.Flags().StringVar(&machineType, "machine-type", "", "machine type to use (skips the machine-type prompt); see 'rde machine-type list'")
 	c.MarkFlagsMutuallyExclusive("resume", "continue")
 	return c
@@ -134,7 +136,7 @@ the in-session claude; once saved, future sessions reuse it.`,
 // freshOptions configures a fresh `rde claude` run.
 type freshOptions struct {
 	waitTimeout time.Duration
-	image       string // --image override ("" = prompt/default)
+	stack       string // --stack override ("" = prompt/default)
 	machineType string // --machine-type override ("" = prompt/default)
 }
 
@@ -185,12 +187,12 @@ func runFresh(ctx context.Context, cmd *cobra.Command, opts freshOptions) error 
 
 	log := newStepLogger(cmd)
 
-	// ── Image & machine type ───────────────────────────────────────
+	// ── Stack & machine type ───────────────────────────────────────
 	// Choose before auth so all interactive input is gathered up front (and a
-	// bad --image/--machine-type fails fast, before the auth step that can open
+	// bad --stack/--machine-type fails fast, before the auth step that can open
 	// a browser). The choice is remembered per repo and used on the next run.
-	log.group("Image & machine type")
-	image, machineType, err := selectImageAndMachineType(ctx, cmd, svc, log, workspaceID, repoPath, opts.image, opts.machineType)
+	log.group("Stack & machine type")
+	stack, stackTitle, machineType, machineLbl, err := selectStackAndMachineType(ctx, cmd, svc, log, workspaceID, repoPath, opts.stack, opts.machineType)
 	if errors.Is(err, errSelectionCancelled) {
 		_, _ = fmt.Fprintln(cmd.ErrOrStderr(), "Cancelled.")
 		return nil
@@ -198,7 +200,7 @@ func runFresh(ctx context.Context, cmd *cobra.Command, opts freshOptions) error 
 	if err != nil {
 		return err
 	}
-	log.done("Image %s, machine type %s", imageLabel(image), machineType)
+	log.done("Stack %s, machine type %s", stackTitle, machineLbl)
 
 	// ── Claude Code auth ───────────────────────────────────────────
 	// Ensure a Claude Code token exists on the control plane *before*
@@ -217,7 +219,7 @@ func runFresh(ctx context.Context, cmd *cobra.Command, opts freshOptions) error 
 	log.step("Creating session %q…", name)
 	res, err := svc.CreateSession(ctx, workspaceID, internalrde.CreateSessionRequest{
 		Name:        name,
-		Image:       image,
+		StackID:     stack,
 		MachineType: machineType,
 		// Auth is guaranteed present by now, so map the token saved
 		// input in: provisioning installs claude + tmux and the session
@@ -231,8 +233,8 @@ func runFresh(ctx context.Context, cmd *cobra.Command, opts freshOptions) error 
 
 	// Remember the selection so the next run in this repo preselects it.
 	// Best-effort: a failure only costs the preselect convenience.
-	if err := localsession.SavePrefs(repoPath, localsession.Prefs{Image: image, MachineType: machineType}); err != nil {
-		log.warn("Could not save image/machine-type choice for next time: %v", err)
+	if err := localsession.SavePrefs(repoPath, localsession.Prefs{Stack: stack, MachineType: machineType}); err != nil {
+		log.warn("Could not save stack/machine-type choice for next time: %v", err)
 	}
 
 	// Persist a local record immediately so the session is resumable even if
@@ -257,14 +259,19 @@ func runFresh(ctx context.Context, cmd *cobra.Command, opts freshOptions) error 
 	// it can be restored later.
 	defer terminateOnExit(svc, log, workspaceID, sessionID, name)()
 
-	log.step("Waiting for it to start (timeout %s)…", opts.waitTimeout)
 	// The whole startup wait — reaching "running" and then SSH
 	// credentials being issued — shares one timeout budget.
 	waitCtx, cancel := context.WithTimeout(ctx, opts.waitTimeout)
 	defer cancel()
 
-	ready, err := svc.WaitForReady(waitCtx, workspaceID, sessionID, 0)
-	if err != nil {
+	var ready internalrde.Session
+	if err := log.await(waitCtx,
+		fmt.Sprintf("Booting session (timeout %s)…", opts.waitTimeout), "Session booted",
+		func(c context.Context, status func(string)) error {
+			var e error
+			ready, e = svc.WaitForReady(c, workspaceID, sessionID, 0, status)
+			return e
+		}); err != nil {
 		return fmt.Errorf("waiting for session: %w", err)
 	}
 	if ready.Status != "running" {
@@ -275,8 +282,11 @@ func runFresh(ctx context.Context, cmd *cobra.Command, opts freshOptions) error 
 	// "running" does not mean SSH is reachable yet — the backend
 	// issues credentials a few seconds later. Wait for them before
 	// dialing in.
-	log.step("Waiting for remote access…")
-	if _, err := svc.WaitForSSHReady(waitCtx, workspaceID, sessionID, 0); err != nil {
+	if err := log.await(waitCtx, "Waiting for remote access…", "Remote access ready",
+		func(c context.Context, _ func(string)) error {
+			_, e := svc.WaitForSSHReady(c, workspaceID, sessionID, 0)
+			return e
+		}); err != nil {
 		return fmt.Errorf("waiting for SSH access: %w", err)
 	}
 	log.done("Session ready")
@@ -288,8 +298,16 @@ func runFresh(ctx context.Context, cmd *cobra.Command, opts freshOptions) error 
 	// sure an agent is running with a key loaded before we dial in.
 	// cleanupAgent kills a temporary agent we may have started; it
 	// must outlive the claude session, so defer it to command exit.
-	cleanupAgent, repoAuth := ensureAgentHasKey(ctx, log, cloneURL)
+	cleanupAgent, repoAuth, haveSSHKey := ensureAgentHasKey(ctx, log, cloneURL)
 	defer cleanupAgent()
+
+	// Without a forwarded SSH key an SSH clone fails even for a public repo, so
+	// fall back to the repo's HTTPS URL — public repositories clone with no
+	// credentials. Private repos still need a key (HTTPS would prompt and fail).
+	cloneURL, viaHTTPS := chooseCloneURL(originURL, haveSSHKey)
+	if viaHTTPS {
+		repoAuth = "HTTPS (no SSH key found; public repos only)"
+	}
 	log.step("Auth: %s", repoAuth)
 
 	// Clone the same repo + branch into the session over the
@@ -322,6 +340,11 @@ func runFresh(ctx context.Context, cmd *cobra.Command, opts freshOptions) error 
 		cmdutil.SilenceRootErrors(cmd)
 		return fmt.Errorf("git clone failed (status %d)", cloneCode)
 	}
+
+	// Mirror the user's local git identity onto the session so commits Claude
+	// makes are attributed to them, not the session's system account. Part of
+	// the Repository group, best-effort (see syncGitIdentity).
+	syncGitIdentity(ctx, svc, log, workspaceID, sessionID)
 	log.done("Repository cloned")
 
 	// ── Claude Code ────────────────────────────────────────────────
@@ -378,22 +401,28 @@ func attachClaude(ctx context.Context, svc *internalrde.Service, log *stepLogger
 	go mon.Run(monCtx)
 
 	// Best-effort host bridge: lets the in-session Claude trigger local actions
-	// (currently, open a VNC viewer on the user's machine showing the session's
-	// desktop). The action set depends on the session — open-vnc only applies to
-	// sessions that expose a VNC endpoint (macOS today; Linux sessions have
-	// none). When the session offers no host actions, skip the bridge entirely so
-	// Claude is never told about a capability it can't use. Otherwise start it —
-	// and write its skill — before the interactive attach, so the capability is
-	// in place when Claude launches; it degrades silently if the session does not
-	// permit the reverse forward, and never disrupts the attach.
-	if actions := localHostActions(monCtx, svc, p.workspaceID, p.sessionID); len(actions) > 0 {
+	// (transfer files to/from the user's machine, and on VNC-capable sessions
+	// open a viewer showing the session's desktop). The action set depends on the
+	// session — transfers apply everywhere, open-vnc only to sessions that expose
+	// a VNC endpoint (macOS today; Linux sessions have none). Start it — and write
+	// its skill — before the interactive attach, so the capability is in place
+	// when Claude launches; it degrades silently if the session does not permit
+	// the reverse forward, and never disrupts the attach. localDir is the local
+	// working dir, used to resolve relative transfer paths.
+	localDir := p.record.RepoPath
+	if localDir == "" {
+		if wd, err := os.Getwd(); err == nil {
+			localDir = wd
+		}
+	}
+	if actions := localHostActions(monCtx, svc, p.workspaceID, p.sessionID, localDir); len(actions) > 0 {
 		bridge := newHostBridge(svc, p.workspaceID, p.sessionID, actions)
 		if bridgeErr := bridge.Start(monCtx); bridgeErr != nil {
 			log.step("Host actions unavailable in this session")
 		} else {
 			defer bridge.Close()
 			go bridge.Serve(monCtx)
-			log.step("Host actions enabled (Claude can open a VNC viewer on your machine)")
+			log.step("%s", hostActionsMessage(actions))
 		}
 	}
 
@@ -470,15 +499,91 @@ func remoteHasBranch(ctx context.Context, branch string) (found, determined bool
 // repoDir. When useDefaultBranch is true it omits --branch, so git clones the
 // remote's default branch (the fallback when the local branch isn't pushed).
 // GIT_SSH_COMMAND's accept-new keeps the non-interactive clone from hanging on
-// a host-key prompt.
+// a host-key prompt; GIT_TERMINAL_PROMPT=0 makes an HTTPS clone of a private
+// repo (no credentials) fail fast instead of hanging on a username prompt.
 func buildCloneCommand(cloneURL, repoDir, branch string, useDefaultBranch bool) string {
-	sshEnv := "GIT_SSH_COMMAND=" + cmdutil.ShellQuote("ssh -o StrictHostKeyChecking=accept-new")
+	env := "GIT_TERMINAL_PROMPT=0 GIT_SSH_COMMAND=" + cmdutil.ShellQuote("ssh -o StrictHostKeyChecking=accept-new")
 	if useDefaultBranch {
 		return fmt.Sprintf("%s git clone %s %s",
-			sshEnv, cmdutil.ShellQuote(cloneURL), cmdutil.ShellQuote(repoDir))
+			env, cmdutil.ShellQuote(cloneURL), cmdutil.ShellQuote(repoDir))
 	}
 	return fmt.Sprintf("%s git clone --branch %s %s %s",
-		sshEnv, cmdutil.ShellQuote(branch), cmdutil.ShellQuote(cloneURL), cmdutil.ShellQuote(repoDir))
+		env, cmdutil.ShellQuote(branch), cmdutil.ShellQuote(cloneURL), cmdutil.ShellQuote(repoDir))
+}
+
+// syncGitIdentity copies the user's local git identity (user.name/user.email)
+// onto the session, set globally (~/.gitconfig), so commits Claude makes are
+// attributed to the user rather than the session's system account
+// (vagrant@…/ubuntu@… — the SSH users sessions run as). It complements the
+// forwarded SSH agent: the agent lets the session push, this makes the commits
+// it pushes carry the right author.
+//
+// Best-effort by design: when no local identity is set it does nothing, and a
+// remote failure only warns — neither blocks the session. Idempotent and
+// global, so resuming re-applies it (covering an identity that changed locally,
+// or sessions created before this existed) and it survives a restore since ~ is
+// on the persistent disk.
+func syncGitIdentity(ctx context.Context, svc *internalrde.Service, log *stepLogger, workspaceID, sessionID string) {
+	name, email := localGitIdentity(ctx)
+	command := buildGitIdentityCommand(name, email)
+	if command == "" {
+		return // no local identity configured — leave the session's default alone
+	}
+	log.step("Setting git identity (%s)…", gitIdentityLabel(name, email))
+	res, err := svc.Execute(ctx, workspaceID, sessionID, command)
+	switch {
+	case err != nil:
+		log.warn("Could not set git identity on the session: %v", err)
+	case res.ExitCode != 0:
+		log.warn("Could not set git identity on the session (status %d): %s", res.ExitCode, strings.TrimSpace(res.Stderr))
+	}
+}
+
+// localGitIdentity reads the user's git identity (user.name and user.email)
+// from the cwd repo. Reading from inside the repo honors git's full precedence
+// (repo-local > global > system), so it matches who commits are attributed to
+// here. Either value comes back "" when it isn't set.
+func localGitIdentity(ctx context.Context) (name, email string) {
+	return gitConfigValue(ctx, "user.name"), gitConfigValue(ctx, "user.email")
+}
+
+// gitConfigValue returns the configured value for a git config key, or "" if
+// it isn't set (or git errors).
+func gitConfigValue(ctx context.Context, key string) string {
+	//nolint:gosec // G204: key is a hardcoded git config name, never user input
+	out, err := exec.CommandContext(ctx, "git", "config", "--get", key).Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
+}
+
+// buildGitIdentityCommand returns the remote shell command that sets the user's
+// git identity globally on the session, or "" when neither value is set. Each
+// value is shell-quoted — names legitimately contain spaces, and emails are
+// taken from local config unvalidated.
+func buildGitIdentityCommand(name, email string) string {
+	var parts []string
+	if name != "" {
+		parts = append(parts, "git config --global user.name "+cmdutil.ShellQuote(name))
+	}
+	if email != "" {
+		parts = append(parts, "git config --global user.email "+cmdutil.ShellQuote(email))
+	}
+	return strings.Join(parts, " && ")
+}
+
+// gitIdentityLabel renders an identity for a progress line: "Name <email>", or
+// just whichever half is set.
+func gitIdentityLabel(name, email string) string {
+	switch {
+	case name != "" && email != "":
+		return name + " <" + email + ">"
+	case email != "":
+		return email
+	default:
+		return name
+	}
 }
 
 // buildClaudeCommand returns the remote shell command that starts Claude Code
@@ -647,6 +752,40 @@ func gitSSHURL(raw string) string {
 		path += ".git"
 	}
 	return "git@" + host + ":" + path
+}
+
+// gitHTTPSURL rewrites a known-host SSH clone URL into its HTTPS form
+// (git@github.com:org/repo.git → https://github.com/org/repo.git) so a public
+// repository clones without an SSH key. URLs that are already HTTPS, or that
+// target a host we don't recognise, are returned unchanged.
+func gitHTTPSURL(raw string) string {
+	if strings.HasPrefix(raw, "https://") {
+		return raw
+	}
+	host := sshHostFromURL(raw)
+	if !sshRewriteHosts[host] {
+		return raw
+	}
+	slug := repoSlugFromURL(raw)
+	if slug == "" {
+		return raw
+	}
+	return "https://" + host + "/" + slug + ".git"
+}
+
+// chooseCloneURL picks the URL the in-session clone should use. With a forwarded
+// SSH key it prefers the SSH form (so private repos clone); without one it falls
+// back to the repo's HTTPS form so public repositories still clone. Unknown
+// hosts (no SSH⇄HTTPS rewrite) are left as-is. viaHTTPS reports the fallback.
+func chooseCloneURL(originURL string, haveSSHKey bool) (cloneURL string, viaHTTPS bool) {
+	ssh := gitSSHURL(originURL)
+	if haveSSHKey || !isSSHCloneURL(ssh) {
+		return ssh, false
+	}
+	if https := gitHTTPSURL(originURL); strings.HasPrefix(https, "https://") {
+		return https, true
+	}
+	return ssh, false
 }
 
 // repoDirFromURL derives the directory name `git clone` would create from a

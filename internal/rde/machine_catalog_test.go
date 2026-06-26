@@ -10,28 +10,27 @@ import (
 	rdeapi "github.com/bitrise-io/bitrise-cli/bitriseapi/rde"
 )
 
-// catalogServer serves a fixed images / machine-types catalog, switching on the
-// request path. The catalog mirrors the real shape: a name can appear in more
-// than one cluster, and machine types are compatible with an image when they
-// share a cluster.
+// catalogServer serves a fixed stacks / machine-types catalog, switching on the
+// request path. The catalog mirrors the real shape: a stack lists the clusters
+// where it can be provisioned, and machine types are compatible with a stack
+// when they share a cluster.
 func catalogServer(t *testing.T) *Service {
 	t.Helper()
-	const images = `{"images":[
-		{"id":"lin-a","name":"linux","clusterName":"a"},
-		{"id":"lin-b","name":"linux","clusterName":"b"},
-		{"id":"mac-c","name":"mac","clusterName":"c","isDefault":true}
+	const stacks = `{"stacks":[
+		{"id":"linux","title":"Ubuntu 24.04","os":"linux","clusterNames":["a","b"]},
+		{"id":"mac","title":"Xcode 16.0","os":"macos","clusterNames":["c"],"isDefault":true}
 	]}`
 	const machineTypes = `{"machineTypes":[
 		{"id":"small-a","name":"small","clusterName":"a"},
 		{"id":"big-b","name":"big","clusterName":"b"},
-		{"id":"m2-c","name":"m2","clusterName":"c"}
+		{"id":"m2-c","name":"m2","clusterName":"c","title":"M2 Pro","cpu":"4 vCPU","ram":"6 GB","os":"macos"}
 	]}`
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case strings.HasSuffix(r.URL.Path, "/machine-types"):
 			_, _ = w.Write([]byte(machineTypes))
-		case strings.HasSuffix(r.URL.Path, "/images"):
-			_, _ = w.Write([]byte(images))
+		case strings.HasSuffix(r.URL.Path, "/stacks"):
+			_, _ = w.Write([]byte(stacks))
 		default:
 			http.NotFound(w, r)
 		}
@@ -40,14 +39,14 @@ func catalogServer(t *testing.T) *Service {
 	return NewService(rdeapi.New(srv.URL, "tok"))
 }
 
-func TestMachineTypesForImage_FiltersByClusterOverlap(t *testing.T) {
+func TestMachineTypesForStack_FiltersByClusterOverlap(t *testing.T) {
 	svc := catalogServer(t)
 
-	// "linux" is offered by clusters a and b, so only machine types in a or b
-	// are compatible — "m2" (cluster c) must be excluded.
-	got, err := svc.MachineTypesForImage(context.Background(), "ws-1", "linux")
+	// "linux" is provisionable in clusters a and b, so only machine types in a
+	// or b are compatible — "m2" (cluster c) must be excluded.
+	got, err := svc.MachineTypesForStack(context.Background(), "ws-1", "linux")
 	if err != nil {
-		t.Fatalf("MachineTypesForImage: %v", err)
+		t.Fatalf("MachineTypesForStack: %v", err)
 	}
 	gotNames := map[string]bool{}
 	for _, mt := range got {
@@ -61,39 +60,43 @@ func TestMachineTypesForImage_FiltersByClusterOverlap(t *testing.T) {
 	}
 }
 
-func TestMachineTypesForImage_SingleCluster(t *testing.T) {
+func TestMachineTypesForStack_SingleCluster(t *testing.T) {
 	svc := catalogServer(t)
 
 	// "mac" is only in cluster c, so only "m2" is compatible.
-	got, err := svc.MachineTypesForImage(context.Background(), "ws-1", "mac")
+	got, err := svc.MachineTypesForStack(context.Background(), "ws-1", "mac")
 	if err != nil {
-		t.Fatalf("MachineTypesForImage: %v", err)
+		t.Fatalf("MachineTypesForStack: %v", err)
 	}
 	if len(got) != 1 || got[0].Name != "m2" {
 		t.Errorf("expected only m2 for mac, got %+v", got)
 	}
+	// The backend's friendly metadata flows through the mapper.
+	if got[0].Title != "M2 Pro" || got[0].CPU != "4 vCPU" || got[0].RAM != "6 GB" || got[0].OS != "macos" {
+		t.Errorf("machine-type metadata not mapped: %+v", got[0])
+	}
 }
 
-func TestMachineTypesForImage_UnknownImageErrors(t *testing.T) {
+func TestMachineTypesForStack_UnknownStackErrors(t *testing.T) {
 	svc := catalogServer(t)
 
-	_, err := svc.MachineTypesForImage(context.Background(), "ws-1", "windows")
+	_, err := svc.MachineTypesForStack(context.Background(), "ws-1", "windows")
 	if err == nil || !strings.Contains(err.Error(), "not found in this workspace") {
 		t.Errorf("err = %v, want not-found error", err)
 	}
 }
 
-func TestListImages_CarriesIsDefault(t *testing.T) {
+func TestListStacks_CarriesIsDefault(t *testing.T) {
 	svc := catalogServer(t)
 
-	images, err := svc.ListImages(context.Background(), "ws-1")
+	stacks, err := svc.ListStacks(context.Background(), "ws-1")
 	if err != nil {
-		t.Fatalf("ListImages: %v", err)
+		t.Fatalf("ListStacks: %v", err)
 	}
 	var defaults []string
-	for _, im := range images {
-		if im.IsDefault {
-			defaults = append(defaults, im.Name)
+	for _, st := range stacks {
+		if st.IsDefault {
+			defaults = append(defaults, st.ID)
 		}
 	}
 	if len(defaults) != 1 || defaults[0] != "mac" {

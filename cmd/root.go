@@ -62,7 +62,13 @@ config.yaml > built-in default. Run "bitrise-cli config" for all keys and env va
 
 // Execute runs the root command. main.go is the only caller.
 func Execute() {
-	if err := rootCmd.Execute(); err != nil {
+	err := rootCmd.Execute()
+	// After the command has produced its output, surface a "new release
+	// available" notice when one is due. Armed by persistentPreRun; a no-op
+	// otherwise. It prints on both success and failure paths so a user behind
+	// on versions still hears about it, and never changes the exit status.
+	notifyUpdateAvailable(os.Stderr)
+	if err != nil {
 		os.Exit(1)
 	}
 }
@@ -166,6 +172,9 @@ func persistentPreRun(cmd *cobra.Command, _ []string) error {
 	// actually drives Style construction in subcommand RunE bodies.
 	style.Configure(noColor, r.Theme)
 	cmd.SetContext(config.WithResolved(cmd.Context(), r))
+	// Decide now — while we have the resolved settings and the running command —
+	// whether Execute should look for a newer release once the command is done.
+	armUpdateCheck(cmd, r)
 	return nil
 }
 

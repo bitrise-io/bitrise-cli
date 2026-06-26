@@ -30,25 +30,28 @@ func TestResolveDefault(t *testing.T) {
 	}
 }
 
-func TestUniqueImageNames(t *testing.T) {
-	images := []internalrde.Image{
-		{Name: "linux", ClusterName: "a"},
-		{Name: "linux", ClusterName: "b"}, // duplicate name across clusters
-		{Name: "mac", ClusterName: "c", IsDefault: true},
-		{Name: "win", ClusterName: "d"},
+func TestUniqueStacks(t *testing.T) {
+	stacks := []internalrde.Stack{
+		{ID: "linux", Title: "Ubuntu 24.04"},
+		{ID: "linux", Title: "Ubuntu 24.04"}, // duplicate id
+		{ID: "mac", Title: "Xcode 16.0", IsDefault: true},
+		{ID: "win", Title: "Windows"},
 	}
-	names, backendDefault := uniqueImageNames(images)
+	ids, byID, backendDefault := uniqueStacks(stacks)
 	want := []string{"linux", "mac", "win"}
-	if len(names) != len(want) {
-		t.Fatalf("names = %v, want %v", names, want)
+	if len(ids) != len(want) {
+		t.Fatalf("ids = %v, want %v", ids, want)
 	}
 	for i := range want {
-		if names[i] != want[i] {
-			t.Errorf("names[%d] = %q, want %q", i, names[i], want[i])
+		if ids[i] != want[i] {
+			t.Errorf("ids[%d] = %q, want %q", i, ids[i], want[i])
 		}
 	}
 	if backendDefault != "mac" {
 		t.Errorf("backendDefault = %q, want mac", backendDefault)
+	}
+	if byID["mac"].Title != "Xcode 16.0" {
+		t.Errorf("byID[mac].Title = %q, want Xcode 16.0", byID["mac"].Title)
 	}
 }
 
@@ -66,12 +69,12 @@ func TestUniqueMachineTypeNames_NoDefault(t *testing.T) {
 	}
 }
 
-// TestResolveDefault_ImageSwitchFallsBackToFirst documents the machine-type
-// behavior when the user switches images: the saved machine type (valid for the
-// old image) and the backend default both may be absent from the new image's
+// TestResolveDefault_StackSwitchFallsBackToFirst documents the machine-type
+// behavior when the user switches stacks: the saved machine type (valid for the
+// old stack) and the backend default both may be absent from the new stack's
 // compatible list, so selection falls back to the first available.
-func TestResolveDefault_ImageSwitchFallsBackToFirst(t *testing.T) {
-	// Compatible machine types for the newly-chosen image.
+func TestResolveDefault_StackSwitchFallsBackToFirst(t *testing.T) {
+	// Compatible machine types for the newly-chosen stack.
 	compatible := []string{"arm-small", "arm-big"}
 	// Saved pref + backend default are both x86 types, not in the list.
 	got := resolveDefault(compatible, "x86-small", "x86-default")
@@ -119,37 +122,75 @@ func TestIndexOf(t *testing.T) {
 	}
 }
 
-func TestImageLabel(t *testing.T) {
+func TestStackTitle(t *testing.T) {
+	byID := map[string]internalrde.Stack{
+		"osx-xcode-16.0.x-edge": {ID: "osx-xcode-16.0.x-edge", Title: "Xcode 16.0"},
+		"linux-ubuntu-24.04":    {ID: "linux-ubuntu-24.04", Title: "Ubuntu 24.04"},
+		"osx-no-title":          {ID: "osx-no-title"}, // backend supplied no title
+	}
 	for in, want := range map[string]string{
-		"linux-bitvirt-2026":   "Ubuntu 24.04",
-		"linux-docker-bitvirt": "Ubuntu 24.04 (Docker)",
-		"osx-tahoe-26":         "macOS Tahoe (Xcode 26)",
-		"osx-sonoma-15":        "macOS Sonoma (Xcode 15)",
-		"osx-27-edge":          "Edge (Xcode 27)",
-		"some-future-image":    "some-future-image", // unmapped → raw name
+		"osx-xcode-16.0.x-edge": "Xcode 16.0",
+		"linux-ubuntu-24.04":    "Ubuntu 24.04",
+		"osx-no-title":          "osx-no-title",  // empty title → raw id
+		"unknown-stack":         "unknown-stack", // absent → raw id
 	} {
-		if got := imageLabel(in); got != want {
-			t.Errorf("imageLabel(%q) = %q, want %q", in, got, want)
+		if got := stackTitle(byID, in); got != want {
+			t.Errorf("stackTitle(%q) = %q, want %q", in, got, want)
 		}
 	}
 }
 
+func TestStackSecondary(t *testing.T) {
+	cases := map[string]struct {
+		st   internalrde.Stack
+		want string
+	}{
+		"macos with version and status": {
+			internalrde.Stack{OS: "macos", OSVersion: 26, Status: "edge"},
+			"macOS 26 · edge",
+		},
+		"linux with version and status": {
+			internalrde.Stack{OS: "linux", OSVersion: 24, Status: "stable"},
+			"Linux 24 · stable",
+		},
+		"no version still shows os and status": {
+			internalrde.Stack{OS: "macos", Status: "frozen"},
+			"macOS · frozen",
+		},
+		"status only": {
+			internalrde.Stack{Status: "edge"},
+			"edge",
+		},
+		"os only": {
+			internalrde.Stack{OS: "macos", OSVersion: 26},
+			"macOS 26",
+		},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			if got := stackSecondary(tc.st); got != tc.want {
+				t.Errorf("stackSecondary = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestReuseDetail(t *testing.T) {
-	// Two lines: humanized image, then the raw machine type plus a parsed spec
-	// hint in parentheses.
-	got := reuseDetail("osx-tahoe-26", "g2.mac.m2pro.6c-14g")
+	// Two lines: the stack title, then the machine display name plus its spec in
+	// parentheses.
+	got := reuseDetail("Xcode 26", "M2 Pro Large", "6 vCPU · 14 GB")
 	lines := strings.Split(got, "\n")
 	if len(lines) != 2 {
 		t.Fatalf("reuseDetail lines = %d, want 2: %q", len(lines), got)
 	}
-	if !strings.Contains(lines[0], "Image") || !strings.Contains(lines[0], "macOS Tahoe (Xcode 26)") {
-		t.Errorf("image line = %q", lines[0])
+	if !strings.Contains(lines[0], "Stack") || !strings.Contains(lines[0], "Xcode 26") {
+		t.Errorf("stack line = %q", lines[0])
 	}
-	if !strings.Contains(lines[1], "Machine type") || !strings.Contains(lines[1], "g2.mac.m2pro.6c-14g") || !strings.Contains(lines[1], "6 vCPU · 14 GB") {
+	if !strings.Contains(lines[1], "Machine type") || !strings.Contains(lines[1], "M2 Pro Large") || !strings.Contains(lines[1], "6 vCPU · 14 GB") {
 		t.Errorf("machine line = %q", lines[1])
 	}
-	// A machine name without a parseable spec tail omits the parenthetical.
-	if got := reuseDetail("linux-bitvirt-2026", "g2.mac"); strings.Contains(got, "(") {
+	// No spec → no parenthetical.
+	if got := reuseDetail("Ubuntu 24.04", "g2.mac", ""); strings.Contains(got, "(") {
 		t.Errorf("reuseDetail without specs should have no parens: %q", got)
 	}
 }
@@ -157,18 +198,18 @@ func TestReuseDetail(t *testing.T) {
 func TestBuildReuseMenu(t *testing.T) {
 	for _, tc := range []struct {
 		name         string
-		multiImage   bool
+		multiStack   bool
 		multiMachine bool
 		wantTitles   []string
 		wantActions  []reuseAction
 	}{
 		{"both changeable", true, true,
-			[]string{"Use this setup", "Change image", "Change machine type"},
-			[]reuseAction{reuseUse, reuseChangeImage, reuseChangeMachine}},
+			[]string{"Use this setup", "Change stack", "Change machine type"},
+			[]reuseAction{reuseUse, reuseChangeStack, reuseChangeMachine}},
 		{"single machine type hides machine row", true, false,
-			[]string{"Use this setup", "Change image"},
-			[]reuseAction{reuseUse, reuseChangeImage}},
-		{"single image hides image row", false, true,
+			[]string{"Use this setup", "Change stack"},
+			[]reuseAction{reuseUse, reuseChangeStack}},
+		{"single stack hides stack row", false, true,
 			[]string{"Use this setup", "Change machine type"},
 			[]reuseAction{reuseUse, reuseChangeMachine}},
 		{"single of both → reuse only", false, false,
@@ -176,7 +217,7 @@ func TestBuildReuseMenu(t *testing.T) {
 			[]reuseAction{reuseUse}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			items, actions := buildReuseMenu(tc.multiImage, tc.multiMachine)
+			items, actions := buildReuseMenu(tc.multiStack, tc.multiMachine)
 			if len(items) != len(tc.wantTitles) {
 				t.Fatalf("items = %d, want %d", len(items), len(tc.wantTitles))
 			}
@@ -209,5 +250,64 @@ func TestMachineSpecHint(t *testing.T) {
 		if got := machineSpecHint(tc.name); got != tc.want {
 			t.Errorf("machineSpecHint(%q) = %q, want %q", tc.name, got, tc.want)
 		}
+	}
+}
+
+func TestMachineItem_UsesBackendTitleAndSpecs(t *testing.T) {
+	byName := indexMachineTypes([]internalrde.MachineType{
+		{Name: "g2.mac.m2pro.4c-6g", Title: "M2 Pro Large", CPU: "4 vCPU", RAM: "6 GB"},
+		{Name: "g2.bare"}, // no friendly metadata
+	})
+	item := machineItem(byName)
+
+	// Friendly title becomes the row title; the specs are the dim secondary
+	// text. The raw contract name is intentionally NOT shown — it's just noise.
+	got := item("g2.mac.m2pro.4c-6g")
+	if got.Title != "M2 Pro Large" {
+		t.Errorf("title = %q, want M2 Pro Large", got.Title)
+	}
+	if got.Desc != "4 vCPU · 6 GB" {
+		t.Errorf("desc = %q, want %q", got.Desc, "4 vCPU · 6 GB")
+	}
+	if strings.Contains(got.Desc, "g2.mac.m2pro.4c-6g") {
+		t.Errorf("desc %q should not include the raw machine-type name", got.Desc)
+	}
+
+	// No backend metadata → row title is the raw name (no name duplicated in desc).
+	bare := item("g2.bare")
+	if bare.Title != "g2.bare" {
+		t.Errorf("title = %q, want raw name g2.bare", bare.Title)
+	}
+
+	// Name absent from the catalog map → graceful fallback to the raw name.
+	if unknown := item("nope"); unknown.Title != "nope" {
+		t.Errorf("title = %q, want nope", unknown.Title)
+	}
+}
+
+func TestMachineLabel(t *testing.T) {
+	cases := map[string]struct {
+		mt   internalrde.MachineType
+		want string
+	}{
+		"backend title + specs": {
+			internalrde.MachineType{Name: "g2.mac.m2pro.12c-28g", Title: "M2 Pro Large", CPU: "12 vCPU", RAM: "28 GB"},
+			"M2 Pro Large (12 vCPU · 28 GB)",
+		},
+		"no title, specs parsed from name": {
+			internalrde.MachineType{Name: "g2.mac.m2pro.12c-28g"},
+			"g2.mac.m2pro.12c-28g (12 vCPU · 28 GB)",
+		},
+		"no title, no parseable specs": {
+			internalrde.MachineType{Name: "g2.bare"},
+			"g2.bare",
+		},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			if got := machineLabel(tc.mt); got != tc.want {
+				t.Errorf("machineLabel = %q, want %q", got, tc.want)
+			}
+		})
 	}
 }

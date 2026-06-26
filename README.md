@@ -140,14 +140,13 @@ details) under [docs/cli](docs/cli/bitrise-cli.md).
 | Command | Description |
 |---|---|
 | [`rde claude`](docs/cli/bitrise-cli_rde_claude.md) | Create an RDE session and attach to Claude Code |
-| [`rde image list`](docs/cli/bitrise-cli_rde_image_list.md) | List machine images |
-| [`rde machine-type list`](docs/cli/bitrise-cli_rde_machine-type_list.md) | List machine types compatible with a given image |
+| [`rde machine-type list`](docs/cli/bitrise-cli_rde_machine-type_list.md) | List machine types compatible with a given stack |
 | [`rde saved-input create`](docs/cli/bitrise-cli_rde_saved-input_create.md) | Create a new saved input |
 | [`rde saved-input delete`](docs/cli/bitrise-cli_rde_saved-input_delete.md) | Delete a saved input |
 | [`rde saved-input list`](docs/cli/bitrise-cli_rde_saved-input_list.md) | List saved inputs for the authenticated user |
 | [`rde saved-input update`](docs/cli/bitrise-cli_rde_saved-input_update.md) | Update a saved input's value and/or secret flag |
 | [`rde saved-input view`](docs/cli/bitrise-cli_rde_saved-input_view.md) | Show details of a single saved input |
-| [`rde session create`](docs/cli/bitrise-cli_rde_session_create.md) | Create a new RDE session from a template |
+| [`rde session create`](docs/cli/bitrise-cli_rde_session_create.md) | Create a new RDE session |
 | [`rde session delete`](docs/cli/bitrise-cli_rde_session_delete.md) | Permanently delete a session |
 | [`rde session delete-terminated`](docs/cli/bitrise-cli_rde_session_delete-terminated.md) | Permanently delete every terminated session in the workspace |
 | [`rde session diff`](docs/cli/bitrise-cli_rde_session_diff.md) | Compare a session's template snapshot with the current template |
@@ -163,6 +162,7 @@ details) under [docs/cli](docs/cli/bitrise-cli.md).
 | [`rde session upload`](docs/cli/bitrise-cli_rde_session_upload.md) | Upload a local file or directory into a session |
 | [`rde session view`](docs/cli/bitrise-cli_rde_session_view.md) | Show details of a single session |
 | [`rde session vnc`](docs/cli/bitrise-cli_rde_session_vnc.md) | Print VNC connection credentials for a session |
+| [`rde stack list`](docs/cli/bitrise-cli_rde_stack_list.md) | List machine stacks |
 | [`rde template create`](docs/cli/bitrise-cli_rde_template_create.md) | Create a new RDE template from a JSON spec file |
 | [`rde template delete`](docs/cli/bitrise-cli_rde_template_delete.md) | Delete an RDE template |
 | [`rde template list`](docs/cli/bitrise-cli_rde_template_list.md) | List RDE templates in the workspace |

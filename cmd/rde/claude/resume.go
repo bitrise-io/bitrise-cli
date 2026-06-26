@@ -114,8 +114,13 @@ func resumeSession(ctx context.Context, cmd *cobra.Command, svc *internalrde.Ser
 		if _, err := svc.RestoreSession(ctx, rec.WorkspaceID, rec.RDESessionID); err != nil {
 			return fmt.Errorf("restore session: %w", err)
 		}
-		ready, err := svc.WaitForReady(waitCtx, rec.WorkspaceID, rec.RDESessionID, 0)
-		if err != nil {
+		var ready internalrde.Session
+		if err := log.await(waitCtx, "Booting session…", "Session booted",
+			func(c context.Context, status func(string)) error {
+				var e error
+				ready, e = svc.WaitForReady(c, rec.WorkspaceID, rec.RDESessionID, 0, status)
+				return e
+			}); err != nil {
 			return fmt.Errorf("waiting for session: %w", err)
 		}
 		if ready.Status != "running" {
@@ -131,8 +136,11 @@ func resumeSession(ctx context.Context, cmd *cobra.Command, svc *internalrde.Ser
 	// VMs don't linger after you detach.
 	defer terminateOnExit(svc, log, rec.WorkspaceID, rec.RDESessionID, rec.DisplayName())()
 
-	log.step("Waiting for remote access…")
-	if _, err := svc.WaitForSSHReady(waitCtx, rec.WorkspaceID, rec.RDESessionID, 0); err != nil {
+	if err := log.await(waitCtx, "Waiting for remote access…", "Remote access ready",
+		func(c context.Context, _ func(string)) error {
+			_, e := svc.WaitForSSHReady(c, rec.WorkspaceID, rec.RDESessionID, 0)
+			return e
+		}); err != nil {
 		return fmt.Errorf("waiting for SSH access: %w", err)
 	}
 	log.done("Session ready")
@@ -140,9 +148,14 @@ func resumeSession(ctx context.Context, cmd *cobra.Command, svc *internalrde.Ser
 	// Re-establish SSH agent forwarding so git-over-SSH inside the resumed
 	// session keeps working. The repo is already on the persistent disk, so
 	// there's no clone step here.
-	cleanupAgent, repoAuth := ensureAgentHasKey(ctx, log, gitSSHURL(rec.Repo))
+	cleanupAgent, repoAuth, _ := ensureAgentHasKey(ctx, log, gitSSHURL(rec.Repo))
 	defer cleanupAgent()
 	log.step("Auth: %s", repoAuth)
+
+	// Re-apply the user's local git identity (idempotent, global): the repo's
+	// on the persistent disk, but their identity may have changed locally, and
+	// sessions created before this existed never had it set.
+	syncGitIdentity(ctx, svc, log, rec.WorkspaceID, rec.RDESessionID)
 
 	// ── Claude Code ────────────────────────────────────────────────
 	log.group("Claude Code")
