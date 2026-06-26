@@ -70,8 +70,11 @@ new commands extend the services without touching the cmd layer's shape.
   5. Auth file (token + type only): `$XDG_CONFIG_HOME/bitrise/auth.yaml`
   6. Built-in defaults
 - **Token storage**: `bitrise-cli auth login` writes the token to
-  `auth.yaml`. PAT and WAT tokens are stored identically (same wire format —
-  no type field). Resolve order for tokens: env > auth.yaml.
+  `auth.yaml`. In an interactive terminal it defaults to browser OAuth,
+  storing a managed PAT that auto-refreshes (`--with-token` pastes/pipes a
+  token, `--email` mints one via email/password). PAT and WAT tokens are
+  stored identically (same wire format — no type field). Resolve order for
+  tokens: env > auth.yaml.
 - **File perms**: both `config.yaml` and `auth.yaml` are 0600; parent dir 0700.
 - **Bitrise verbs**: `build trigger` (not create); `build abort` (not
   cancel) when added; `build rerun` for re-runs; `view` is the detail verb.
@@ -116,7 +119,6 @@ intentionally out of scope right now. Don't reopen the discussion as part
 of an unrelated change:
 
 - `bitrise-cli api` raw HTTP wrapper
-- OAuth login flow (current `auth login` is token-paste only, no OAuth)
 - `--json fields` projection + `--jq` expression
 - `--dry-run` for mutating commands
 - Workspace concept (`workspace use`, `--workspace`)
