@@ -23,28 +23,33 @@ import (
 //
 // Entirely best-effort: any failure just means the clone may prompt or fail,
 // which the user sees live. The returned cleanup is never nil; auth is a short
-// description of the resulting git-clone auth method, for display.
-func ensureAgentHasKey(ctx context.Context, log *stepLogger, cloneURL string) (cleanup func(), auth string) {
+// description of the resulting git-clone auth method, for display; haveKey
+// reports whether the forwarded agent ends up with a usable key (the caller
+// falls back to HTTPS for the clone when it doesn't).
+func ensureAgentHasKey(ctx context.Context, log *stepLogger, cloneURL string) (cleanup func(), auth string, haveKey bool) {
 	cleanup = func() {}
 
 	// Agent forwarding only helps SSH remotes; HTTPS clones don't use it.
 	if !isSSHCloneURL(cloneURL) {
-		return cleanup, "HTTPS remote (no SSH key forwarding)"
+		return cleanup, "HTTPS remote (no SSH key forwarding)", false
 	}
 	// ssh-add may prompt for a passphrase, so only attempt it with a real
 	// terminal (the rest of rde claude needs one anyway).
 	if !cmdutil.IsTerminal(os.Stdin) {
-		return cleanup, forwardedAgentDesc(ctx)
+		desc, have := forwardedAgentDesc(ctx)
+		return cleanup, desc, have
 	}
 
 	switch agentState(ctx) {
 	case agentHasKeys, agentUnknown:
-		return cleanup, forwardedAgentDesc(ctx)
+		desc, have := forwardedAgentDesc(ctx)
+		return cleanup, desc, have
 	case agentNoAgent:
 		c, err := startAgent(ctx)
 		if err != nil {
-			log.warn("No SSH agent running and could not start one (%v); git clone of private repos in the session may fail.", err)
-			return cleanup, forwardedAgentDesc(ctx)
+			log.warn("No SSH agent running and could not start one (%v).", err)
+			desc, have := forwardedAgentDesc(ctx)
+			return cleanup, desc, have
 		}
 		log.step("Started a temporary SSH agent")
 		cleanup = c
@@ -55,8 +60,9 @@ func ensureAgentHasKey(ctx context.Context, log *stepLogger, cloneURL string) (c
 
 	key := pickIdentityFile(ctx, sshHostFromURL(cloneURL))
 	if key == "" {
-		log.warn("SSH agent has no keys and no key file was found to add; private clones may fail.")
-		return cleanup, forwardedAgentDesc(ctx)
+		log.warn("SSH agent has no keys and no key file was found to add.")
+		desc, have := forwardedAgentDesc(ctx)
+		return cleanup, desc, have
 	}
 	log.step("Adding SSH key %s to the agent…", key)
 	// Indent ssh-add's output (e.g. "Identity added: …") under the group, like
@@ -69,19 +75,21 @@ func ensureAgentHasKey(ctx context.Context, log *stepLogger, cloneURL string) (c
 	add.Stdout = out
 	add.Stderr = out
 	_ = add.Run() // best-effort; the clone surfaces any remaining auth error
-	return cleanup, forwardedAgentDesc(ctx)
+	desc, have := forwardedAgentDesc(ctx)
+	return cleanup, desc, have
 }
 
 // forwardedAgentDesc describes the git-clone auth method based on what the
-// local SSH agent currently holds (and will therefore forward into the VM).
-func forwardedAgentDesc(ctx context.Context) string {
+// local SSH agent currently holds (and will therefore forward into the VM), and
+// reports whether it holds at least one key.
+func forwardedAgentDesc(ctx context.Context) (desc string, haveKey bool) {
 	switch n := agentKeyCount(ctx); {
 	case n == 1:
-		return "forwarded SSH agent (1 key)"
+		return "forwarded SSH agent (1 key)", true
 	case n > 1:
-		return fmt.Sprintf("forwarded SSH agent (%d keys)", n)
+		return fmt.Sprintf("forwarded SSH agent (%d keys)", n), true
 	default:
-		return "no forwarded SSH agent keys"
+		return "no forwarded SSH agent keys", false
 	}
 }
 

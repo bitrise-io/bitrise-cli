@@ -61,6 +61,55 @@ func TestGitSSHURL(t *testing.T) {
 	}
 }
 
+func TestGitHTTPSURL(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		in   string
+		want string
+	}{
+		{"https passthrough", "https://github.com/org/repo.git", "https://github.com/org/repo.git"},
+		{"https no suffix passthrough", "https://github.com/org/repo", "https://github.com/org/repo"},
+		{"github ssh rewrite", "git@github.com:org/repo.git", "https://github.com/org/repo.git"},
+		{"github ssh no suffix", "git@github.com:org/repo", "https://github.com/org/repo.git"},
+		{"ssh scheme rewrite", "ssh://git@github.com/org/repo.git", "https://github.com/org/repo.git"},
+		{"gitlab nested path", "git@gitlab.com:group/sub/repo.git", "https://gitlab.com/group/sub/repo.git"},
+		{"bitbucket ssh rewrite", "git@bitbucket.org:team/repo.git", "https://bitbucket.org/team/repo.git"},
+		{"unknown host left as-is", "git@git.example.com:org/repo.git", "git@git.example.com:org/repo.git"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := gitHTTPSURL(tc.in); got != tc.want {
+				t.Errorf("gitHTTPSURL(%q) = %q, want %q", tc.in, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestChooseCloneURL(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		origin     string
+		haveSSHKey bool
+		wantURL    string
+		wantHTTPS  bool
+	}{
+		{"key, https origin → ssh", "https://github.com/org/repo.git", true, "git@github.com:org/repo.git", false},
+		{"key, ssh origin → ssh", "git@github.com:org/repo.git", true, "git@github.com:org/repo.git", false},
+		{"no key, https origin → https", "https://github.com/org/repo.git", false, "https://github.com/org/repo.git", true},
+		{"no key, ssh origin → https", "git@github.com:org/repo.git", false, "https://github.com/org/repo.git", true},
+		{"no key, ssh no suffix → https", "git@github.com:org/repo", false, "https://github.com/org/repo.git", true},
+		{"no key, unknown host ssh → unchanged", "git@git.example.com:org/repo.git", false, "git@git.example.com:org/repo.git", false},
+		{"no key, unknown host https → unchanged", "https://git.example.com/org/repo.git", false, "https://git.example.com/org/repo.git", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			gotURL, gotHTTPS := chooseCloneURL(tc.origin, tc.haveSSHKey)
+			if gotURL != tc.wantURL || gotHTTPS != tc.wantHTTPS {
+				t.Errorf("chooseCloneURL(%q, %v) = (%q, %v), want (%q, %v)",
+					tc.origin, tc.haveSSHKey, gotURL, gotHTTPS, tc.wantURL, tc.wantHTTPS)
+			}
+		})
+	}
+}
+
 func TestSSHHostFromURL(t *testing.T) {
 	for _, tc := range []struct {
 		name string
@@ -174,11 +223,11 @@ func TestExtractToken(t *testing.T) {
 func TestBuildCloneCommand(t *testing.T) {
 	const url = "git@github.com:org/repo.git"
 	if got, want := buildCloneCommand(url, "repo", "main", false),
-		"GIT_SSH_COMMAND='ssh -o StrictHostKeyChecking=accept-new' git clone --branch main git@github.com:org/repo.git repo"; got != want {
+		"GIT_TERMINAL_PROMPT=0 GIT_SSH_COMMAND='ssh -o StrictHostKeyChecking=accept-new' git clone --branch main git@github.com:org/repo.git repo"; got != want {
 		t.Errorf("with branch:\n got  %q\n want %q", got, want)
 	}
 	if got, want := buildCloneCommand(url, "repo", "feature/x", true),
-		"GIT_SSH_COMMAND='ssh -o StrictHostKeyChecking=accept-new' git clone git@github.com:org/repo.git repo"; got != want {
+		"GIT_TERMINAL_PROMPT=0 GIT_SSH_COMMAND='ssh -o StrictHostKeyChecking=accept-new' git clone git@github.com:org/repo.git repo"; got != want {
 		t.Errorf("default branch:\n got  %q\n want %q", got, want)
 	}
 }

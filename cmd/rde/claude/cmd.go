@@ -298,8 +298,16 @@ func runFresh(ctx context.Context, cmd *cobra.Command, opts freshOptions) error 
 	// sure an agent is running with a key loaded before we dial in.
 	// cleanupAgent kills a temporary agent we may have started; it
 	// must outlive the claude session, so defer it to command exit.
-	cleanupAgent, repoAuth := ensureAgentHasKey(ctx, log, cloneURL)
+	cleanupAgent, repoAuth, haveSSHKey := ensureAgentHasKey(ctx, log, cloneURL)
 	defer cleanupAgent()
+
+	// Without a forwarded SSH key an SSH clone fails even for a public repo, so
+	// fall back to the repo's HTTPS URL — public repositories clone with no
+	// credentials. Private repos still need a key (HTTPS would prompt and fail).
+	cloneURL, viaHTTPS := chooseCloneURL(originURL, haveSSHKey)
+	if viaHTTPS {
+		repoAuth = "HTTPS (no SSH key found; public repos only)"
+	}
 	log.step("Auth: %s", repoAuth)
 
 	// Clone the same repo + branch into the session over the
@@ -491,15 +499,16 @@ func remoteHasBranch(ctx context.Context, branch string) (found, determined bool
 // repoDir. When useDefaultBranch is true it omits --branch, so git clones the
 // remote's default branch (the fallback when the local branch isn't pushed).
 // GIT_SSH_COMMAND's accept-new keeps the non-interactive clone from hanging on
-// a host-key prompt.
+// a host-key prompt; GIT_TERMINAL_PROMPT=0 makes an HTTPS clone of a private
+// repo (no credentials) fail fast instead of hanging on a username prompt.
 func buildCloneCommand(cloneURL, repoDir, branch string, useDefaultBranch bool) string {
-	sshEnv := "GIT_SSH_COMMAND=" + cmdutil.ShellQuote("ssh -o StrictHostKeyChecking=accept-new")
+	env := "GIT_TERMINAL_PROMPT=0 GIT_SSH_COMMAND=" + cmdutil.ShellQuote("ssh -o StrictHostKeyChecking=accept-new")
 	if useDefaultBranch {
 		return fmt.Sprintf("%s git clone %s %s",
-			sshEnv, cmdutil.ShellQuote(cloneURL), cmdutil.ShellQuote(repoDir))
+			env, cmdutil.ShellQuote(cloneURL), cmdutil.ShellQuote(repoDir))
 	}
 	return fmt.Sprintf("%s git clone --branch %s %s %s",
-		sshEnv, cmdutil.ShellQuote(branch), cmdutil.ShellQuote(cloneURL), cmdutil.ShellQuote(repoDir))
+		env, cmdutil.ShellQuote(branch), cmdutil.ShellQuote(cloneURL), cmdutil.ShellQuote(repoDir))
 }
 
 // syncGitIdentity copies the user's local git identity (user.name/user.email)
@@ -743,6 +752,40 @@ func gitSSHURL(raw string) string {
 		path += ".git"
 	}
 	return "git@" + host + ":" + path
+}
+
+// gitHTTPSURL rewrites a known-host SSH clone URL into its HTTPS form
+// (git@github.com:org/repo.git → https://github.com/org/repo.git) so a public
+// repository clones without an SSH key. URLs that are already HTTPS, or that
+// target a host we don't recognise, are returned unchanged.
+func gitHTTPSURL(raw string) string {
+	if strings.HasPrefix(raw, "https://") {
+		return raw
+	}
+	host := sshHostFromURL(raw)
+	if !sshRewriteHosts[host] {
+		return raw
+	}
+	slug := repoSlugFromURL(raw)
+	if slug == "" {
+		return raw
+	}
+	return "https://" + host + "/" + slug + ".git"
+}
+
+// chooseCloneURL picks the URL the in-session clone should use. With a forwarded
+// SSH key it prefers the SSH form (so private repos clone); without one it falls
+// back to the repo's HTTPS form so public repositories still clone. Unknown
+// hosts (no SSH⇄HTTPS rewrite) are left as-is. viaHTTPS reports the fallback.
+func chooseCloneURL(originURL string, haveSSHKey bool) (cloneURL string, viaHTTPS bool) {
+	ssh := gitSSHURL(originURL)
+	if haveSSHKey || !isSSHCloneURL(ssh) {
+		return ssh, false
+	}
+	if https := gitHTTPSURL(originURL); strings.HasPrefix(https, "https://") {
+		return https, true
+	}
+	return ssh, false
 }
 
 // repoDirFromURL derives the directory name `git clone` would create from a
