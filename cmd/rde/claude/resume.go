@@ -148,7 +148,7 @@ func resumeSession(ctx context.Context, cmd *cobra.Command, svc *internalrde.Ser
 	// Re-establish SSH agent forwarding so git-over-SSH inside the resumed
 	// session keeps working. The repo is already on the persistent disk, so
 	// there's no clone step here.
-	cleanupAgent, repoAuth := ensureAgentHasKey(ctx, log, gitSSHURL(rec.Repo))
+	cleanupAgent, repoAuth, _ := ensureAgentHasKey(ctx, log, gitSSHURL(rec.Repo))
 	defer cleanupAgent()
 	log.step("Auth: %s", repoAuth)
 
