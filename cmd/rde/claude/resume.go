@@ -133,8 +133,11 @@ func resumeSession(ctx context.Context, cmd *cobra.Command, svc *internalrde.Ser
 	}
 
 	// Resume keeps the terminate-on-exit lifecycle, same as a fresh run, so
-	// VMs don't linger after you detach.
-	defer terminateOnExit(svc, log, rec.WorkspaceID, rec.RDESessionID, rec.DisplayName())()
+	// VMs don't linger after you detach. The exception is leaveRunning: when the
+	// user interrupts a reconnect, the VM is left running so they can reconnect
+	// later.
+	leaveRunning := false
+	defer terminateOnExit(svc, log, rec.WorkspaceID, rec.RDESessionID, rec.DisplayName(), &leaveRunning)()
 
 	if err := log.await(waitCtx, "Waiting for remote access…", "Remote access ready",
 		func(c context.Context, _ func(string)) error {
@@ -168,6 +171,10 @@ func resumeSession(ctx context.Context, cmd *cobra.Command, svc *internalrde.Ser
 		record:          rec,
 		describe:        newDescriber(repoSlugFromURL(rec.Repo), rec.Branch),
 	})
+	if errors.Is(err, errReconnectInterrupted) {
+		leaveRunning = true // skip termination; deferred cleanup leaves the VM up
+		return nil
+	}
 	if err != nil {
 		return err
 	}

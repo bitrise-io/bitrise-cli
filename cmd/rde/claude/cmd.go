@@ -256,8 +256,11 @@ func runFresh(ctx context.Context, cmd *cobra.Command, opts freshOptions) error 
 
 	// Terminate the session on every exit path, including PTY errors
 	// and Ctrl-C. Terminating stops the VM but preserves the session so
-	// it can be restored later.
-	defer terminateOnExit(svc, log, workspaceID, sessionID, name)()
+	// it can be restored later. The one exception is leaveRunning: when the
+	// user interrupts a reconnect, the VM is left running so they can
+	// reconnect later.
+	leaveRunning := false
+	defer terminateOnExit(svc, log, workspaceID, sessionID, name, &leaveRunning)()
 
 	// The whole startup wait — reaching "running" and then SSH
 	// credentials being issued — shares one timeout budget.
@@ -363,6 +366,10 @@ func runFresh(ctx context.Context, cmd *cobra.Command, opts freshOptions) error 
 		record:          rec,
 		describe:        newDescriber(repoSlugFromURL(originURL), branch),
 	})
+	if errors.Is(err, errReconnectInterrupted) {
+		leaveRunning = true // skip termination; deferred cleanup leaves the VM up
+		return nil
+	}
 	if err != nil {
 		return err
 	}
@@ -454,8 +461,18 @@ func claudeExitError(cmd *cobra.Command, exitCode int) error {
 // stops the VM but preserves the session so it can be restored later. A fresh
 // context is used because the command context may already be cancelled (e.g.
 // Ctrl-C) by the time cleanup runs.
-func terminateOnExit(svc *internalrde.Service, log *stepLogger, workspaceID, sessionID, name string) func() {
+//
+// When *leaveRunning is true the VM is left running instead — the user
+// interrupted a reconnect (see errReconnectInterrupted), so claude keeps
+// running in tmux and they can reconnect later. leaveRunning may be nil, which
+// reads as false (always terminate).
+func terminateOnExit(svc *internalrde.Service, log *stepLogger, workspaceID, sessionID, name string, leaveRunning *bool) func() {
 	return func() {
+		if leaveRunning != nil && *leaveRunning {
+			log.group("Disconnected")
+			log.step("Left session %q running; reconnect with 'rde claude --resume %s'.", name, sessionID)
+			return
+		}
 		log.group("Cleanup")
 		log.step("Terminating session %q…", name)
 		termCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -686,29 +703,41 @@ func ensureClaudeAuth(ctx context.Context, svc *internalrde.Service, log *stepLo
 	return nil
 }
 
-const (
-	reconnectInterval = 3 * time.Second
-	reconnectTimeout  = 5 * time.Minute
-)
+const reconnectInterval = 3 * time.Second
+
+// errReconnectInterrupted signals that the user pressed Ctrl-C while we were
+// retrying to reconnect after a dropped connection. Unlike every other exit
+// path, this one deliberately LEAVES the session's VM running so the user can
+// reconnect later (e.g. 'rde claude --continue'); the command treats it as a
+// clean, non-error exit. (Ctrl-C only reaches us between/around reconnect
+// attempts — while attached, the terminal is raw and Ctrl-C goes to claude.)
+var errReconnectInterrupted = errors.New("reconnect interrupted")
 
 // reattachWithRetry keeps reattaching to the session's tmux after the
-// connection drops, until claude exits cleanly, the retry budget elapses, or
-// the context is cancelled. Each attempt's dial is itself retried inside
-// ExecuteInteractive, so a brief outage resolves on the next attempt.
+// connection drops, retrying indefinitely until claude exits, a fatal error
+// occurs, or the user interrupts with Ctrl-C. Each attempt's dial is itself
+// retried inside ExecuteInteractive, so a brief outage resolves on the next
+// attempt. On interrupt it returns errReconnectInterrupted so the caller leaves
+// the session running rather than tearing it down.
 func reattachWithRetry(ctx context.Context, svc *internalrde.Service, log *stepLogger, workspaceID, sessionID string) (int, error) {
-	deadline := time.Now().Add(reconnectTimeout)
 	for attempt := 1; ; attempt++ {
+		if ctx.Err() != nil {
+			return -1, errReconnectInterrupted
+		}
 		log.step("Reattaching to Claude Code (attempt %d)…", attempt)
 		code, err := svc.ExecuteInteractive(ctx, workspaceID, sessionID, buildReattachCommand(), os.Stdin, os.Stdout, os.Stderr)
 		if !errors.Is(err, internalrde.ErrConnectionLost) {
+			// A cancelled dial (Ctrl-C mid-attempt) surfaces as a non-ErrConnectionLost
+			// error wrapping ctx.Err(); treat it as an interrupt, not a fatal error.
+			if ctx.Err() != nil {
+				return -1, errReconnectInterrupted
+			}
 			return code, err // clean exit, real exit code, or a fatal error
 		}
-		if time.Now().After(deadline) {
-			return -1, fmt.Errorf("gave up reconnecting after %s: %w", reconnectTimeout, err)
-		}
+		// Still unreachable — wait and try again, unless interrupted meanwhile.
 		select {
 		case <-ctx.Done():
-			return -1, ctx.Err()
+			return -1, errReconnectInterrupted
 		case <-time.After(reconnectInterval):
 		}
 	}
