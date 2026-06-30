@@ -310,6 +310,24 @@ func TestSoleWorkspace(t *testing.T) {
 	})
 }
 
+func TestSortWorkspaces(t *testing.T) {
+	got := SortWorkspaces([]bitriseapi.Organization{
+		{Slug: "zeta"},                   // unnamed → last
+		{Slug: "z-acme", Name: "Acme"},   // named → first, alphabetical
+		{Slug: "alpha"},                  // unnamed → last, by slug
+		{Slug: "z-zebra", Name: "zebra"}, // named, case-insensitive after Acme
+	})
+	want := []string{"z-acme", "z-zebra", "alpha", "zeta"}
+	if len(got) != len(want) {
+		t.Fatalf("got %d workspaces, want %d", len(got), len(want))
+	}
+	for i, w := range want {
+		if got[i].Slug != w {
+			t.Errorf("position %d: got %q, want %q (full order: %+v)", i, got[i].Slug, w, got)
+		}
+	}
+}
+
 func TestDefaultWorkspace(t *testing.T) {
 	t.Run("single workspace auto-detected", func(t *testing.T) {
 		client := fakeAPI(t, orgsBody(`{"data":[{"slug":"solo","name":"Solo"}],"paging":{}}`))

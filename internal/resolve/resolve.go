@@ -91,12 +91,12 @@ func SoleWorkspace(orgs []bitriseapi.Organization) (bitriseapi.Organization, err
 	}
 }
 
-// workspaceList renders workspaces one per indented line as "name (id)",
-// sorted by name so a user can scan for the one they recognize and copy its
-// ID. Workspaces the API returned without a name fall back to the bare ID and
-// sort last. The bare ID is always present so it can be passed to --workspace
-// or config set default_workspace_id.
-func workspaceList(orgs []bitriseapi.Organization) string {
+// SortWorkspaces returns a copy of orgs sorted for human display: named
+// workspaces first, alphabetically by name (case-insensitive), then any the API
+// returned without a name, by slug. It's the single source of ordering for both
+// the multiple-workspaces error list and the interactive workspace picker, so
+// the two stay in sync.
+func SortWorkspaces(orgs []bitriseapi.Organization) []bitriseapi.Organization {
 	sorted := append([]bitriseapi.Organization(nil), orgs...)
 	sort.Slice(sorted, func(i, j int) bool {
 		ni, nj := sorted[i].Name, sorted[j].Name
@@ -108,6 +108,16 @@ func workspaceList(orgs []bitriseapi.Organization) string {
 		}
 		return sorted[i].Slug < sorted[j].Slug
 	})
+	return sorted
+}
+
+// workspaceList renders workspaces one per indented line as "name (id)",
+// sorted by name so a user can scan for the one they recognize and copy its
+// ID. Workspaces the API returned without a name fall back to the bare ID and
+// sort last. The bare ID is always present so it can be passed to --workspace
+// or config set default_workspace_id.
+func workspaceList(orgs []bitriseapi.Organization) string {
+	sorted := SortWorkspaces(orgs)
 	lines := make([]string, len(sorted))
 	for i, o := range sorted {
 		if o.Name != "" {
