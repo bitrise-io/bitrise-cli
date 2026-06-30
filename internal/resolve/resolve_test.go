@@ -327,24 +327,3 @@ func TestSortWorkspaces(t *testing.T) {
 		}
 	}
 }
-
-func TestDefaultWorkspace(t *testing.T) {
-	t.Run("single workspace auto-detected", func(t *testing.T) {
-		client := fakeAPI(t, orgsBody(`{"data":[{"slug":"solo","name":"Solo"}],"paging":{}}`))
-		ws, err := New(client, nil).DefaultWorkspace(context.Background())
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if ws.Slug != "solo" || ws.Name != "Solo" {
-			t.Errorf("got %+v, want {solo Solo}", ws)
-		}
-	})
-
-	t.Run("multiple workspaces error", func(t *testing.T) {
-		client := fakeAPI(t, orgsBody(`{"data":[{"slug":"a"},{"slug":"b"}],"paging":{}}`))
-		_, err := New(client, nil).DefaultWorkspace(context.Background())
-		if err == nil || !strings.Contains(err.Error(), "multiple workspaces") {
-			t.Fatalf("expected multiple-workspaces error, got %v", err)
-		}
-	})
-}

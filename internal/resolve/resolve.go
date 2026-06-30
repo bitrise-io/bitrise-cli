@@ -129,16 +129,6 @@ func workspaceList(orgs []bitriseapi.Organization) string {
 	return strings.Join(lines, "\n")
 }
 
-// DefaultWorkspace fetches the user's workspaces (GET /organizations) and
-// returns the only one. See SoleWorkspace for the zero/multiple cases.
-func (r *Resolver) DefaultWorkspace(ctx context.Context) (bitriseapi.Organization, error) {
-	orgs, err := r.client.Organizations(ctx)
-	if err != nil {
-		return bitriseapi.Organization{}, fmt.Errorf("list workspaces: %w", err)
-	}
-	return SoleWorkspace(orgs)
-}
-
 // ResolveApp is like AppSlug but returns the full bitriseapi.App when value
 // was matched by a name query, so the caller can skip a second GET /apps/{slug}.
 // complete=false means value was not resolved by name: app.Slug holds the
