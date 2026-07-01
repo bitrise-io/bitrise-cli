@@ -36,12 +36,17 @@ const (
 	ToneDim                 // grey / de-emphasized
 )
 
-// Item is one selectable row.
+// Item is one row. Most items are selectable; set Divider to make a
+// non-selectable group header instead.
 type Item struct {
 	Title  string // primary text (e.g. an image name or a session title)
 	Desc   string // optional dim secondary text shown after the title
 	Status string // optional right-side status word ("" = none)
 	Tone   Tone   // color hint for Status
+	// Divider marks a non-selectable separator row — a group header. The cursor
+	// skips over it, Enter can't choose it, and it renders as a dim bold header
+	// rather than a normal row. Only Title is used; the other fields are ignored.
+	Divider bool
 }
 
 // Config controls a single Select call.
@@ -154,8 +159,30 @@ func newModel(cfg Config) model {
 		s:           s,
 		cursorStyle: s.Brand.Bold(true),
 	}
+	m.cursor = m.selectableCursor(cursor) // never open the cursor on a divider
 	m.clampOffset()
 	return m
+}
+
+// selectableCursor returns a view index that lands on a selectable (non-divider)
+// row: it searches from want forward, then backward, so a group header is never
+// the highlighted row. Falls back to want when every visible row is a divider
+// (callers always include at least one selectable item, so this is defensive).
+func (m model) selectableCursor(want int) int {
+	if want < 0 || want >= len(m.view) {
+		want = 0
+	}
+	for i := want; i < len(m.view); i++ {
+		if !m.items[m.view[i]].Divider {
+			return i
+		}
+	}
+	for i := want - 1; i >= 0; i-- {
+		if !m.items[m.view[i]].Divider {
+			return i
+		}
+	}
+	return want
 }
 
 func (m model) Init() tea.Cmd { return nil }
@@ -178,7 +205,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case tea.KeyDown:
 			m.move(1)
 		case tea.KeyEnter:
-			if len(m.view) > 0 {
+			if len(m.view) > 0 && !m.items[m.view[m.cursor]].Divider {
 				m.chosen = m.view[m.cursor]
 				return m, tea.Quit
 			}
@@ -251,6 +278,12 @@ func (m model) View() string {
 	for vi := start; vi < end; vi++ {
 		itemIdx := m.view[vi]
 		it := m.items[itemIdx]
+		if it.Divider {
+			// A group header: flush-left, bold/dim, never carries the cursor.
+			b.WriteString(m.s.Header.Render(it.Title))
+			b.WriteByte('\n')
+			continue
+		}
 		marker := "  "
 		title := it.Title
 		if vi == m.cursor {
@@ -298,20 +331,25 @@ func (m model) toneStyle(t Tone) lipgloss.Style {
 	}
 }
 
-// move shifts the cursor within the filtered view (clamped, no wrap) and keeps
-// it inside the scroll window.
+// move shifts the cursor within the filtered view (clamped, no wrap), skipping
+// over any divider rows, and keeps it inside the scroll window. When there's no
+// selectable row further in the given direction the cursor stays put.
 func (m *model) move(delta int) {
-	if len(m.view) == 0 {
+	if len(m.view) == 0 || delta == 0 {
 		return
 	}
-	m.cursor += delta
-	if m.cursor < 0 {
-		m.cursor = 0
+	next := m.cursor
+	for {
+		next += delta
+		if next < 0 || next >= len(m.view) {
+			return // edge reached with only dividers beyond: stay put
+		}
+		if !m.items[m.view[next]].Divider {
+			m.cursor = next
+			m.clampOffset()
+			return
+		}
 	}
-	if m.cursor >= len(m.view) {
-		m.cursor = len(m.view) - 1
-	}
-	m.clampOffset()
 }
 
 // applyFilter rebuilds the visible view from a case-insensitive substring match
@@ -325,7 +363,7 @@ func (m *model) applyFilter() {
 		}
 	}
 	m.view = view
-	m.cursor = 0
+	m.cursor = m.selectableCursor(0)
 	m.offset = 0
 }
 
