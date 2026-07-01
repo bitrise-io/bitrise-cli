@@ -14,6 +14,7 @@ import (
 
 	"github.com/bitrise-io/bitrise-cli/bitriseapi"
 	rdeapi "github.com/bitrise-io/bitrise-cli/bitriseapi/rde"
+	"github.com/bitrise-io/bitrise-cli/cmd/cmdutil/picker"
 	"github.com/bitrise-io/bitrise-cli/internal/cache"
 	"github.com/bitrise-io/bitrise-cli/internal/config"
 	"github.com/bitrise-io/bitrise-cli/internal/oauth"
@@ -65,10 +66,11 @@ func ResolveAppSlug(cmd *cobra.Command) (string, error) {
 
 // ResolveWorkspaceID returns the workspace ID, preferring --workspace, then
 // BITRISE_WORKSPACE_ID, then the default_workspace_id config key. When none is
-// set and the account has exactly one workspace, that workspace is used
-// automatically (one GET /organizations call); 0 or 2+ workspaces produce a
-// friendly error. (On the Bitrise API this identifier is a slug; the CLI never
-// exposes that term.)
+// set the account's workspaces are fetched (one GET /organizations call): a sole
+// workspace is used automatically, and with 2+ workspaces an interactive
+// terminal gets a picker while non-interactive (or JSON) callers get a friendly
+// error listing the options. Zero workspaces always errors. (On the Bitrise API
+// this identifier is a slug; the CLI never exposes that term.)
 func ResolveWorkspaceID(cmd *cobra.Command) (string, error) {
 	if v, _ := cmd.Flags().GetString(FlagWorkspace); v != "" {
 		return v, nil
@@ -76,12 +78,23 @@ func ResolveWorkspaceID(cmd *cobra.Command) (string, error) {
 	if v := config.FromContext(cmd.Context()).WorkspaceID; v != "" {
 		return v, nil
 	}
-	// Nothing configured — fall back to the account's sole workspace.
+	// Nothing configured — look at the account's workspaces.
 	client, err := NewAPIClient(cmd)
 	if err != nil {
 		return "", err
 	}
-	ws, err := NewResolver(cmd, client).DefaultWorkspace(cmd.Context())
+	orgs, err := client.Organizations(cmd.Context())
+	if err != nil {
+		return "", fmt.Errorf("list workspaces: %w", err)
+	}
+	// 2+ workspaces on an interactive terminal: let the user pick one for this
+	// command (and tell them how to make it the default).
+	if len(orgs) > 1 && interactiveWorkspacePicker(cmd) {
+		return pickWorkspace(cmd, orgs)
+	}
+	// 0, 1, or 2+ non-interactive: deterministic resolution — the sole
+	// workspace, or a friendly error listing the options.
+	ws, err := resolve.SoleWorkspace(orgs)
 	if err != nil {
 		return "", err
 	}
@@ -95,11 +108,64 @@ func ResolveWorkspaceID(cmd *cobra.Command) (string, error) {
 	return ws.Slug, nil
 }
 
+// interactiveWorkspacePicker reports whether the workspace picker can run: it
+// reads keys from stdin and draws to stderr, so both must be a terminal, and it
+// only makes sense for human output (JSON callers want the deterministic error,
+// not a prompt).
+func interactiveWorkspacePicker(cmd *cobra.Command) bool {
+	return ResolveFormat(cmd) == output.Human &&
+		IsTerminal(os.Stdin) && WriterIsTTY(cmd.ErrOrStderr())
+}
+
+// pickWorkspace shows the interactive workspace picker for orgs (assumed 2+) and
+// returns the chosen workspace ID for this command only. It prints the command
+// that pins the choice as the default so the next run skips the prompt. A
+// backout (Esc/q/Ctrl-C) prints "Cancelled." and returns an error that aborts
+// the command without cobra's redundant "Error:" line.
+func pickWorkspace(cmd *cobra.Command, orgs []bitriseapi.Organization) (string, error) {
+	sorted := resolve.SortWorkspaces(orgs)
+	items := make([]picker.Item, len(sorted))
+	for i, o := range sorted {
+		items[i] = picker.Item{Title: workspaceName(o), Desc: o.Slug}
+	}
+	idx, err := picker.Select(cmd.Context(), picker.Config{
+		Prompt:     "Select a workspace",
+		Items:      items,
+		Cursor:     0,
+		DefaultIdx: -1,
+		In:         os.Stdin,
+		Out:        cmd.ErrOrStderr(),
+	})
+	if errors.Is(err, picker.ErrCancelled) {
+		_, _ = fmt.Fprintln(cmd.ErrOrStderr(), "Cancelled.")
+		SilenceRootErrors(cmd)
+		return "", errors.New("workspace selection cancelled")
+	}
+	if err != nil {
+		return "", err
+	}
+	ws := sorted[idx]
+	if !IsQuiet(cmd) {
+		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Using workspace: %s\n", workspaceLabel(ws))
+		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Set it permanently to skip this prompt: bitrise-cli config set %s %s\n", config.KeyDefaultWorkspaceID, ws.Slug)
+	}
+	return ws.Slug, nil
+}
+
 // workspaceLabel renders a workspace for a human breadcrumb as "name (id)",
 // falling back to the bare ID when the API omitted a name.
 func workspaceLabel(ws bitriseapi.Organization) string {
 	if ws.Name != "" {
 		return fmt.Sprintf("%s (%s)", ws.Name, ws.Slug)
+	}
+	return ws.Slug
+}
+
+// workspaceName returns the workspace's display name, falling back to its ID
+// when the API omitted a name — used as the picker row's primary text.
+func workspaceName(ws bitriseapi.Organization) string {
+	if ws.Name != "" {
+		return ws.Name
 	}
 	return ws.Slug
 }

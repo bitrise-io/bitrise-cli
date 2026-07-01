@@ -310,23 +310,20 @@ func TestSoleWorkspace(t *testing.T) {
 	})
 }
 
-func TestDefaultWorkspace(t *testing.T) {
-	t.Run("single workspace auto-detected", func(t *testing.T) {
-		client := fakeAPI(t, orgsBody(`{"data":[{"slug":"solo","name":"Solo"}],"paging":{}}`))
-		ws, err := New(client, nil).DefaultWorkspace(context.Background())
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if ws.Slug != "solo" || ws.Name != "Solo" {
-			t.Errorf("got %+v, want {solo Solo}", ws)
-		}
+func TestSortWorkspaces(t *testing.T) {
+	got := SortWorkspaces([]bitriseapi.Organization{
+		{Slug: "zeta"},                   // unnamed → last
+		{Slug: "z-acme", Name: "Acme"},   // named → first, alphabetical
+		{Slug: "alpha"},                  // unnamed → last, by slug
+		{Slug: "z-zebra", Name: "zebra"}, // named, case-insensitive after Acme
 	})
-
-	t.Run("multiple workspaces error", func(t *testing.T) {
-		client := fakeAPI(t, orgsBody(`{"data":[{"slug":"a"},{"slug":"b"}],"paging":{}}`))
-		_, err := New(client, nil).DefaultWorkspace(context.Background())
-		if err == nil || !strings.Contains(err.Error(), "multiple workspaces") {
-			t.Fatalf("expected multiple-workspaces error, got %v", err)
+	want := []string{"z-acme", "z-zebra", "alpha", "zeta"}
+	if len(got) != len(want) {
+		t.Fatalf("got %d workspaces, want %d", len(got), len(want))
+	}
+	for i, w := range want {
+		if got[i].Slug != w {
+			t.Errorf("position %d: got %q, want %q (full order: %+v)", i, got[i].Slug, w, got)
 		}
-	})
+	}
 }
