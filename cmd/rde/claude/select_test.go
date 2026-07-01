@@ -198,7 +198,7 @@ func TestGroupStacksByStatus(t *testing.T) {
 	)
 	groups := groupStacksByStatus(ids, byID)
 
-	wantStatuses := []string{"edge", "stable", "frozen", "beta"}
+	wantStatuses := []string{"stable", "edge", "frozen", "beta"}
 	if len(groups) != len(wantStatuses) {
 		t.Fatalf("groups = %d, want %d: %+v", len(groups), len(wantStatuses), groups)
 	}
@@ -208,11 +208,11 @@ func TestGroupStacksByStatus(t *testing.T) {
 		}
 	}
 	// Catalog order preserved within a group.
-	if got := groups[0].ids; len(got) != 2 || got[0] != "e1" || got[1] != "e2" {
-		t.Errorf("edge ids = %v, want [e1 e2]", got)
-	}
-	if got := groups[1].ids; len(got) != 2 || got[0] != "s1" || got[1] != "s2" {
+	if got := groups[0].ids; len(got) != 2 || got[0] != "s1" || got[1] != "s2" {
 		t.Errorf("stable ids = %v, want [s1 s2]", got)
+	}
+	if got := groups[1].ids; len(got) != 2 || got[0] != "e1" || got[1] != "e2" {
+		t.Errorf("edge ids = %v, want [e1 e2]", got)
 	}
 }
 
@@ -223,21 +223,21 @@ func TestBuildGroupedStackItems(t *testing.T) {
 	)
 	items, stackAt := buildGroupedStackItems(ids, byID)
 
-	// Layout: [divider Edge, e1, divider Stable, s1].
+	// Layout: [divider Stable, s1, divider Edge, e1].
 	if len(items) != 4 || len(stackAt) != 4 {
 		t.Fatalf("items=%d stackAt=%d, want 4 each", len(items), len(stackAt))
 	}
-	if !items[0].Divider || items[0].Title != "Edge" || stackAt[0] != "" {
-		t.Errorf("items[0] = %+v (stackAt %q), want Edge divider", items[0], stackAt[0])
+	if !items[0].Divider || items[0].Title != "Stable" || stackAt[0] != "" {
+		t.Errorf("items[0] = %+v (stackAt %q), want Stable divider", items[0], stackAt[0])
 	}
-	if items[1].Divider || items[1].Title != "Xcode 27" || items[1].Desc != "macOS 27" || stackAt[1] != "e1" {
-		t.Errorf("items[1] = %+v (stackAt %q), want Xcode 27 row for e1", items[1], stackAt[1])
+	if items[1].Divider || items[1].Title != "Xcode 26.5" || items[1].Desc != "macOS 26" || stackAt[1] != "s1" {
+		t.Errorf("items[1] = %+v (stackAt %q), want Xcode 26.5 row for s1", items[1], stackAt[1])
 	}
-	if !items[2].Divider || items[2].Title != "Stable" || stackAt[2] != "" {
-		t.Errorf("items[2] = %+v (stackAt %q), want Stable divider", items[2], stackAt[2])
+	if !items[2].Divider || items[2].Title != "Edge" || stackAt[2] != "" {
+		t.Errorf("items[2] = %+v (stackAt %q), want Edge divider", items[2], stackAt[2])
 	}
-	if items[3].Divider || stackAt[3] != "s1" {
-		t.Errorf("items[3] = %+v (stackAt %q), want row for s1", items[3], stackAt[3])
+	if items[3].Divider || stackAt[3] != "e1" {
+		t.Errorf("items[3] = %+v (stackAt %q), want row for e1", items[3], stackAt[3])
 	}
 }
 

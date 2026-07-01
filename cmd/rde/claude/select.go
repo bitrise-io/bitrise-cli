@@ -166,16 +166,16 @@ func chooseOne(ctx context.Context, cmd *cobra.Command, log *stepLogger, noun, l
 // these, in first-seen order.
 var osDisplayOrder = []string{"macos", "linux"}
 
-// stackStatusOrder groups the stack picker: bleeding-edge first, most
-// conservative last. A stack whose status isn't one of these is shown after
-// them, under its own header, so no stack is ever hidden.
-var stackStatusOrder = []string{"edge", "stable", "frozen"}
+// stackStatusOrder groups the stack picker: recommended stable first, then
+// bleeding-edge, most conservative last. A stack whose status isn't one of
+// these is shown after them, under its own header, so no stack is ever hidden.
+var stackStatusOrder = []string{"stable", "edge", "frozen"}
 
 // chooseStack resolves the stack. For an explicit --stack flag, a single stack,
 // or a non-terminal it behaves exactly like chooseOne (default over the whole
 // catalog). Interactively it first asks for an operating system when more than
 // one is available, then shows that OS's stacks grouped by status
-// (edge → stable → frozen) with non-selectable dividers — turning a long, mixed
+// (stable → edge → frozen) with non-selectable dividers — turning a long, mixed
 // catalog into a short, ordered list. It returns the chosen stack id.
 func chooseStack(ctx context.Context, cmd *cobra.Command, log *stepLogger, ids []string, byID map[string]internalrde.Stack, prefStack, backendDefault, flagStack string) (string, error) {
 	if v, ok, err := resolveWithoutPrompt(cmd, log, "stack", ids, prefStack, backendDefault, flagStack); ok || err != nil {
@@ -264,7 +264,7 @@ type stackGroup struct {
 }
 
 // groupStacksByStatus buckets ids by status and returns the buckets in
-// stackStatusOrder (edge → stable → frozen), with any other statuses appended
+// stackStatusOrder (stable → edge → frozen), with any other statuses appended
 // in first-seen order. Empty buckets are omitted, and order within a bucket is
 // the input (catalog) order. ids should already be filtered to a single OS.
 func groupStacksByStatus(ids []string, byID map[string]internalrde.Stack) []stackGroup {
