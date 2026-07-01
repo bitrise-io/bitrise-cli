@@ -59,7 +59,7 @@ func selectStackAndMachineType(ctx context.Context, cmd *cobra.Command, svc *int
 		// through to the full pick below (saved values still seed the defaults).
 	}
 
-	stack, err = chooseOne(ctx, cmd, log, "stack", "Select a stack", stackIDs, prefs.Stack, backendDefaultStack, flagStack, stackItem(stacksByID))
+	stack, err = chooseStack(ctx, cmd, log, stackIDs, stacksByID, prefs.Stack, backendDefaultStack, flagStack)
 	if err != nil {
 		return "", "", "", "", err
 	}
@@ -93,6 +93,33 @@ func chooseMachineForStack(ctx context.Context, cmd *cobra.Command, svc *interna
 	return name, machineLabel(mtByName[name]), nil
 }
 
+// resolveWithoutPrompt handles the three cases where a choice needs no
+// interactive picker: an explicit flag (validated against options), a lone
+// option, or a non-terminal stdin/stderr (the resolved default). ok=false with
+// a nil error means an interactive pick is required. It's shared by chooseOne
+// and chooseStack so both honor flags and the non-TTY fallback identically —
+// the OS prompt and status grouping are interactive-only refinements layered on
+// top. options must be non-empty.
+func resolveWithoutPrompt(cmd *cobra.Command, log *stepLogger, noun string, options []string, prefName, backendDefault, flag string) (value string, ok bool, err error) {
+	if flag != "" {
+		if indexOf(options, flag) < 0 {
+			return "", true, fmt.Errorf("%s %q is not available; choose one of: %s", noun, flag, strings.Join(options, ", "))
+		}
+		log.step("Using %s %q", noun, flag)
+		return flag, true, nil
+	}
+	if len(options) == 1 {
+		log.step("Using the only %s available: %s", noun, options[0])
+		return options[0], true, nil
+	}
+	if !interactivePicker(cmd) {
+		idx := resolveDefault(options, prefName, backendDefault)
+		log.step("Using default %s (stdin is not a terminal): %s", noun, options[idx])
+		return options[idx], true, nil
+	}
+	return "", false, nil
+}
+
 // chooseOne resolves a single selection. An explicit flag is validated against
 // the options and used as-is; a single option is auto-selected; a
 // non-interactive stdin/stderr uses the resolved default without prompting;
@@ -102,22 +129,10 @@ func chooseMachineForStack(ctx context.Context, cmd *cobra.Command, svc *interna
 // spec hint); the raw option string is always what's returned. options must be
 // non-empty.
 func chooseOne(ctx context.Context, cmd *cobra.Command, log *stepLogger, noun, label string, options []string, prefName, backendDefault, flag string, itemize func(string) picker.Item) (string, error) {
-	if flag != "" {
-		if indexOf(options, flag) < 0 {
-			return "", fmt.Errorf("%s %q is not available; choose one of: %s", noun, flag, strings.Join(options, ", "))
-		}
-		log.step("Using %s %q", noun, flag)
-		return flag, nil
-	}
-	if len(options) == 1 {
-		log.step("Using the only %s available: %s", noun, options[0])
-		return options[0], nil
+	if v, ok, err := resolveWithoutPrompt(cmd, log, noun, options, prefName, backendDefault, flag); ok || err != nil {
+		return v, err
 	}
 	defaultIdx := resolveDefault(options, prefName, backendDefault)
-	if !interactivePicker(cmd) {
-		log.step("Using default %s (stdin is not a terminal): %s", noun, options[defaultIdx])
-		return options[defaultIdx], nil
-	}
 	// Surface the default at the top of the list so it's the obvious
 	// press-Enter choice, with the cursor and "(default)" badge on row 1.
 	ordered := moveToFront(options, defaultIdx)
@@ -144,6 +159,244 @@ func chooseOne(ctx context.Context, cmd *cobra.Command, log *stepLogger, noun, l
 		return "", err
 	}
 	return ordered[idx], nil
+}
+
+// osDisplayOrder is the order operating systems are offered in the OS prompt:
+// macOS first, then Linux. Any other OS the backend reports is appended after
+// these, in first-seen order.
+var osDisplayOrder = []string{"macos", "linux"}
+
+// stackStatusOrder groups the stack picker: bleeding-edge first, most
+// conservative last. A stack whose status isn't one of these is shown after
+// them, under its own header, so no stack is ever hidden.
+var stackStatusOrder = []string{"edge", "stable", "frozen"}
+
+// chooseStack resolves the stack. For an explicit --stack flag, a single stack,
+// or a non-terminal it behaves exactly like chooseOne (default over the whole
+// catalog). Interactively it first asks for an operating system when more than
+// one is available, then shows that OS's stacks grouped by status
+// (edge → stable → frozen) with non-selectable dividers — turning a long, mixed
+// catalog into a short, ordered list. It returns the chosen stack id.
+func chooseStack(ctx context.Context, cmd *cobra.Command, log *stepLogger, ids []string, byID map[string]internalrde.Stack, prefStack, backendDefault, flagStack string) (string, error) {
+	if v, ok, err := resolveWithoutPrompt(cmd, log, "stack", ids, prefStack, backendDefault, flagStack); ok || err != nil {
+		return v, err
+	}
+	// Narrow to a single OS first (a no-op when the catalog is single-OS), then
+	// pick from that OS's stacks grouped by status.
+	osIDs, err := chooseStackOS(ctx, cmd, ids, byID, prefStack, backendDefault)
+	if err != nil {
+		return "", err
+	}
+	return pickStackGrouped(ctx, cmd, osIDs, byID, prefStack, backendDefault)
+}
+
+// chooseStackOS narrows the stack ids to a single operating system. It returns
+// the ids unchanged (no prompt) when the catalog has at most one OS, or when
+// any stack lacks an OS tag — in that case an OS filter could hide a stack, so
+// we skip it and let the grouped picker show everything. Otherwise it shows a
+// small "macOS / Linux" picker with the cursor on the OS of the would-be
+// default stack, and returns the ids for the chosen OS.
+func chooseStackOS(ctx context.Context, cmd *cobra.Command, ids []string, byID map[string]internalrde.Stack, prefStack, backendDefault string) ([]string, error) {
+	oses := stackOSes(ids, byID)
+	if len(oses) <= 1 || anyStackMissingOS(ids, byID) {
+		return ids, nil
+	}
+	defOS := byID[defaultStackID(ids, prefStack, backendDefault)].OS
+	cursor := indexOf(oses, defOS)
+	if cursor < 0 {
+		cursor = 0
+	}
+	items := make([]picker.Item, len(oses))
+	for i, osName := range oses {
+		items[i] = picker.Item{Title: cmdutil.OSDisplayName(osName)}
+	}
+	idx, err := picker.Select(ctx, picker.Config{
+		Prompt:     "Select an operating system",
+		Items:      items,
+		Cursor:     cursor,
+		DefaultIdx: -1,
+		In:         os.Stdin,
+		Out:        cmd.ErrOrStderr(),
+	})
+	if errors.Is(err, picker.ErrCancelled) {
+		return nil, errSelectionCancelled
+	}
+	if err != nil {
+		return nil, err
+	}
+	return filterStacksByOS(ids, byID, oses[idx]), nil
+}
+
+// pickStackGrouped shows the (already OS-filtered) stacks grouped by status with
+// non-selectable dividers, and returns the chosen stack id. The cursor opens on
+// the would-be default stack; the "(default)" badge is shown only when that
+// default is a genuine saved-pref or backend default present in this list (not
+// the first-item fallback that kicks in on the non-default OS). ids must be
+// non-empty.
+func pickStackGrouped(ctx context.Context, cmd *cobra.Command, ids []string, byID map[string]internalrde.Stack, prefStack, backendDefault string) (string, error) {
+	items, stackAt := buildGroupedStackItems(ids, byID)
+	cursor := indexOf(stackAt, defaultStackID(ids, prefStack, backendDefault))
+	defaultIdx := -1
+	if indexOf(ids, prefStack) >= 0 || indexOf(ids, backendDefault) >= 0 {
+		defaultIdx = cursor // a real default is in this list — badge it
+	}
+	idx, err := picker.Select(ctx, picker.Config{
+		Prompt:     "Select a stack",
+		Items:      items,
+		Cursor:     cursor,
+		DefaultIdx: defaultIdx,
+		In:         os.Stdin,
+		Out:        cmd.ErrOrStderr(),
+	})
+	if errors.Is(err, picker.ErrCancelled) {
+		return "", errSelectionCancelled
+	}
+	if err != nil {
+		return "", err
+	}
+	return stackAt[idx], nil
+}
+
+// stackGroup is a run of stack ids that share a status, kept in catalog order.
+type stackGroup struct {
+	status string
+	ids    []string
+}
+
+// groupStacksByStatus buckets ids by status and returns the buckets in
+// stackStatusOrder (edge → stable → frozen), with any other statuses appended
+// in first-seen order. Empty buckets are omitted, and order within a bucket is
+// the input (catalog) order. ids should already be filtered to a single OS.
+func groupStacksByStatus(ids []string, byID map[string]internalrde.Stack) []stackGroup {
+	byStatus := make(map[string][]string)
+	var firstSeen []string
+	for _, id := range ids {
+		st := byID[id].Status
+		if _, ok := byStatus[st]; !ok {
+			firstSeen = append(firstSeen, st)
+		}
+		byStatus[st] = append(byStatus[st], id)
+	}
+	var groups []stackGroup
+	emitted := make(map[string]bool)
+	for _, s := range stackStatusOrder {
+		if g := byStatus[s]; len(g) > 0 {
+			groups = append(groups, stackGroup{status: s, ids: g})
+			emitted[s] = true
+		}
+	}
+	for _, s := range firstSeen {
+		if !emitted[s] {
+			groups = append(groups, stackGroup{status: s, ids: byStatus[s]})
+		}
+	}
+	return groups
+}
+
+// buildGroupedStackItems renders the grouped stack rows for the picker: one
+// non-selectable divider per status group followed by that group's stack rows.
+// It returns the picker items alongside a parallel stackAt slice mapping each
+// item index to its stack id ("" for divider rows), so the caller can map the
+// chosen index back to a stack id.
+func buildGroupedStackItems(ids []string, byID map[string]internalrde.Stack) (items []picker.Item, stackAt []string) {
+	groups := groupStacksByStatus(ids, byID)
+	items = make([]picker.Item, 0, len(ids)+len(groups))
+	stackAt = make([]string, 0, len(ids)+len(groups))
+	for _, g := range groups {
+		items = append(items, picker.Item{Title: groupHeader(g.status), Divider: true})
+		stackAt = append(stackAt, "")
+		for _, id := range g.ids {
+			items = append(items, picker.Item{Title: stackTitle(byID, id), Desc: stackGroupedSecondary(byID[id])})
+			stackAt = append(stackAt, id)
+		}
+	}
+	return items, stackAt
+}
+
+// groupHeader is the divider label for a status group: the status with its
+// first letter capitalized ("edge" → "Edge"), or "Other" when the backend left
+// the status blank.
+func groupHeader(status string) string {
+	if status == "" {
+		return "Other"
+	}
+	return strings.ToUpper(status[:1]) + status[1:]
+}
+
+// stackGroupedSecondary is the dim secondary text for a stack row inside a
+// status group: "<OS> <version>" (e.g. "macOS 26"). The status is dropped —
+// the group's divider already conveys it — while the OS and version are kept
+// because they differ row to row.
+func stackGroupedSecondary(st internalrde.Stack) string {
+	osPart := cmdutil.OSDisplayName(st.OS)
+	if osPart == "" {
+		return ""
+	}
+	if st.OSVersion > 0 {
+		return osPart + " " + strconv.Itoa(int(st.OSVersion))
+	}
+	return osPart
+}
+
+// stackOSes returns the distinct operating systems present among the stacks,
+// ordered with the well-known ones first (macOS, then Linux) and any others in
+// first-seen order. Stacks with no OS tag are ignored here — anyStackMissingOS
+// is what decides whether to skip the OS prompt for them.
+func stackOSes(ids []string, byID map[string]internalrde.Stack) []string {
+	present := make(map[string]bool)
+	var firstSeen []string
+	for _, id := range ids {
+		osName := byID[id].OS
+		if osName == "" || present[osName] {
+			continue
+		}
+		present[osName] = true
+		firstSeen = append(firstSeen, osName)
+	}
+	var ordered []string
+	emitted := make(map[string]bool)
+	for _, osName := range osDisplayOrder {
+		if present[osName] {
+			ordered = append(ordered, osName)
+			emitted[osName] = true
+		}
+	}
+	for _, osName := range firstSeen {
+		if !emitted[osName] {
+			ordered = append(ordered, osName)
+		}
+	}
+	return ordered
+}
+
+// anyStackMissingOS reports whether some stack has no OS tag. When true the OS
+// prompt is skipped, because filtering by OS would make the untagged stack
+// unreachable.
+func anyStackMissingOS(ids []string, byID map[string]internalrde.Stack) bool {
+	for _, id := range ids {
+		if byID[id].OS == "" {
+			return true
+		}
+	}
+	return false
+}
+
+// filterStacksByOS returns the ids whose stack runs the given OS, in input order.
+func filterStacksByOS(ids []string, byID map[string]internalrde.Stack, osName string) []string {
+	out := make([]string, 0, len(ids))
+	for _, id := range ids {
+		if byID[id].OS == osName {
+			out = append(out, id)
+		}
+	}
+	return out
+}
+
+// defaultStackID returns the stack id that would be preselected — saved pref,
+// else backend default, else the first — used to seed the OS prompt's cursor
+// and the grouped picker's cursor. ids must be non-empty.
+func defaultStackID(ids []string, prefStack, backendDefault string) string {
+	return ids[resolveDefault(ids, prefStack, backendDefault)]
 }
 
 // reuseAction is which entry of the "use your last setup" menu was picked.
@@ -243,34 +496,9 @@ func reuseDetail(stackTitle, machineDisplay, machineSpec string) string {
 	return fmt.Sprintf("  %-13s %s\n  %-13s %s", "Stack", stackTitle, "Machine type", machine)
 }
 
-// stackItem and machineItem build the picker rows for the stack and machine-type
-// pickers: stacks show their friendly title with "<OS> <version> · <status>"
-// (e.g. "macOS 26 · edge") as dim secondary text; machine types show their
-// friendly title (or raw name) with the specs as dim secondary text. The picker
-// still returns the raw option string (the stack id / machine type name).
-func stackItem(byID map[string]internalrde.Stack) func(string) picker.Item {
-	return func(id string) picker.Item {
-		return picker.Item{Title: stackTitle(byID, id), Desc: stackSecondary(byID[id])}
-	}
-}
-
-// stackSecondary builds the dim secondary line for a stack row:
-// "<OS> <version> · <status>", e.g. "macOS 26 · edge". Each part is omitted
-// when absent.
-func stackSecondary(st internalrde.Stack) string {
-	parts := make([]string, 0, 2)
-	if osPart := cmdutil.OSDisplayName(st.OS); osPart != "" {
-		if st.OSVersion > 0 {
-			osPart += " " + strconv.Itoa(int(st.OSVersion))
-		}
-		parts = append(parts, osPart)
-	}
-	if st.Status != "" {
-		parts = append(parts, st.Status)
-	}
-	return strings.Join(parts, " · ")
-}
-
+// machineItem builds the picker rows for the machine-type picker: machine types
+// show their friendly title (or raw name) with the specs as dim secondary text.
+// The picker still returns the raw option string (the machine type name).
 func machineItem(byName map[string]internalrde.MachineType) func(string) picker.Item {
 	return func(name string) picker.Item {
 		mt, ok := byName[name]

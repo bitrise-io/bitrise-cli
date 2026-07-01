@@ -266,6 +266,85 @@ func TestViewportWindowsLongList(t *testing.T) {
 	}
 }
 
+// dividerItems builds a grouped list: [G1 divider, alpha, beta, G2 divider, gamma].
+func dividerItems() []Item {
+	return []Item{
+		{Title: "G1", Divider: true},
+		{Title: "alpha"},
+		{Title: "beta"},
+		{Title: "G2", Divider: true},
+		{Title: "gamma"},
+	}
+}
+
+func TestCursorOpensOffDivider(t *testing.T) {
+	// Cursor 0 is a divider → it advances to the first selectable row (index 1).
+	if m := newTestModel(Config{Items: dividerItems(), Cursor: 0}); m.cursor != 1 {
+		t.Errorf("cursor = %d, want 1 (first selectable, not the divider)", m.cursor)
+	}
+	// A cursor already on a selectable row is left alone.
+	if m := newTestModel(Config{Items: dividerItems(), Cursor: 2}); m.cursor != 2 {
+		t.Errorf("cursor = %d, want 2", m.cursor)
+	}
+}
+
+func TestNavigationSkipsDividers(t *testing.T) {
+	m := newTestModel(Config{Items: dividerItems()}) // opens on 1 (alpha)
+	m = drive(m, keyType(tea.KeyDown))               // → 2 (beta)
+	if m.cursor != 2 {
+		t.Fatalf("after down cursor = %d, want 2 (beta)", m.cursor)
+	}
+	m = drive(m, keyType(tea.KeyDown)) // skips the G2 divider → 4 (gamma)
+	if m.cursor != 4 {
+		t.Fatalf("after down cursor = %d, want 4 (gamma, divider skipped)", m.cursor)
+	}
+	m = drive(m, keyType(tea.KeyDown)) // at the last row: stays put
+	if m.cursor != 4 {
+		t.Fatalf("down past end cursor = %d, want 4", m.cursor)
+	}
+	m = drive(m, keyType(tea.KeyUp)) // skips G2 back up → 2 (beta)
+	if m.cursor != 2 {
+		t.Fatalf("after up cursor = %d, want 2 (beta)", m.cursor)
+	}
+	m = drive(m, keyType(tea.KeyUp)) // → 1 (alpha)
+	m = drive(m, keyType(tea.KeyUp)) // top selectable; G1 divider above → stays at 1
+	if m.cursor != 1 {
+		t.Fatalf("up past top cursor = %d, want 1 (alpha)", m.cursor)
+	}
+}
+
+func TestEnterIgnoresDivider(t *testing.T) {
+	// Force the cursor onto a divider (navigation never does this) and confirm
+	// Enter is a no-op — the frame stays open and nothing is chosen.
+	m := newTestModel(Config{Items: dividerItems()})
+	m.cursor = 0 // the G1 divider
+	next, cmd := m.Update(keyType(tea.KeyEnter))
+	got := next.(model)
+	if got.chosen != -1 {
+		t.Errorf("chosen = %d, want -1 (divider not selectable)", got.chosen)
+	}
+	if isQuit(cmd) {
+		t.Error("Enter on a divider should not quit")
+	}
+}
+
+func TestDividerRendersAsHeaderWithoutCursor(t *testing.T) {
+	m := newTestModel(Config{Items: dividerItems()}) // cursor on alpha (index 1)
+	lines := strings.Split(m.View(), "\n")
+	var g1 string
+	for _, ln := range lines {
+		if strings.Contains(ln, "G1") {
+			g1 = ln
+		}
+	}
+	if g1 == "" {
+		t.Fatalf("View() missing the G1 divider:\n%s", m.View())
+	}
+	if strings.Contains(g1, "›") {
+		t.Errorf("divider line should not carry the cursor marker: %q", g1)
+	}
+}
+
 func TestSelectEmptyItemsCancels(t *testing.T) {
 	_, err := Select(t.Context(), Config{Items: nil, Out: &bytes.Buffer{}})
 	if err != ErrCancelled {
