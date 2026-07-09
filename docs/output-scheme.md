@@ -243,7 +243,7 @@ Confirmations and warnings are written directly to `cmd.ErrOrStderr()`.
 | Type | Symbol | Color | Suppressed by `--quiet`? |
 |------|--------|-------|--------------------------|
 | Success confirmation | *(none)* | plain | yes — guarded by `if !quiet` |
-| Warning | *(none currently)* | plain | no |
+| Warning | `Warning:` prefix | prefix in `Warn` (yellow), rest plain | no |
 | Error | *(none)* | — | no — returned as Go error, printed by Cobra |
 
 ### Text conventions
@@ -266,6 +266,19 @@ if !quiet {
 // cmd/config/cmd.go — after saving a config key
 if !cmdutil.IsQuiet(cmd) {
     fmt.Fprintf(cmd.ErrOrStderr(), "Saved %s\n", key)
+}
+
+// cmd/rde/session/exec.go — dotfile env entries unset locally.
+// A warning, so NOT gated on quiet; names only, never values.
+s := style.New(cmd.ErrOrStderr())
+ew.F("%s %s not set locally — skipped (listed in %s)\n", s.Warn.Render("Warning:"), names, filePath)
+
+// cmd/rde/session/exec.go — env-forwarding transparency notice before each
+// exec; names only, never values. Confirmation-class, so quiet-gated — but
+// deliberately NOT gated on human format: stderr never pollutes
+// `--output json` stdout, and agent callers silence it with -q.
+if !cmdutil.IsQuiet(cmd) {
+    ew.F("Forwarding env: %s\n", strings.Join(names, ", "))
 }
 ```
 

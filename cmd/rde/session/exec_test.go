@@ -1,9 +1,18 @@
 package session
 
 import (
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/spf13/cobra"
+
+	"github.com/bitrise-io/bitrise-cli/internal/output"
 	internalrde "github.com/bitrise-io/bitrise-cli/internal/rde"
 )
 
@@ -72,5 +81,129 @@ func TestExecCmd_TimeoutFlagDefault(t *testing.T) {
 	}
 	if internalrde.DefaultExecuteTimeout != 10*time.Minute {
 		t.Errorf("DefaultExecuteTimeout = %s, want 10m", internalrde.DefaultExecuteTimeout)
+	}
+}
+
+func TestExecCmd_EnvFlagsRegistered(t *testing.T) {
+	c := newExecCmd()
+	envFlag := c.Flags().Lookup("env")
+	if envFlag == nil {
+		t.Fatal("exec should register an --env flag")
+	}
+	if envFlag.Value.Type() != "stringArray" {
+		t.Errorf("--env type = %q, want stringArray (repeatable, no comma-splitting)", envFlag.Value.Type())
+	}
+	noFile, err := c.Flags().GetBool("no-env-file")
+	if err != nil {
+		t.Fatalf("GetBool(no-env-file): %v", err)
+	}
+	if noFile {
+		t.Error("--no-env-file should default to false")
+	}
+}
+
+// writeExecEnvDotfile drops a .bitrise/rde.yml into dir and chdirs there, so
+// the test exercises the auto-read path without picking up any real dotfile
+// in an ancestor of the package directory.
+func writeExecEnvDotfile(t *testing.T, body string) {
+	t.Helper()
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, ".bitrise"), 0o755); err != nil { //nolint:gosec // test-only tempdir, perms don't matter
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, ".bitrise", "rde.yml"), []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(dir)
+}
+
+// terminatedSessionServer serves a GET for uuidSession whose status is
+// terminated, so exec's Execute call fails cleanly after the env diagnostics
+// have been printed (no SSH dial is attempted against a terminated session).
+func terminatedSessionServer(t *testing.T) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet && r.URL.Path == "/v1/workspaces/ws-1/sessions/"+uuidSession {
+			_, _ = io.WriteString(w, `{"session":{"id":"s-1","name":"dev","status":"SESSION_STATUS_TERMINATED"}}`)
+			return
+		}
+		t.Errorf("unexpected: %s %s", r.Method, r.URL.Path)
+	}))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+// TestExecCmd_EnvFlagUnsetVarFailsFast pins that a --env NAME with no local
+// value errors before any network call — the server fails the test on any
+// request — and that the error names the variable.
+func TestExecCmd_EnvFlagUnsetVarFailsFast(t *testing.T) {
+	t.Chdir(t.TempDir()) // no dotfile in scope
+	srv := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		t.Errorf("unexpected request before env validation: %s %s", r.Method, r.URL.Path)
+	}))
+	t.Cleanup(srv.Close)
+
+	_, _, err := run(t, newExecCmd(), srv.URL, "ws-1", []string{uuidSession, "--env", "BCLI_TEST_DEFINITELY_UNSET", "--", "echo", "hi"}, output.Human)
+	if err == nil || !strings.Contains(err.Error(), "BCLI_TEST_DEFINITELY_UNSET") {
+		t.Fatalf("err = %v, want error naming BCLI_TEST_DEFINITELY_UNSET", err)
+	}
+}
+
+func TestExecCmd_DotfileWarningAndNotice(t *testing.T) {
+	writeExecEnvDotfile(t, "exec:\n  env:\n    - BCLI_TEST_DEFINITELY_UNSET\n    - FOO=secret-value-xyz\n")
+	srv := terminatedSessionServer(t)
+
+	_, stderr, err := run(t, newExecCmd(), srv.URL, "ws-1", []string{uuidSession, "--", "echo", "hi"}, output.Human)
+	if err == nil {
+		t.Fatal("expected the exec against a terminated session to error")
+	}
+	if !strings.Contains(stderr, "BCLI_TEST_DEFINITELY_UNSET not set locally") {
+		t.Errorf("stderr missing skip warning:\n%s", stderr)
+	}
+	if !strings.Contains(stderr, "Forwarding env: FOO") {
+		t.Errorf("stderr missing forwarding notice:\n%s", stderr)
+	}
+	if strings.Contains(stderr, "secret-value-xyz") {
+		t.Errorf("stderr leaks a forwarded value:\n%s", stderr)
+	}
+}
+
+func TestExecCmd_NoEnvFileFlag(t *testing.T) {
+	writeExecEnvDotfile(t, "exec:\n  env:\n    - BCLI_TEST_DEFINITELY_UNSET\n    - FOO=secret-value-xyz\n")
+	srv := terminatedSessionServer(t)
+
+	_, stderr, err := run(t, newExecCmd(), srv.URL, "ws-1", []string{uuidSession, "--no-env-file", "--", "echo", "hi"}, output.Human)
+	if err == nil {
+		t.Fatal("expected the exec against a terminated session to error")
+	}
+	for _, unwanted := range []string{"not set locally", "Forwarding env"} {
+		if strings.Contains(stderr, unwanted) {
+			t.Errorf("stderr should not mention %q with --no-env-file:\n%s", unwanted, stderr)
+		}
+	}
+}
+
+// TestExecCmd_QuietSuppressesNoticeNotWarning wraps exec in a parent command
+// carrying the persistent --quiet flag (cmdutil.IsQuiet reads it from the
+// root, which for a bare newExecCmd() is always false): with -q the
+// forwarding notice disappears while the skip warning stays, per the output
+// scheme's rule that warnings ignore --quiet.
+func TestExecCmd_QuietSuppressesNoticeNotWarning(t *testing.T) {
+	writeExecEnvDotfile(t, "exec:\n  env:\n    - BCLI_TEST_DEFINITELY_UNSET\n    - FOO=secret-value-xyz\n")
+	srv := terminatedSessionServer(t)
+
+	parent := &cobra.Command{Use: "root"}
+	parent.PersistentFlags().BoolP("quiet", "q", false, "")
+	parent.AddCommand(newExecCmd())
+
+	_, stderr, err := run(t, parent, srv.URL, "ws-1", []string{"exec", uuidSession, "-q", "--", "echo", "hi"}, output.Human)
+	if err == nil {
+		t.Fatal("expected the exec against a terminated session to error")
+	}
+	if strings.Contains(stderr, "Forwarding env") {
+		t.Errorf("-q should suppress the forwarding notice:\n%s", stderr)
+	}
+	if !strings.Contains(stderr, "BCLI_TEST_DEFINITELY_UNSET not set locally") {
+		t.Errorf("-q must not suppress the skip warning:\n%s", stderr)
 	}
 }

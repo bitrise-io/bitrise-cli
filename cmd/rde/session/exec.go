@@ -3,6 +3,7 @@ package session
 import (
 	"fmt"
 	"io"
+	"os"
 	"strings"
 	"time"
 
@@ -10,12 +11,15 @@ import (
 
 	"github.com/bitrise-io/bitrise-cli/cmd/cmdutil"
 	"github.com/bitrise-io/bitrise-cli/internal/output"
+	"github.com/bitrise-io/bitrise-cli/internal/output/style"
 	internalrde "github.com/bitrise-io/bitrise-cli/internal/rde"
 )
 
 func newExecCmd() *cobra.Command {
 	var shellMode bool
 	var timeout time.Duration
+	var envFlags []string
+	var noEnvFile bool
 	c := &cobra.Command{
 		Use:   "exec SESSION_ID -- COMMAND [ARGS...]",
 		Short: "Run a command on a session over SSH",
@@ -45,6 +49,27 @@ is just another literal token.
 If a local SSH agent is available ($SSH_AUTH_SOCK set), it's forwarded into
 the session — git-over-SSH inside the session uses the caller's local keys.
 
+Local environment variables can be forwarded to the remote command with
+--env (repeatable, before '--'): --env NAME forwards the local value of
+NAME (an error if unset), --env NAME=VALUE sets a literal. A repo can pin
+a shared list in .bitrise/rde.yml (found in the working directory or any
+ancestor):
+
+  exec:
+    env:
+      - API_BASE_URL
+      - NPM_TOKEN=abc123
+
+File entries use the same NAME / NAME=VALUE forms, except a NAME that is
+unset locally is skipped with a warning instead of failing, so a shared
+file never breaks a teammate. --env overrides a same-named file entry;
+--no-env-file skips the file entirely. Commit the file to share the list
+with your team, or gitignore it to keep a personal list (including
+NAME=VALUE literals) out of the repo. Forwarded variables are announced
+by name on stderr (silence with -q) — values are never printed locally,
+but they do ride in the remote command line, so they are visible in ps
+on the session while the command runs.
+
 In human mode: stdout streams to this CLI's stdout, stderr to stderr, and
 this CLI exits non-zero when the remote command exits non-zero.
 
@@ -60,6 +85,7 @@ connection, nohup it inside the session instead.`,
   bitrise-cli rde session exec SESSION_ID -- npm test
   bitrise-cli rde session exec SESSION_ID -- git commit -m "a message"
   bitrise-cli rde session exec SESSION_ID --shell -- 'cd repo && ls | head'
+  bitrise-cli rde session exec SESSION_ID --env NPM_TOKEN --env CI=1 -- npm test
   bitrise-cli rde session exec SESSION_ID --timeout 20m -- ./scripts/cold-build.sh
   bitrise-cli rde session exec SESSION_ID --output json -- ls -la /opt`,
 		Args: func(_ *cobra.Command, args []string) error {
@@ -79,6 +105,21 @@ connection, nohup it inside the session instead.`,
 			if strings.TrimSpace(command) == "" {
 				return fmt.Errorf("command is empty")
 			}
+			// Resolve the forwarded env before anything touches the network,
+			// so a typo'd --env or a broken dotfile fails fast.
+			var fileEntries []string
+			var envFilePath string
+			if !noEnvFile {
+				repoCfg, path, err := internalrde.LoadRepoConfig()
+				if err != nil {
+					return err
+				}
+				fileEntries, envFilePath = repoCfg.Exec.Env, path
+			}
+			envVars, skippedEnv, err := internalrde.ResolveExecEnv(fileEntries, envFilePath, envFlags, os.LookupEnv)
+			if err != nil {
+				return err
+			}
 			workspaceID, err := cmdutil.ResolveWorkspaceID(cmd)
 			if err != nil {
 				return err
@@ -93,7 +134,13 @@ connection, nohup it inside the session instead.`,
 			if err != nil {
 				return err
 			}
-			res, err := svc.Execute(cmd.Context(), workspaceID, sessionID, command, timeout)
+			// Notices print here — after session resolution, so "Forwarding"
+			// only announces an exec that's actually about to run — and
+			// before Execute, so they land ahead of any streamed output.
+			if err := printExecEnvNotices(cmd, envVars, skippedEnv, envFilePath); err != nil {
+				return err
+			}
+			res, err := svc.Execute(cmd.Context(), workspaceID, sessionID, command, envVars, timeout)
 			if err != nil {
 				return err
 			}
@@ -102,7 +149,29 @@ connection, nohup it inside the session instead.`,
 	}
 	c.Flags().BoolVar(&shellMode, "shell", false, "interpret everything after '--' as a shell command line (pipes, &&, $(...), redirection) instead of a program with literal arguments")
 	c.Flags().DurationVar(&timeout, "timeout", internalrde.DefaultExecuteTimeout, "max time the remote command may run before it's aborted; 0 disables the cap (Go duration syntax: 30s, 10m, 1h)")
+	c.Flags().StringArrayVar(&envFlags, "env", nil, "environment variable for the remote command: NAME forwards the local value (errors if unset), NAME=VALUE sets a literal (repeatable; must come before '--')")
+	c.Flags().BoolVar(&noEnvFile, "no-env-file", false, "skip reading forwarded env vars from .bitrise/rde.yml")
 	return c
+}
+
+// printExecEnvNotices writes the env-forwarding diagnostics to stderr: a
+// warning naming dotfile entries skipped because they're unset locally
+// (never suppressed — warnings ignore --quiet), then a names-only forwarding
+// notice (suppressed by --quiet). Values are never printed.
+func printExecEnvNotices(cmd *cobra.Command, vars []internalrde.EnvVar, skipped []string, filePath string) error {
+	ew := cmdutil.NewErrWriter(cmd.ErrOrStderr())
+	if len(skipped) > 0 {
+		s := style.New(cmd.ErrOrStderr())
+		ew.F("%s %s not set locally — skipped (listed in %s)\n", s.Warn.Render("Warning:"), strings.Join(skipped, ", "), filePath)
+	}
+	if len(vars) > 0 && !cmdutil.IsQuiet(cmd) {
+		names := make([]string, len(vars))
+		for i, v := range vars {
+			names[i] = v.Name
+		}
+		ew.F("Forwarding env: %s\n", strings.Join(names, ", "))
+	}
+	return ew.Err
 }
 
 // buildExecCommand turns the post-`--` tokens into the command string sent to

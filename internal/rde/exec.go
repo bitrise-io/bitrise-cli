@@ -19,6 +19,11 @@ const DefaultExecuteTimeout = 10 * time.Minute
 // behavior: forced-interactive login bash (`bash -i -l -c`), local
 // SSH agent forwarded so git-over-SSH uses the caller's keys.
 //
+// env vars are exported inside the login shell before the command runs —
+// after profile sourcing, so they override profile-set values. The exports
+// ride in the remote command line, so values are visible in `ps` on the
+// session while the command runs.
+//
 // timeout caps the whole dial+run. A non-positive timeout disables the cap,
 // leaving the run bounded only by ctx and the SSH keepalive that tears the
 // connection down within ~10s if it drops (so a genuinely dead connection
@@ -29,12 +34,16 @@ const DefaultExecuteTimeout = 10 * time.Minute
 //   - dial/handshake/network failures — surfaced as errors
 //   - command exited non-zero — returned in ExecResult with a nil error;
 //     callers decide how to surface that to the user
-func (s *Service) Execute(ctx context.Context, workspaceID, sessionID, command string, timeout time.Duration) (ExecResult, error) {
+func (s *Service) Execute(ctx context.Context, workspaceID, sessionID, command string, env []EnvVar, timeout time.Duration) (ExecResult, error) {
 	if s.client == nil {
 		return ExecResult{}, errClient()
 	}
 	if command == "" {
 		return ExecResult{}, fmt.Errorf("command is required")
+	}
+	prefix, err := buildEnvExportPrefix(env)
+	if err != nil {
+		return ExecResult{}, err
 	}
 	sess, err := s.GetSession(ctx, workspaceID, sessionID)
 	if err != nil {
@@ -58,5 +67,5 @@ func (s *Service) Execute(ctx context.Context, workspaceID, sessionID, command s
 	}
 	defer client.Close() //nolint:errcheck // run errors take precedence; nothing actionable on close failure
 
-	return client.run(execCtx, command)
+	return client.run(execCtx, prefix+command)
 }
