@@ -91,15 +91,22 @@ func TestVNCCmd_JSONIncludesHostPort(t *testing.T) {
 
 func TestVNCCmd_ForwardRejectsJSON(t *testing.T) {
 	// --forward is a long-lived tunnel; it can't satisfy the single-object
-	// JSON contract, so the combination is rejected before any network call.
-	srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
-		t.Error("no HTTP call should be made when --forward is rejected for --output json")
-	}))
-	defer srv.Close()
+	// JSON contract, so the combination is rejected before any network call —
+	// including the session-name lookup. A bare name argument (not a UUID)
+	// would otherwise resolve via ListSessions first, so exercising it here
+	// pins the rejection ahead of name resolution.
+	for _, arg := range []string{uuidSession, "my-session"} {
+		t.Run(arg, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+				t.Error("no HTTP call should be made when --forward is rejected for --output json")
+			}))
+			defer srv.Close()
 
-	_, _, err := run(t, newVNCCmd(), srv.URL, "ws-1", []string{uuidSession, "--forward", "5901"}, output.JSON)
-	if err == nil || !strings.Contains(err.Error(), "--forward cannot be combined with --output json") {
-		t.Errorf("err = %v, want --forward/--output json rejection", err)
+			_, _, err := run(t, newVNCCmd(), srv.URL, "ws-1", []string{arg, "--forward", "5901"}, output.JSON)
+			if err == nil || !strings.Contains(err.Error(), "--forward cannot be combined with --output json") {
+				t.Errorf("err = %v, want --forward/--output json rejection", err)
+			}
+		})
 	}
 }
 

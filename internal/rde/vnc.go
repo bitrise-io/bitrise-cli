@@ -154,7 +154,7 @@ const localScreenSharingPort = 5900
 // endpoint any VNC client (or a websockify/noVNC bridge) can consume, with no
 // credentials embedded in a handed-off URL and no direct route to the relay
 // required.
-func (s *Service) ForwardVNC(ctx context.Context, workspaceID, sessionID string, localPort int, onReady func(localAddr string)) error {
+func (s *Service) ForwardVNC(ctx context.Context, workspaceID, sessionID string, localPort int, onReady func(localAddr string, creds VNCCredentials)) error {
 	if s.client == nil {
 		return errClient()
 	}
@@ -162,8 +162,14 @@ func (s *Service) ForwardVNC(ctx context.Context, workspaceID, sessionID string,
 	if err != nil {
 		return err
 	}
-	if sess.VNCAddress == "" {
-		return fmt.Errorf("session has no VNC endpoint (the template may not expose VNC, or the session is still provisioning)")
+	// VNCCredentialsFromSession validates the endpoint (clear error when the
+	// session exposes no VNC yet) and yields the username/password the caller
+	// prints, so the session is fetched exactly once. The tunnel's remote
+	// target is always the VM's loopback Screen Sharing port (see
+	// localScreenSharingPort), not anything derived from these credentials.
+	creds, err := VNCCredentialsFromSession(sess)
+	if err != nil {
+		return err
 	}
 	target, err := sshTargetForSession(sess)
 	if err != nil {
@@ -176,7 +182,9 @@ func (s *Service) ForwardVNC(ctx context.Context, workspaceID, sessionID string,
 	defer client.Close() //nolint:errcheck // forward errors take precedence; nothing actionable on close failure
 
 	remoteAddr := net.JoinHostPort("127.0.0.1", strconv.Itoa(localScreenSharingPort))
-	return client.forwardLocal(ctx, localPort, remoteAddr, onReady)
+	return client.forwardLocal(ctx, localPort, remoteAddr, func(localAddr string) {
+		onReady(localAddr, creds)
+	})
 }
 
 // buildVNCURL emits a `vnc://[user[:pass]@]host:port` URL. URL-escapes

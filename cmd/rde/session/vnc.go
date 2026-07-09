@@ -61,14 +61,23 @@ when you just want to launch your viewer against a directly-reachable endpoint.`
 			if err != nil {
 				return err
 			}
+			// Reject the unsupported flag combo before resolving the name — no
+			// point in a lookup round-trip for a request we won't serve
+			// (mirrors `view --watch`). --forward runs a long-lived tunnel, not
+			// a single-object result, so it can't satisfy the JSON contract.
+			forwarding := cmd.Flags().Changed("forward")
+			if forwarding && format == output.JSON {
+				return fmt.Errorf("--forward cannot be combined with --output json (it runs a long-lived tunnel, not a single-object result)")
+			}
+
 			svc := internalrde.NewService(client)
 			sessionID, err := svc.ResolveSessionID(cmd.Context(), workspaceID, args[0])
 			if err != nil {
 				return err
 			}
 
-			if cmd.Flags().Changed("forward") {
-				return runVNCForward(cmd, svc, workspaceID, sessionID, forwardPort, format)
+			if forwarding {
+				return runVNCForward(cmd, svc, workspaceID, sessionID, forwardPort)
 			}
 
 			creds, err := svc.GetSessionVNC(cmd.Context(), workspaceID, sessionID)
@@ -86,22 +95,15 @@ when you just want to launch your viewer against a directly-reachable endpoint.`
 // runVNCForward opens the local-port tunnel and blocks until Ctrl-C. It prints
 // the ready-to-use local vnc:// URL on stdout (one line, same as the non-forward
 // path) and a human status on stderr.
-func runVNCForward(cmd *cobra.Command, svc *internalrde.Service, workspaceID, sessionID string, localPort int, format output.Format) error {
-	if format == output.JSON {
-		return fmt.Errorf("--forward cannot be combined with --output json (it runs a long-lived tunnel, not a single-object result)")
-	}
-	// Fetch credentials up front so the local URL can carry them, and so a
-	// session with no VNC endpoint fails clearly before we dial.
-	creds, err := svc.GetSessionVNC(cmd.Context(), workspaceID, sessionID)
-	if err != nil {
-		return err
-	}
-
+func runVNCForward(cmd *cobra.Command, svc *internalrde.Service, workspaceID, sessionID string, localPort int) error {
 	// Ctrl-C cancels the tunnel and returns cleanly rather than hard-killing.
 	ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt)
 	defer stop()
 
-	onReady := func(localAddr string) {
+	// onReady fires once the local listener is up; ForwardVNC hands back the
+	// session's credentials (fetched exactly once, service-side) so the printed
+	// URL points at the local address.
+	onReady := func(localAddr string, creds internalrde.VNCCredentials) {
 		line := localAddr
 		if host, portStr, splitErr := net.SplitHostPort(localAddr); splitErr == nil {
 			if p, atoiErr := strconv.Atoi(portStr); atoiErr == nil {

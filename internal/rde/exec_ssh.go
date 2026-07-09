@@ -262,17 +262,25 @@ func (c *sshClient) forwardConn(ctx context.Context, local net.Conn, remoteAddr 
 		return
 	}
 	defer func() { _ = remote.Close() }()
+	bridgeConn(ctx, local, remote)
+}
 
-	// Copy both directions. When one side reaches EOF, half-close the peer's
-	// write end so it observes the EOF, then keep copying the other direction
-	// until it finishes too. Tearing down both on the first EOF would truncate
-	// a server-speaks-first protocol (VNC/RFB greets with its ProtocolVersion)
-	// or a response still draining — so we wait for both copies (or ctx).
-	// Buffered so a goroutine can exit without blocking when we return early on
-	// ctx cancellation (the deferred Closes then unblock the other copy).
+// bridgeConn copies bytes in both directions between a and b. When one
+// direction reaches EOF it half-closes that peer's write end so the peer
+// observes the EOF, then keeps copying the other direction until it finishes
+// too: tearing both down on the first EOF would truncate a server-speaks-first
+// protocol (VNC/RFB greets with its ProtocolVersion) or a response still
+// draining. Returns once both directions finish or ctx is cancelled. It does
+// NOT close a or b — the caller owns their lifetimes, and the caller's deferred
+// Closes are what unblock a copy still running when ctx cancellation makes us
+// return early. Split out from forwardConn so this behaviour can be exercised
+// without an SSH transport.
+func bridgeConn(ctx context.Context, a, b net.Conn) {
+	// Buffered so a goroutine can send without blocking when we return early on
+	// ctx cancellation (the caller's deferred Closes then unblock the copies).
 	done := make(chan struct{}, 2)
-	go func() { _, _ = io.Copy(remote, local); halfCloseWrite(remote); done <- struct{}{} }()
-	go func() { _, _ = io.Copy(local, remote); halfCloseWrite(local); done <- struct{}{} }()
+	go func() { _, _ = io.Copy(b, a); halfCloseWrite(b); done <- struct{}{} }()
+	go func() { _, _ = io.Copy(a, b); halfCloseWrite(a); done <- struct{}{} }()
 
 	for range 2 {
 		select {
