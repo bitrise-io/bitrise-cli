@@ -418,7 +418,9 @@ func templateConfigFromAPI(w rdeapi.TemplateConfig) TemplateConfig {
 }
 
 // WaitForReady polls GetSession until the session leaves the provisioning
-// states ("" / "pending" / "starting") and returns the resulting Session.
+// states ("" / "pending" / "starting" / "unknown") and returns the resulting
+// Session. "unknown" means the backend can't currently determine the machine
+// state; it's expected to settle, so it's treated as still provisioning.
 // The caller decides whether the returned status counts as success.
 // Returns context.Canceled when ctx is cancelled.
 //
@@ -441,8 +443,8 @@ func (s *Service) WaitForReady(ctx context.Context, workspaceID, sessionID strin
 			onPoll(sess.Status)
 		}
 		switch sess.Status {
-		case "", "pending", "starting":
-			// still provisioning — keep polling
+		case "", "pending", "starting", "unknown":
+			// still provisioning (or state not yet determinable) — keep polling
 		default:
 			return sess, nil
 		}
