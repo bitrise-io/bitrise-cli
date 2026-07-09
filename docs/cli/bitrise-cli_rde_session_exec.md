@@ -30,6 +30,27 @@ is just another literal token.
 If a local SSH agent is available ($SSH_AUTH_SOCK set), it's forwarded into
 the session — git-over-SSH inside the session uses the caller's local keys.
 
+Local environment variables can be forwarded to the remote command with
+--env (repeatable, before '--'): --env NAME forwards the local value of
+NAME (an error if unset), --env NAME=VALUE sets a literal. A repo can pin
+a shared list in .bitrise/rde.yml (found in the working directory or any
+ancestor):
+
+  exec:
+    env:
+      - API_BASE_URL
+      - NPM_TOKEN=abc123
+
+File entries use the same NAME / NAME=VALUE forms, except a NAME that is
+unset locally is skipped with a warning instead of failing, so a shared
+file never breaks a teammate. --env overrides a same-named file entry;
+--no-env-file skips the file entirely. Commit the file to share the list
+with your team, or gitignore it to keep a personal list (including
+NAME=VALUE literals) out of the repo. Forwarded variables are announced
+by name on stderr (silence with -q) — values are never printed locally,
+but they do ride in the remote command line, so they are visible in ps
+on the session while the command runs.
+
 In human mode: stdout streams to this CLI's stdout, stderr to stderr, and
 this CLI exits non-zero when the remote command exits non-zero.
 
@@ -53,6 +74,7 @@ bitrise-cli rde session exec SESSION_ID -- COMMAND [ARGS...] [flags]
   bitrise-cli rde session exec SESSION_ID -- npm test
   bitrise-cli rde session exec SESSION_ID -- git commit -m "a message"
   bitrise-cli rde session exec SESSION_ID --shell -- 'cd repo && ls | head'
+  bitrise-cli rde session exec SESSION_ID --env NPM_TOKEN --env CI=1 -- npm test
   bitrise-cli rde session exec SESSION_ID --timeout 20m -- ./scripts/cold-build.sh
   bitrise-cli rde session exec SESSION_ID --output json -- ls -la /opt
 ```
@@ -60,7 +82,9 @@ bitrise-cli rde session exec SESSION_ID -- COMMAND [ARGS...] [flags]
 ### Options
 
 ```
+      --env stringArray    environment variable for the remote command: NAME forwards the local value (errors if unset), NAME=VALUE sets a literal (repeatable; must come before '--')
   -h, --help               help for exec
+      --no-env-file        skip reading forwarded env vars from .bitrise/rde.yml
       --shell              interpret everything after '--' as a shell command line (pipes, &&, $(...), redirection) instead of a program with literal arguments
       --timeout duration   max time the remote command may run before it's aborted; 0 disables the cap (Go duration syntax: 30s, 10m, 1h) (default 10m0s)
 ```
