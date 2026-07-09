@@ -161,7 +161,7 @@ details) under [docs/cli](docs/cli/bitrise-cli.md).
 | [`rde session update`](docs/cli/bitrise-cli_rde_session_update.md) | Update a session's name, description, or auto-terminate duration |
 | [`rde session upload`](docs/cli/bitrise-cli_rde_session_upload.md) | Upload a local file or directory into a session |
 | [`rde session view`](docs/cli/bitrise-cli_rde_session_view.md) | Show details of a single session |
-| [`rde session vnc`](docs/cli/bitrise-cli_rde_session_vnc.md) | Print VNC connection credentials for a session |
+| [`rde session vnc`](docs/cli/bitrise-cli_rde_session_vnc.md) | Print VNC connection details, or forward the endpoint to a local port |
 | [`rde stack list`](docs/cli/bitrise-cli_rde_stack_list.md) | List machine stacks |
 | [`rde template create`](docs/cli/bitrise-cli_rde_template_create.md) | Create a new RDE template from a JSON spec file |
 | [`rde template delete`](docs/cli/bitrise-cli_rde_template_delete.md) | Delete an RDE template |

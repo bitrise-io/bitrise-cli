@@ -48,5 +48,5 @@ bitrise-cli rde session [flags]
 * [bitrise-cli rde session update](bitrise-cli_rde_session_update.md)	 - Update a session's name, description, or auto-terminate duration
 * [bitrise-cli rde session upload](bitrise-cli_rde_session_upload.md)	 - Upload a local file or directory into a session
 * [bitrise-cli rde session view](bitrise-cli_rde_session_view.md)	 - Show details of a single session
-* [bitrise-cli rde session vnc](bitrise-cli_rde_session_vnc.md)	 - Print VNC connection credentials for a session
+* [bitrise-cli rde session vnc](bitrise-cli_rde_session_vnc.md)	 - Print VNC connection details, or forward the endpoint to a local port
 
