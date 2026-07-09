@@ -35,10 +35,10 @@ In --output json mode a fully-decomposed {address, host, port, username,
 password, url} object is emitted — host and port are always discrete fields,
 so a caller building its own connection never has to parse the address or URL.
 
-Pass --forward to open an SSH tunnel and expose the session's VNC endpoint on a
-local port, then block until Ctrl-C:
+Pass --forward PORT to open an SSH tunnel and expose the session's VNC endpoint
+on a local port, then block until Ctrl-C (use 0 to auto-pick a free port):
 
-  bitrise-cli rde session vnc SESSION_ID --forward        # auto-pick a local port
+  bitrise-cli rde session vnc SESSION_ID --forward 0      # auto-pick a local port
   bitrise-cli rde session vnc SESSION_ID --forward 5901   # bind localhost:5901
 
 A native VNC client (macOS Screen Sharing, Remmina, …) can then connect to the
@@ -61,14 +61,23 @@ when you just want to launch your viewer against a directly-reachable endpoint.`
 			if err != nil {
 				return err
 			}
+			// Reject the unsupported flag combo before resolving the name — no
+			// point in a lookup round-trip for a request we won't serve
+			// (mirrors `view --watch`). --forward runs a long-lived tunnel, not
+			// a single-object result, so it can't satisfy the JSON contract.
+			forwarding := cmd.Flags().Changed("forward")
+			if forwarding && format == output.JSON {
+				return fmt.Errorf("--forward cannot be combined with --output json (it runs a long-lived tunnel, not a single-object result)")
+			}
+
 			svc := internalrde.NewService(client)
 			sessionID, err := svc.ResolveSessionID(cmd.Context(), workspaceID, args[0])
 			if err != nil {
 				return err
 			}
 
-			if cmd.Flags().Changed("forward") {
-				return runVNCForward(cmd, svc, workspaceID, sessionID, forwardPort, format)
+			if forwarding {
+				return runVNCForward(cmd, svc, workspaceID, sessionID, forwardPort)
 			}
 
 			creds, err := svc.GetSessionVNC(cmd.Context(), workspaceID, sessionID)
@@ -79,31 +88,22 @@ when you just want to launch your viewer against a directly-reachable endpoint.`
 		},
 	}
 	c.Flags().IntVar(&forwardPort, "forward", 0,
-		"forward the session's VNC endpoint to this local port and block until Ctrl-C; omit the value to auto-pick a free port")
-	// Allow a bare `--forward` (no value) to mean "auto-pick a free port".
-	c.Flags().Lookup("forward").NoOptDefVal = "0"
+		"forward the session's VNC endpoint to this local port, then block until Ctrl-C; use 0 to auto-pick a free port")
 	return c
 }
 
 // runVNCForward opens the local-port tunnel and blocks until Ctrl-C. It prints
 // the ready-to-use local vnc:// URL on stdout (one line, same as the non-forward
 // path) and a human status on stderr.
-func runVNCForward(cmd *cobra.Command, svc *internalrde.Service, workspaceID, sessionID string, localPort int, format output.Format) error {
-	if format == output.JSON {
-		return fmt.Errorf("--forward cannot be combined with --output json (it runs a long-lived tunnel, not a single-object result)")
-	}
-	// Fetch credentials up front so the local URL can carry them, and so a
-	// session with no VNC endpoint fails clearly before we dial.
-	creds, err := svc.GetSessionVNC(cmd.Context(), workspaceID, sessionID)
-	if err != nil {
-		return err
-	}
-
+func runVNCForward(cmd *cobra.Command, svc *internalrde.Service, workspaceID, sessionID string, localPort int) error {
 	// Ctrl-C cancels the tunnel and returns cleanly rather than hard-killing.
 	ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt)
 	defer stop()
 
-	onReady := func(localAddr string) {
+	// onReady fires once the local listener is up; ForwardVNC hands back the
+	// session's credentials (fetched exactly once, service-side) so the printed
+	// URL points at the local address.
+	onReady := func(localAddr string, creds internalrde.VNCCredentials) {
 		line := localAddr
 		if host, portStr, splitErr := net.SplitHostPort(localAddr); splitErr == nil {
 			if p, atoiErr := strconv.Atoi(portStr); atoiErr == nil {

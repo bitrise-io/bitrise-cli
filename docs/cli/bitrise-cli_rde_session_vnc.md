@@ -19,10 +19,10 @@ In --output json mode a fully-decomposed {address, host, port, username,
 password, url} object is emitted — host and port are always discrete fields,
 so a caller building its own connection never has to parse the address or URL.
 
-Pass --forward to open an SSH tunnel and expose the session's VNC endpoint on a
-local port, then block until Ctrl-C:
+Pass --forward PORT to open an SSH tunnel and expose the session's VNC endpoint
+on a local port, then block until Ctrl-C (use 0 to auto-pick a free port):
 
-  bitrise-cli rde session vnc SESSION_ID --forward        # auto-pick a local port
+  bitrise-cli rde session vnc SESSION_ID --forward 0      # auto-pick a local port
   bitrise-cli rde session vnc SESSION_ID --forward 5901   # bind localhost:5901
 
 A native VNC client (macOS Screen Sharing, Remmina, …) can then connect to the
@@ -47,8 +47,8 @@ bitrise-cli rde session vnc SESSION_ID [flags]
 ### Options
 
 ```
-      --forward int[=0]   forward the session's VNC endpoint to this local port and block until Ctrl-C; omit the value to auto-pick a free port
-  -h, --help              help for vnc
+      --forward int   forward the session's VNC endpoint to this local port, then block until Ctrl-C; use 0 to auto-pick a free port
+  -h, --help          help for vnc
 ```
 
 ### Options inherited from parent commands
