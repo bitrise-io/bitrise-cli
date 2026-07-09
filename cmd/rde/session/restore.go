@@ -1,7 +1,9 @@
 package session
 
 import (
+	"context"
 	"fmt"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -11,10 +13,21 @@ import (
 )
 
 func newRestoreCmd() *cobra.Command {
-	return &cobra.Command{
+	var (
+		wait        bool
+		waitTimeout time.Duration
+	)
+	c := &cobra.Command{
 		Use:   "restore SESSION_ID",
 		Short: "Restore a terminated session (re-provisions its VM from the persistent disk)",
-		Args:  cmdutil.RequireArgs("SESSION_ID"),
+		Long: `Restore a terminated session (re-provisions its VM from the persistent disk).
+
+Restore is asynchronous: by default the command returns while the session is
+still "starting". Pass --wait to block until the session finishes provisioning
+(mirrors 'session create --wait'); the command exits non-zero if the session
+ends in any state other than "running". This lets an unattended caller restore
+and then immediately use the session without hand-rolling a poll loop.`,
+		Args: cmdutil.RequireArgs("SESSION_ID"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			workspaceID, err := cmdutil.ResolveWorkspaceID(cmd)
 			if err != nil {
@@ -53,7 +66,31 @@ func newRestoreCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+
+			if wait {
+				waitCtx, cancel := context.WithTimeout(cmd.Context(), waitTimeout)
+				defer cancel()
+				if !cmdutil.IsQuiet(cmd) && format != output.JSON {
+					_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Waiting for session %s to become ready (timeout %s)…\n", restored.ID, waitTimeout)
+				}
+				ready, waitErr := svc.WaitForReady(waitCtx, workspaceID, restored.ID, 0, nil)
+				if waitErr != nil {
+					return fmt.Errorf("waiting for session: %w", waitErr)
+				}
+				restored = ready
+				if ready.Status != "running" {
+					if renderErr := output.Render(cmd.OutOrStdout(), format, restored, renderSessionDetail); renderErr != nil {
+						return renderErr
+					}
+					cmdutil.SilenceRootErrors(cmd)
+					return fmt.Errorf("session ended provisioning with status %q (expected running)", ready.Status)
+				}
+			}
+
 			return output.Render(cmd.OutOrStdout(), format, restored, renderSessionDetail)
 		},
 	}
+	c.Flags().BoolVar(&wait, "wait", false, "wait until the session leaves provisioning (running, failed, …) before returning; exits 1 if the final status isn't running")
+	c.Flags().DurationVar(&waitTimeout, "wait-timeout", 10*time.Minute, "max time to wait when --wait is set (Go duration syntax: 30s, 5m, 1h)")
+	return c
 }

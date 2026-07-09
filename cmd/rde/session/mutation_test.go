@@ -319,6 +319,77 @@ func TestRestoreCmd_DiskExpiringSoonWarnsButProceeds(t *testing.T) {
 	}
 }
 
+func TestRestoreCmd_WaitBlocksUntilRunning(t *testing.T) {
+	// Keep the id consistent across pre-flight GET, restore POST, and the
+	// wait poll (WaitForReady polls the id from the restore response body).
+	sess := func(status string) string {
+		return `{"session":{"id":"` + uuidSession + `","name":"dev","status":"` + status + `"}}`
+	}
+	var getCount int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/workspaces/ws-1/sessions/"+uuidSession:
+			getCount++
+			if getCount == 1 {
+				// Pre-flight disk-status check before the restore call.
+				_, _ = io.WriteString(w, `{"session":{"id":"`+uuidSession+`","name":"dev","status":"SESSION_STATUS_TERMINATED","persistentDiskStatus":"PERSISTENT_DISK_STATUS_AVAILABLE"}}`)
+				return
+			}
+			// WaitForReady poll: report the session as running so it settles
+			// immediately (no poll interval elapses).
+			_, _ = io.WriteString(w, sess("SESSION_STATUS_RUNNING"))
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/workspaces/ws-1/sessions/"+uuidSession+"/restore":
+			_, _ = io.WriteString(w, sess("SESSION_STATUS_STARTING"))
+		default:
+			t.Errorf("unexpected: %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer srv.Close()
+
+	stdout, stderr, err := run(t, newRestoreCmd(), srv.URL, "ws-1", []string{uuidSession, "--wait"}, output.Human)
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if getCount < 2 {
+		t.Errorf("expected --wait to poll GetSession after restore, got %d GETs", getCount)
+	}
+	if !strings.Contains(stdout, "running") {
+		t.Errorf("stdout should show the final running status:\n%s", stdout)
+	}
+	if !strings.Contains(stderr, "Waiting for session") {
+		t.Errorf("stderr should announce the wait:\n%s", stderr)
+	}
+}
+
+func TestRestoreCmd_WaitNonRunningExitsNonZero(t *testing.T) {
+	sess := func(status string) string {
+		return `{"session":{"id":"` + uuidSession + `","name":"dev","status":"` + status + `"}}`
+	}
+	var getCount int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/workspaces/ws-1/sessions/"+uuidSession:
+			getCount++
+			if getCount == 1 {
+				_, _ = io.WriteString(w, `{"session":{"id":"`+uuidSession+`","name":"dev","status":"SESSION_STATUS_TERMINATED","persistentDiskStatus":"PERSISTENT_DISK_STATUS_AVAILABLE"}}`)
+				return
+			}
+			// Provisioning failed — --wait must surface it as a non-zero exit.
+			_, _ = io.WriteString(w, sess("SESSION_STATUS_FAILED"))
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/workspaces/ws-1/sessions/"+uuidSession+"/restore":
+			_, _ = io.WriteString(w, sess("SESSION_STATUS_STARTING"))
+		default:
+			t.Errorf("unexpected: %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer srv.Close()
+
+	_, _, err := run(t, newRestoreCmd(), srv.URL, "ws-1", []string{uuidSession, "--wait"}, output.Human)
+	if err == nil || !strings.Contains(err.Error(), "expected running") {
+		t.Errorf("error = %v, want a non-running final-status error", err)
+	}
+}
+
 func TestDeleteCmd_HappyPath(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodDelete || r.URL.Path != "/v1/workspaces/ws-1/sessions/"+uuidSession {
