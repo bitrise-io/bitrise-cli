@@ -31,6 +31,15 @@ func TestBuildExecCommand(t *testing.T) {
 			shell: true,
 			want:  "cd /x && ls",
 		},
+		{
+			// Shell mode does not escape single quotes — that is the remote
+			// wrapper's job (see internalrde.buildLoginShellCmd). Here the
+			// command is passed through verbatim, quotes and all.
+			name:  "shell mode passes single quotes through unescaped",
+			args:  []string{"grep -rn 'TODO' ."},
+			shell: true,
+			want:  "grep -rn 'TODO' .",
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
