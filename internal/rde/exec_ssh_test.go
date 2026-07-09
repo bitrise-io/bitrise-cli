@@ -50,3 +50,38 @@ func TestStripInteractiveBashStartupNoise(t *testing.T) {
 		})
 	}
 }
+
+func TestBuildLoginShellCmd(t *testing.T) {
+	tests := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{
+			name: "plain command is wrapped verbatim",
+			in:   "echo hello",
+			want: `bash -i -l -c 'echo hello'`,
+		},
+		{
+			// The command layer's --shell mode joins tokens verbatim, so a
+			// command carrying single quotes reaches here unescaped. Each '
+			// must become '\'' or it would close the wrapper's quoting early
+			// and the remote bash would mis-parse the line.
+			name: "single quotes are escaped so the wrapper stays balanced",
+			in:   "echo 'hi'",
+			want: `bash -i -l -c 'echo '\''hi'\'''`,
+		},
+		{
+			name: "shell metacharacters plus a quoted arg survive intact",
+			in:   `cd repo && grep -rn 'TODO' .`,
+			want: `bash -i -l -c 'cd repo && grep -rn '\''TODO'\'' .'`,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := buildLoginShellCmd(tc.in); got != tc.want {
+				t.Errorf("buildLoginShellCmd(%q) = %q, want %q", tc.in, got, tc.want)
+			}
+		})
+	}
+}

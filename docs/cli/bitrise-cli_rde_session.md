@@ -38,7 +38,7 @@ bitrise-cli rde session [flags]
 * [bitrise-cli rde session delete-terminated](bitrise-cli_rde_session_delete-terminated.md)	 - Permanently delete every terminated session in the workspace
 * [bitrise-cli rde session diff](bitrise-cli_rde_session_diff.md)	 - Compare a session's template snapshot with the current template
 * [bitrise-cli rde session download](bitrise-cli_rde_session_download.md)	 - Download a file or directory from a session
-* [bitrise-cli rde session exec](bitrise-cli_rde_session_exec.md)	 - Run a bash command on a session over SSH
+* [bitrise-cli rde session exec](bitrise-cli_rde_session_exec.md)	 - Run a command on a session over SSH
 * [bitrise-cli rde session list](bitrise-cli_rde_session_list.md)	 - List RDE sessions in the workspace
 * [bitrise-cli rde session logs](bitrise-cli_rde_session_logs.md)	 - Print a session's warmup or startup logs
 * [bitrise-cli rde session notifications](bitrise-cli_rde_session_notifications.md)	 - List notifications emitted by a session
