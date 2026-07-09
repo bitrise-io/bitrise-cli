@@ -17,7 +17,7 @@ var ErrConnectionLost = errors.New("connection to the session was lost")
 // ExecuteInteractive attaches the caller's terminal to command running on the
 // session over SSH and blocks until it exits, returning its exit code. Unlike
 // Execute, it allocates a PTY (when stdin is a terminal), runs in raw mode, and
-// is NOT capped by ExecuteTimeout — interactive programs are long-lived.
+// is NOT capped by Execute's timeout — interactive programs are long-lived.
 //
 // It is the interactive sibling of Execute: same pre-flight checks, same SSH
 // dial and agent-forwarding posture, but stdin/stdout/stderr are streamed live
