@@ -1,14 +1,31 @@
 ## bitrise-cli rde session exec
 
-Run a bash command on a session over SSH
+Run a command on a session over SSH
 
 ### Synopsis
 
-Run a bash command on a session over SSH and capture its output.
+Run a command on a session over SSH and capture its output.
 
 The command runs in a forced-interactive login bash shell (bash -i -l -c) so
 the session's PATH, brew-installed binaries, git-lfs, and language version
 managers (nvm, pyenv, rbenv, asdf) are all loaded.
+
+By default the tokens after '--' are treated as a program plus literal
+arguments: each is passed through verbatim, so shell metacharacters (;, &&,
+|, $(...), redirection) are NOT interpreted — 'exec ID -- echo "a; b"' runs
+echo with the single literal argument 'a; b'. This keeps quoted arguments
+intact (e.g. -m "a message"). (Quote such arguments so your local shell
+hands them over as one token rather than splitting them itself.)
+
+Pass --shell to interpret everything after '--' as a shell command line
+instead, so pipes, &&, command substitution and redirection work:
+
+  bitrise-cli rde session exec SESSION_ID --shell -- 'cd repo && xcodebuild | xcpretty'
+
+This is the first-class replacement for hand-wrapping every command in
+bash -lc "…". Quote the command (or its metacharacters) so your local shell
+passes them through unchanged. --shell must come before '--'; after '--' it
+is just another literal token.
 
 If a local SSH agent is available ($SSH_AUTH_SOCK set), it's forwarded into
 the session — git-over-SSH inside the session uses the caller's local keys.
@@ -31,13 +48,16 @@ bitrise-cli rde session exec SESSION_ID -- COMMAND [ARGS...] [flags]
 ```
   bitrise-cli rde session exec SESSION_ID -- echo hello
   bitrise-cli rde session exec SESSION_ID -- npm test
-  bitrise-cli rde session exec SESSION_ID --output json -- 'ls -la /opt'
+  bitrise-cli rde session exec SESSION_ID -- git commit -m "a message"
+  bitrise-cli rde session exec SESSION_ID --shell -- 'cd repo && ls | head'
+  bitrise-cli rde session exec SESSION_ID --output json -- ls -la /opt
 ```
 
 ### Options
 
 ```
-  -h, --help   help for exec
+  -h, --help    help for exec
+      --shell   interpret everything after '--' as a shell command line (pipes, &&, $(...), redirection) instead of a program with literal arguments
 ```
 
 ### Options inherited from parent commands
