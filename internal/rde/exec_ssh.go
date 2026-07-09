@@ -215,6 +215,66 @@ func (c *sshClient) listenRemote(addr string) (net.Listener, error) {
 	return c.client.Listen("tcp", addr)
 }
 
+// forwardLocal listens on 127.0.0.1:localPort and forwards every accepted
+// connection to remoteAddr, dialed from the session over this SSH connection —
+// the equivalent of `ssh -L localPort:remoteAddr`. It blocks until ctx is
+// cancelled, then stops accepting and returns nil (a clean stop). localPort 0
+// auto-picks a free port; onReady (if non-nil) is called with the actual
+// "127.0.0.1:port" once the listener is accepting. Binding loopback keeps the
+// forwarded port reachable only from this machine.
+func (c *sshClient) forwardLocal(ctx context.Context, localPort int, remoteAddr string, onReady func(localAddr string)) error {
+	ln, err := net.Listen("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(localPort)))
+	if err != nil {
+		return fmt.Errorf("listen on local port: %w", err)
+	}
+	defer func() { _ = ln.Close() }()
+
+	// Close the listener when ctx is cancelled so the blocking Accept unblocks.
+	go func() {
+		<-ctx.Done()
+		_ = ln.Close()
+	}()
+
+	if onReady != nil {
+		onReady(ln.Addr().String())
+	}
+
+	for {
+		local, err := ln.Accept()
+		if err != nil {
+			if ctx.Err() != nil {
+				return nil // cancelled — a clean stop, not an error
+			}
+			return fmt.Errorf("accept local connection: %w", err)
+		}
+		go c.forwardConn(ctx, local, remoteAddr)
+	}
+}
+
+// forwardConn bridges an accepted local connection to remoteAddr over the SSH
+// transport, copying in both directions until either side closes or ctx is
+// cancelled. Best-effort: a failed remote dial just drops the local connection
+// (the VNC client sees a closed socket and can reconnect).
+func (c *sshClient) forwardConn(ctx context.Context, local net.Conn, remoteAddr string) {
+	defer func() { _ = local.Close() }()
+	remote, err := c.client.Dial("tcp", remoteAddr)
+	if err != nil {
+		return
+	}
+	defer func() { _ = remote.Close() }()
+
+	// Buffered so both copy goroutines can exit without blocking even when we
+	// return on ctx cancellation (the deferred Closes unblock the copies).
+	done := make(chan struct{}, 2)
+	go func() { _, _ = io.Copy(remote, local); done <- struct{}{} }()
+	go func() { _, _ = io.Copy(local, remote); done <- struct{}{} }()
+
+	select {
+	case <-done:
+	case <-ctx.Done():
+	}
+}
+
 // run executes userCmd in a forced-interactive login bash shell on a fresh
 // SSH session, without allocating a PTY. stdout and stderr are captured
 // separately. Context cancellation propagates by closing the session.
