@@ -262,16 +262,41 @@ func (c *sshClient) forwardConn(ctx context.Context, local net.Conn, remoteAddr 
 		return
 	}
 	defer func() { _ = remote.Close() }()
+	bridgeConn(ctx, local, remote)
+}
 
-	// Buffered so both copy goroutines can exit without blocking even when we
-	// return on ctx cancellation (the deferred Closes unblock the copies).
+// bridgeConn copies bytes in both directions between a and b. When one
+// direction reaches EOF it half-closes that peer's write end so the peer
+// observes the EOF, then keeps copying the other direction until it finishes
+// too: tearing both down on the first EOF would truncate a server-speaks-first
+// protocol (VNC/RFB greets with its ProtocolVersion) or a response still
+// draining. Returns once both directions finish or ctx is cancelled. It does
+// NOT close a or b — the caller owns their lifetimes, and the caller's deferred
+// Closes are what unblock a copy still running when ctx cancellation makes us
+// return early. Split out from forwardConn so this behaviour can be exercised
+// without an SSH transport.
+func bridgeConn(ctx context.Context, a, b net.Conn) {
+	// Buffered so a goroutine can send without blocking when we return early on
+	// ctx cancellation (the caller's deferred Closes then unblock the copies).
 	done := make(chan struct{}, 2)
-	go func() { _, _ = io.Copy(remote, local); done <- struct{}{} }()
-	go func() { _, _ = io.Copy(local, remote); done <- struct{}{} }()
+	go func() { _, _ = io.Copy(b, a); halfCloseWrite(b); done <- struct{}{} }()
+	go func() { _, _ = io.Copy(a, b); halfCloseWrite(a); done <- struct{}{} }()
 
-	select {
-	case <-done:
-	case <-ctx.Done():
+	for range 2 {
+		select {
+		case <-ctx.Done():
+			return
+		case <-done:
+		}
+	}
+}
+
+// halfCloseWrite shuts the write half of conn when it supports it (both
+// *net.TCPConn and the SSH direct-tcpip conn do), signalling EOF to the peer
+// without closing the read half — so the other copy direction can still drain.
+func halfCloseWrite(conn net.Conn) {
+	if cw, ok := conn.(interface{ CloseWrite() error }); ok {
+		_ = cw.CloseWrite()
 	}
 }
 
