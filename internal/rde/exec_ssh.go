@@ -307,7 +307,14 @@ func (c *sshClient) run(ctx context.Context, userCmd string) (ExecResult, error)
 	go func() {
 		select {
 		case <-ctx.Done():
-			_ = session.Close()
+			// session.Close() only initiates a graceful channel close; the
+			// Wait() inside session.Run below then blocks until the REMOTE half
+			// closes, which for a command blocked in the kernel (sleep, a long
+			// build) doesn't happen until it finishes — so a --timeout deadline
+			// or Ctrl-C would never actually abort it. Force the transport down
+			// so Run returns immediately. exec dials a fresh client per call
+			// (see Execute), so closing it here affects nothing else.
+			_ = c.client.Close()
 		case <-done:
 		}
 	}()
