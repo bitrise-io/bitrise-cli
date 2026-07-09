@@ -2,6 +2,29 @@ package rde
 
 import "testing"
 
+func TestVNCCredentialsFromSession_DecomposesHostPort(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		addr     string
+		wantHost string
+		wantPort int
+	}{
+		{name: "host:port", addr: "host.example:5901", wantHost: "host.example", wantPort: 5901},
+		{name: "vnc:// prefix", addr: "vnc://host.example:5900", wantHost: "host.example", wantPort: 5900},
+		{name: "bare host defaults to 5900", addr: "host.example", wantHost: "host.example", wantPort: 5900},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := VNCCredentialsFromSession(Session{Status: "running", VNCAddress: tc.addr})
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if got.Host != tc.wantHost || got.Port != tc.wantPort {
+				t.Errorf("host/port = %q/%d, want %q/%d", got.Host, got.Port, tc.wantHost, tc.wantPort)
+			}
+		})
+	}
+}
+
 func TestVNCCredentialsFromSession(t *testing.T) {
 	for _, tc := range []struct {
 		name      string

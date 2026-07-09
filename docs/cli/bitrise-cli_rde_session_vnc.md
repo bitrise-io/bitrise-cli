@@ -1,11 +1,11 @@
 ## bitrise-cli rde session vnc
 
-Print VNC connection credentials for a session
+Print VNC connection details, or forward the endpoint to a local port
 
 ### Synopsis
 
-Print the VNC connection details (address, username, password, and a
-ready-to-use vnc:// URL) for a session.
+Print the VNC connection details (address, host, port, username, password,
+and a ready-to-use vnc:// URL) for a session.
 
 The VNC password is ephemeral and tied to this session. Avoid pasting the
 output into chat or sharing it — anyone with the URL can connect to the
@@ -15,9 +15,21 @@ In human mode the URL is the only thing on stdout, so it's safe to pipe:
 
   open "$(bitrise-cli rde session vnc SESSION_ID)"
 
-In --output json mode a {address, username, password, url} object is
-emitted. Prefer `rde session open-vnc` when you just want to launch your
-viewer — that hands the URL to the OS without printing the password.
+In --output json mode a fully-decomposed {address, host, port, username,
+password, url} object is emitted — host and port are always discrete fields,
+so a caller building its own connection never has to parse the address or URL.
+
+Pass --forward to open an SSH tunnel and expose the session's VNC endpoint on a
+local port, then block until Ctrl-C:
+
+  bitrise-cli rde session vnc SESSION_ID --forward        # auto-pick a local port
+  bitrise-cli rde session vnc SESSION_ID --forward 5901   # bind localhost:5901
+
+A native VNC client (macOS Screen Sharing, Remmina, …) can then connect to the
+printed localhost address. The tunnel rides the same SSH connection the CLI
+already uses, so no direct network route to the session is required and no
+credentials are embedded in a URL handed to the OS. Prefer `rde session open-vnc`
+when you just want to launch your viewer against a directly-reachable endpoint.
 
 ```
 bitrise-cli rde session vnc SESSION_ID [flags]
@@ -28,13 +40,15 @@ bitrise-cli rde session vnc SESSION_ID [flags]
 ```
   bitrise-cli rde session vnc SESSION_ID
   bitrise-cli rde session vnc SESSION_ID --output json
+  bitrise-cli rde session vnc SESSION_ID --forward 5901
   open "$(bitrise-cli rde session vnc SESSION_ID)"
 ```
 
 ### Options
 
 ```
-  -h, --help   help for vnc
+      --forward int[=0]   forward the session's VNC endpoint to this local port and block until Ctrl-C; omit the value to auto-pick a free port
+  -h, --help              help for vnc
 ```
 
 ### Options inherited from parent commands

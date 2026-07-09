@@ -3,7 +3,9 @@ package rde
 import (
 	"context"
 	"fmt"
+	"net"
 	"net/url"
+	"strconv"
 	"strings"
 )
 
@@ -11,8 +13,14 @@ import (
 // JSON tags define the stable shape used by `rde session vnc --output json`.
 // The fields mirror what the backend returns (address, username, password)
 // plus a pre-built `vnc://` URL ready to hand to an OS handler.
+//
+// Host and Port are the address decomposed into discrete fields, so callers
+// that need to build their own connection (a bridge, a native client) never
+// have to parse `address` or the URL — the endpoint is always fully qualified.
 type VNCCredentials struct {
 	Address  string `json:"address"`
+	Host     string `json:"host"`
+	Port     int    `json:"port"`
 	Username string `json:"username,omitempty"`
 	Password string `json:"password,omitempty"`
 	URL      string `json:"url"`
@@ -68,6 +76,8 @@ func VNCCredentialsFromSession(sess Session) (VNCCredentials, error) {
 	}
 	creds := VNCCredentials{
 		Address:  sess.VNCAddress,
+		Host:     host,
+		Port:     port,
 		Username: sess.VNCUsername,
 		Password: sess.VNCPassword,
 	}
@@ -115,6 +125,57 @@ func parsePort(s string) (int, error) {
 		}
 	}
 	return n, nil
+}
+
+// FormatVNCURL builds a `vnc://[user[:pass]@]host:port` URL with URL-escaped
+// credentials — the same shape as VNCCredentials.URL. Exposed so a caller that
+// forwards the endpoint to a local port (see ForwardVNC) can present a
+// ready-to-use URL pointing at the local address.
+func FormatVNCURL(host string, port int, user, pass string) string {
+	return buildVNCURL(host, port, user, pass)
+}
+
+// ForwardVNC opens an SSH tunnel to the session and forwards its VNC endpoint
+// to a local TCP port, blocking until ctx is cancelled. localPort 0 auto-picks
+// a free port; the chosen "127.0.0.1:port" is reported via onReady once the
+// listener is accepting, so a caller can print connection details. A native
+// VNC client (e.g. macOS Screen Sharing) then connects to that local address —
+// no credentials embedded in a URL and no direct network route to the session
+// required, since the traffic rides the SSH connection the CLI already trusts.
+//
+// The tunnel targets the session VM's loopback VNC port — the standard
+// `ssh -L LOCAL:localhost:5900` recipe. macOS Screen Sharing listens locally on
+// the VM and the SSH connection terminates there, so dialing the VM's
+// 127.0.0.1:<vnc-port> reaches it regardless of how the endpoint is exposed
+// externally. (The port is taken from the backend's vnc_address, defaulting to
+// the standard 5900.)
+func (s *Service) ForwardVNC(ctx context.Context, workspaceID, sessionID string, localPort int, onReady func(localAddr string)) error {
+	if s.client == nil {
+		return errClient()
+	}
+	sess, err := s.GetSession(ctx, workspaceID, sessionID)
+	if err != nil {
+		return err
+	}
+	if sess.VNCAddress == "" {
+		return fmt.Errorf("session has no VNC endpoint (the template may not expose VNC, or the session is still provisioning)")
+	}
+	_, vncPort, err := parseVNCHostPort(sess.VNCAddress)
+	if err != nil {
+		return err
+	}
+	target, err := sshTargetForSession(sess)
+	if err != nil {
+		return err
+	}
+	client, err := dialSSHWithRetry(ctx, target)
+	if err != nil {
+		return err
+	}
+	defer client.Close() //nolint:errcheck // forward errors take precedence; nothing actionable on close failure
+
+	remoteAddr := net.JoinHostPort("127.0.0.1", strconv.Itoa(vncPort))
+	return client.forwardLocal(ctx, localPort, remoteAddr, onReady)
 }
 
 // buildVNCURL emits a `vnc://[user[:pass]@]host:port` URL. URL-escapes

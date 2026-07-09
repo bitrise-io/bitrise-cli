@@ -65,6 +65,44 @@ func TestVNCCmd_JSONIncludesPassword(t *testing.T) {
 	}
 }
 
+func TestVNCCmd_JSONIncludesHostPort(t *testing.T) {
+	// The decomposed host/port fields let a caller build its own connection
+	// without ever parsing `address` or the URL.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, `{"session":{
+			"id":"s-1","name":"dev","status":"SESSION_STATUS_RUNNING",
+			"vncAddress":"host.example:5901","vncUsername":"vagrant","vncPassword":"hunter2"
+		}}`)
+	}))
+	defer srv.Close()
+
+	stdout, _, err := run(t, newVNCCmd(), srv.URL, "ws-1", []string{uuidSession}, output.JSON)
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	var got internalrde.VNCCredentials
+	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
+		t.Fatalf("unmarshal JSON output: %v\n%s", err, stdout)
+	}
+	if got.Host != "host.example" || got.Port != 5901 {
+		t.Errorf("host/port = %q/%d, want host.example/5901", got.Host, got.Port)
+	}
+}
+
+func TestVNCCmd_ForwardRejectsJSON(t *testing.T) {
+	// --forward is a long-lived tunnel; it can't satisfy the single-object
+	// JSON contract, so the combination is rejected before any network call.
+	srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		t.Error("no HTTP call should be made when --forward is rejected for --output json")
+	}))
+	defer srv.Close()
+
+	_, _, err := run(t, newVNCCmd(), srv.URL, "ws-1", []string{uuidSession, "--forward"}, output.JSON)
+	if err == nil || !strings.Contains(err.Error(), "--forward cannot be combined with --output json") {
+		t.Errorf("err = %v, want --forward/--output json rejection", err)
+	}
+}
+
 func TestVNCCmd_NoEndpointError(t *testing.T) {
 	// A session with no vncAddress (e.g. a Linux template that doesn't
 	// expose VNC, or one still provisioning) must error rather than print
