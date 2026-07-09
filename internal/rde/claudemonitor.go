@@ -90,7 +90,7 @@ func (m *ClaudeMetadataMonitor) readAITitle(ctx context.Context) string {
 	if m.ClaudeSessionID == "" {
 		return ""
 	}
-	res, err := m.Service.Execute(ctx, m.WorkspaceID, m.SessionID, readAITitleCommand(m.ClaudeSessionID))
+	res, err := m.Service.Execute(ctx, m.WorkspaceID, m.SessionID, readAITitleCommand(m.ClaudeSessionID), DefaultExecuteTimeout)
 	if err != nil {
 		m.debugf("read ai-title: %v", err)
 		return ""

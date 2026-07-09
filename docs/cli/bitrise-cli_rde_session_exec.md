@@ -36,8 +36,11 @@ this CLI exits non-zero when the remote command exits non-zero.
 In --output json mode: a single {"exit_code", "stdout", "stderr"} object is
 emitted to stdout regardless of the command's exit status.
 
-The remote command is capped at 2 minutes. For long-running jobs, nohup
-them inside the session.
+The remote command is capped at 10 minutes by default; raise it with --timeout
+(e.g. --timeout 20m for a cold xcodebuild) or pass --timeout 0 to disable the
+cap. exec holds the SSH connection open for the whole run, so the command dies
+if the connection drops — for fire-and-forget work that must outlive the
+connection, nohup it inside the session instead.
 
 ```
 bitrise-cli rde session exec SESSION_ID -- COMMAND [ARGS...] [flags]
@@ -50,14 +53,16 @@ bitrise-cli rde session exec SESSION_ID -- COMMAND [ARGS...] [flags]
   bitrise-cli rde session exec SESSION_ID -- npm test
   bitrise-cli rde session exec SESSION_ID -- git commit -m "a message"
   bitrise-cli rde session exec SESSION_ID --shell -- 'cd repo && ls | head'
+  bitrise-cli rde session exec SESSION_ID --timeout 20m -- ./scripts/cold-build.sh
   bitrise-cli rde session exec SESSION_ID --output json -- ls -la /opt
 ```
 
 ### Options
 
 ```
-  -h, --help    help for exec
-      --shell   interpret everything after '--' as a shell command line (pipes, &&, $(...), redirection) instead of a program with literal arguments
+  -h, --help               help for exec
+      --shell              interpret everything after '--' as a shell command line (pipes, &&, $(...), redirection) instead of a program with literal arguments
+      --timeout duration   max time the remote command may run before it's aborted; 0 disables the cap (Go duration syntax: 30s, 10m, 1h) (default 10m0s)
 ```
 
 ### Options inherited from parent commands

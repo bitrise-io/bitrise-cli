@@ -253,6 +253,14 @@ func (c *sshClient) run(ctx context.Context, userCmd string) (ExecResult, error)
 	}()
 	defer close(done)
 
+	// A long-running exec (raised/disabled --timeout) can go minutes with no
+	// channel traffic — e.g. a cold xcodebuild resolving SPM. Probe the
+	// transport so a dropped connection is detected in ~10s and unblocks the
+	// Run below, instead of hanging until the OS TCP timeout. On a healthy
+	// connection the probes are answered by the transport (not the shell), so
+	// this never disturbs the command.
+	go c.keepAlive(done)
+
 	runErr := session.Run(buildLoginShellCmd(userCmd))
 
 	result := ExecResult{
