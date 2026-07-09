@@ -135,20 +135,25 @@ func FormatVNCURL(host string, port int, user, pass string) string {
 	return buildVNCURL(host, port, user, pass)
 }
 
-// ForwardVNC opens an SSH tunnel to the session and forwards its VNC endpoint
-// to a local TCP port, blocking until ctx is cancelled. localPort 0 auto-picks
-// a free port; the chosen "127.0.0.1:port" is reported via onReady once the
-// listener is accepting, so a caller can print connection details. A native
-// VNC client (e.g. macOS Screen Sharing) then connects to that local address —
-// no credentials embedded in a URL and no direct network route to the session
-// required, since the traffic rides the SSH connection the CLI already trusts.
+// localScreenSharingPort is where macOS Screen Sharing (ARD/RFB) listens on
+// the session VM itself. The port in the backend's vnc_address is the
+// externally-published relay port (e.g. …:20852), not a port on the VM, so it
+// can't be the tunnel's remote target — the raw RFB server is always on the
+// well-known 5900 locally.
+const localScreenSharingPort = 5900
+
+// ForwardVNC opens an SSH tunnel to the session and forwards the VM's VNC
+// server to a local TCP port, blocking until ctx is cancelled. localPort 0
+// auto-picks a free port; the chosen "127.0.0.1:port" is reported via onReady
+// once the listener is accepting, so a caller can print connection details.
 //
-// The tunnel targets the session VM's loopback VNC port — the standard
-// `ssh -L LOCAL:localhost:5900` recipe. macOS Screen Sharing listens locally on
-// the VM and the SSH connection terminates there, so dialing the VM's
-// 127.0.0.1:<vnc-port> reaches it regardless of how the endpoint is exposed
-// externally. (The port is taken from the backend's vnc_address, defaulting to
-// the standard 5900.)
+// The tunnel targets the session VM's loopback Screen Sharing port — the
+// standard `ssh -L LOCAL:localhost:5900` recipe. The SSH connection terminates
+// on the VM, so dialing 127.0.0.1:5900 there reaches the raw RFB server
+// directly, bypassing the external relay. That yields a plain-RFB localhost
+// endpoint any VNC client (or a websockify/noVNC bridge) can consume, with no
+// credentials embedded in a handed-off URL and no direct route to the relay
+// required.
 func (s *Service) ForwardVNC(ctx context.Context, workspaceID, sessionID string, localPort int, onReady func(localAddr string)) error {
 	if s.client == nil {
 		return errClient()
@@ -160,10 +165,6 @@ func (s *Service) ForwardVNC(ctx context.Context, workspaceID, sessionID string,
 	if sess.VNCAddress == "" {
 		return fmt.Errorf("session has no VNC endpoint (the template may not expose VNC, or the session is still provisioning)")
 	}
-	_, vncPort, err := parseVNCHostPort(sess.VNCAddress)
-	if err != nil {
-		return err
-	}
 	target, err := sshTargetForSession(sess)
 	if err != nil {
 		return err
@@ -174,7 +175,7 @@ func (s *Service) ForwardVNC(ctx context.Context, workspaceID, sessionID string,
 	}
 	defer client.Close() //nolint:errcheck // forward errors take precedence; nothing actionable on close failure
 
-	remoteAddr := net.JoinHostPort("127.0.0.1", strconv.Itoa(vncPort))
+	remoteAddr := net.JoinHostPort("127.0.0.1", strconv.Itoa(localScreenSharingPort))
 	return client.forwardLocal(ctx, localPort, remoteAddr, onReady)
 }
 

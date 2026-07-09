@@ -263,15 +263,32 @@ func (c *sshClient) forwardConn(ctx context.Context, local net.Conn, remoteAddr 
 	}
 	defer func() { _ = remote.Close() }()
 
-	// Buffered so both copy goroutines can exit without blocking even when we
-	// return on ctx cancellation (the deferred Closes unblock the copies).
+	// Copy both directions. When one side reaches EOF, half-close the peer's
+	// write end so it observes the EOF, then keep copying the other direction
+	// until it finishes too. Tearing down both on the first EOF would truncate
+	// a server-speaks-first protocol (VNC/RFB greets with its ProtocolVersion)
+	// or a response still draining — so we wait for both copies (or ctx).
+	// Buffered so a goroutine can exit without blocking when we return early on
+	// ctx cancellation (the deferred Closes then unblock the other copy).
 	done := make(chan struct{}, 2)
-	go func() { _, _ = io.Copy(remote, local); done <- struct{}{} }()
-	go func() { _, _ = io.Copy(local, remote); done <- struct{}{} }()
+	go func() { _, _ = io.Copy(remote, local); halfCloseWrite(remote); done <- struct{}{} }()
+	go func() { _, _ = io.Copy(local, remote); halfCloseWrite(local); done <- struct{}{} }()
 
-	select {
-	case <-done:
-	case <-ctx.Done():
+	for range 2 {
+		select {
+		case <-ctx.Done():
+			return
+		case <-done:
+		}
+	}
+}
+
+// halfCloseWrite shuts the write half of conn when it supports it (both
+// *net.TCPConn and the SSH direct-tcpip conn do), signalling EOF to the peer
+// without closing the read half — so the other copy direction can still drain.
+func halfCloseWrite(conn net.Conn) {
+	if cw, ok := conn.(interface{ CloseWrite() error }); ok {
+		_ = cw.CloseWrite()
 	}
 }
 

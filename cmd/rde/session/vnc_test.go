@@ -97,7 +97,7 @@ func TestVNCCmd_ForwardRejectsJSON(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	_, _, err := run(t, newVNCCmd(), srv.URL, "ws-1", []string{uuidSession, "--forward"}, output.JSON)
+	_, _, err := run(t, newVNCCmd(), srv.URL, "ws-1", []string{uuidSession, "--forward", "5901"}, output.JSON)
 	if err == nil || !strings.Contains(err.Error(), "--forward cannot be combined with --output json") {
 		t.Errorf("err = %v, want --forward/--output json rejection", err)
 	}
