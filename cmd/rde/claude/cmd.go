@@ -547,7 +547,7 @@ func syncGitIdentity(ctx context.Context, svc *internalrde.Service, log *stepLog
 		return // no local identity configured — leave the session's default alone
 	}
 	log.step("Setting git identity (%s)…", gitIdentityLabel(name, email))
-	res, err := svc.Execute(ctx, workspaceID, sessionID, command)
+	res, err := svc.Execute(ctx, workspaceID, sessionID, command, internalrde.DefaultExecuteTimeout)
 	switch {
 	case err != nil:
 		log.warn("Could not set git identity on the session: %v", err)
