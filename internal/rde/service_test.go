@@ -205,13 +205,16 @@ func TestAPIError_SurfacesMessage(t *testing.T) {
 }
 
 func TestWaitForReady_PollsUntilNonProvisioningStatus(t *testing.T) {
-	// Two polls: first returns PENDING, second returns RUNNING.
+	// Three polls: PENDING, then UNKNOWN (backend can't determine the machine
+	// state yet — still transitional), then RUNNING.
 	var calls int
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		calls++
 		switch calls {
 		case 1:
 			_, _ = io.WriteString(w, `{"session":{"id":"s1","status":"SESSION_STATUS_PENDING"}}`)
+		case 2:
+			_, _ = io.WriteString(w, `{"session":{"id":"s1","status":"SESSION_STATUS_UNKNOWN"}}`)
 		default:
 			_, _ = io.WriteString(w, `{"session":{"id":"s1","status":"SESSION_STATUS_RUNNING"}}`)
 		}
@@ -220,7 +223,7 @@ func TestWaitForReady_PollsUntilNonProvisioningStatus(t *testing.T) {
 
 	svc := NewService(rdeapi.New(srv.URL, "tok"))
 	// onPoll should see the live status on every poll, including the
-	// intermediate provisioning state.
+	// intermediate provisioning states.
 	var seen []string
 	// 1ms interval keeps the test fast.
 	sess, err := svc.WaitForReady(context.Background(), "ws-1", "s1", time.Millisecond, func(status string) {
@@ -232,11 +235,11 @@ func TestWaitForReady_PollsUntilNonProvisioningStatus(t *testing.T) {
 	if sess.Status != "running" {
 		t.Errorf("status = %q, want running", sess.Status)
 	}
-	if calls < 2 {
-		t.Errorf("expected at least 2 polls, got %d", calls)
+	if calls < 3 {
+		t.Errorf("expected at least 3 polls, got %d", calls)
 	}
-	if len(seen) < 2 || seen[0] != "pending" || seen[len(seen)-1] != "running" {
-		t.Errorf("onPoll statuses = %v, want pending…running", seen)
+	if len(seen) < 3 || seen[0] != "pending" || seen[1] != "unknown" || seen[len(seen)-1] != "running" {
+		t.Errorf("onPoll statuses = %v, want pending…unknown…running", seen)
 	}
 }
 
