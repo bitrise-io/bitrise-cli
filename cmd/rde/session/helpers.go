@@ -11,11 +11,6 @@ import (
 	internalrde "github.com/bitrise-io/bitrise-cli/internal/rde"
 )
 
-// agentLabelKey is the label key the CLI manages on behalf of automation
-// agents: when BITRISE_AGENT_ID is set, `session create` stamps
-// agent=<id> and `session list --mine` selects on it.
-const agentLabelKey = "agent"
-
 // parseLabelFlags converts repeatable key=value flag values into a label
 // map; flagName names the flag in error messages. Only the shape is checked
 // here — key charset/length, value size, entry count, and the reserved

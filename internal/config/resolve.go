@@ -15,10 +15,6 @@ const (
 	EnvAppSlug       = "BITRISE_APP_ID"
 	EnvAppSlugLegacy = "BITRISE_APP_SLUG" // pre-rename name, still accepted; EnvAppSlug wins
 	EnvWorkspaceID   = "BITRISE_WORKSPACE_ID"
-	// EnvAgentID identifies the automation agent driving the CLI. When set,
-	// `rde session create` labels new sessions with agent=<id> and
-	// `rde session list --mine` filters on that label.
-	EnvAgentID       = "BITRISE_AGENT_ID"
 	EnvOutput        = "BITRISE_OUTPUT"
 	EnvAPIBaseURL    = "BITRISE_API_BASE_URL"
 	EnvRDEAPIBaseURL = "BITRISE_RDE_API_BASE_URL"

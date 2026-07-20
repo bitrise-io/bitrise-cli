@@ -7,9 +7,7 @@ List RDE sessions in the workspace
 List every RDE session the authenticated user has in the workspace.
 
 Filter by labels with --label-selector key=value (repeatable; selectors are
-exact matches and are ANDed, at most 8 per request). --mine is shorthand for
---label-selector agent=$BITRISE_AGENT_ID — it lists the sessions this agent
-stamped at creation time — and errors when BITRISE_AGENT_ID isn't set.
+exact matches and are ANDed, at most 8 per request).
 
 The session list comes from the backend in arbitrary order; the CLI does
 not paginate (the API doesn't paginate this endpoint either).
@@ -24,7 +22,6 @@ bitrise-cli rde session list [flags]
   bitrise-cli rde session list
   bitrise-cli rde session list --workspace my-workspace
   bitrise-cli rde session list -l team=mobile -l branch=main
-  bitrise-cli rde session list --mine
   bitrise-cli rde session list --output json | jq '.items[].id'
 ```
 
@@ -33,7 +30,6 @@ bitrise-cli rde session list [flags]
 ```
   -h, --help                         help for list
   -l, --label-selector stringArray   only sessions whose labels match key=value exactly (repeatable; multiple selectors must all match)
-      --mine                         only sessions labeled agent=$BITRISE_AGENT_ID (shorthand for --label-selector; requires BITRISE_AGENT_ID)
 ```
 
 ### Options inherited from parent commands

@@ -4,14 +4,12 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"os"
 	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
 
 	"github.com/bitrise-io/bitrise-cli/cmd/cmdutil"
-	"github.com/bitrise-io/bitrise-cli/internal/config"
 	"github.com/bitrise-io/bitrise-cli/internal/output"
 	"github.com/bitrise-io/bitrise-cli/internal/output/style"
 	internalrde "github.com/bitrise-io/bitrise-cli/internal/rde"
@@ -65,9 +63,7 @@ governs how the backend stores the value, not how it reaches the CLI.
 
 Attach arbitrary key=value metadata with --label (repeatable); labels come
 back on view/list output and sessions can be filtered by them with
-'rde session list --label-selector key=value'. When the BITRISE_AGENT_ID
-environment variable is set, the CLI automatically adds an agent=<id> label
-to the new session (an explicit --label agent=... wins over the variable).
+'rde session list --label-selector key=value'.
 
 Example values:
   --input key=value
@@ -104,17 +100,6 @@ Example values:
 			labelMap, err := parseLabelFlags("--label", labels)
 			if err != nil {
 				return err
-			}
-			// Agent-mode sugar: when BITRISE_AGENT_ID is set, stamp the
-			// session with agent=<id> so 'session list --mine' finds it
-			// later. An explicit --label agent=... wins over the variable.
-			if agentID := os.Getenv(config.EnvAgentID); agentID != "" {
-				if _, ok := labelMap[agentLabelKey]; !ok {
-					if labelMap == nil {
-						labelMap = make(map[string]string, 1)
-					}
-					labelMap[agentLabelKey] = agentID
-				}
 			}
 			req := internalrde.CreateSessionRequest{
 				Name:                    name,
