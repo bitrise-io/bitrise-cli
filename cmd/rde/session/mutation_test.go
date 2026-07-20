@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/bitrise-io/bitrise-cli/internal/config"
 	"github.com/bitrise-io/bitrise-cli/internal/output"
 )
 
@@ -192,6 +193,93 @@ func TestCreateCmd_RequiresTemplateOrMachineSpec(t *testing.T) {
 	}
 }
 
+func TestCreateCmd_LabelsSent(t *testing.T) {
+	var gotBody map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		_, _ = io.WriteString(w, `{"session":{"id":"s-new","name":"dev"}}`)
+	}))
+	defer srv.Close()
+
+	_, _, err := run(t, newCreateCmd(), srv.URL, "ws-1",
+		[]string{"dev", "--template", uuidTemplate, "--label", "branch=main", "--label", "team=mobile"}, output.Human)
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	labels, ok := gotBody["labels"].(map[string]any)
+	if !ok || labels["branch"] != "main" || labels["team"] != "mobile" {
+		t.Errorf("labels = %v, want branch=main team=mobile", gotBody["labels"])
+	}
+}
+
+func TestCreateCmd_LabelsOmittedWhenUnset(t *testing.T) {
+	// No --label and no BITRISE_AGENT_ID (unset by cmdtest.RunIsolated) —
+	// the body must not carry a labels field at all.
+	var gotBody map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		_, _ = io.WriteString(w, `{"session":{"id":"s-new","name":"dev"}}`)
+	}))
+	defer srv.Close()
+
+	_, _, err := run(t, newCreateCmd(), srv.URL, "ws-1",
+		[]string{"dev", "--template", uuidTemplate}, output.Human)
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if _, ok := gotBody["labels"]; ok {
+		t.Errorf("labels should be omitted, body=%v", gotBody)
+	}
+}
+
+func TestCreateCmd_MalformedLabelErrors(t *testing.T) {
+	_, _, err := run(t, newCreateCmd(), "http://unused", "ws-1",
+		[]string{"dev", "--template", uuidTemplate, "--label", "no-equals"}, output.Human)
+	if err == nil || !strings.Contains(err.Error(), "--label") {
+		t.Errorf("error = %v, want --label parse error", err)
+	}
+}
+
+func TestCreateCmd_AgentEnvStampsLabel(t *testing.T) {
+	t.Setenv(config.EnvAgentID, "bot-1")
+	var gotBody map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		_, _ = io.WriteString(w, `{"session":{"id":"s-new","name":"dev"}}`)
+	}))
+	defer srv.Close()
+
+	_, _, err := run(t, newCreateCmd(), srv.URL, "ws-1",
+		[]string{"dev", "--template", uuidTemplate}, output.Human)
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	labels, ok := gotBody["labels"].(map[string]any)
+	if !ok || labels["agent"] != "bot-1" {
+		t.Errorf("labels = %v, want auto-stamped agent=bot-1", gotBody["labels"])
+	}
+}
+
+func TestCreateCmd_ExplicitAgentLabelWinsOverEnv(t *testing.T) {
+	t.Setenv(config.EnvAgentID, "bot-1")
+	var gotBody map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		_, _ = io.WriteString(w, `{"session":{"id":"s-new","name":"dev"}}`)
+	}))
+	defer srv.Close()
+
+	_, _, err := run(t, newCreateCmd(), srv.URL, "ws-1",
+		[]string{"dev", "--template", uuidTemplate, "--label", "agent=custom"}, output.Human)
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	labels, ok := gotBody["labels"].(map[string]any)
+	if !ok || labels["agent"] != "custom" {
+		t.Errorf("labels = %v, want explicit agent=custom to win", gotBody["labels"])
+	}
+}
+
 func TestUpdateCmd_RequiresAField(t *testing.T) {
 	_, _, err := run(t, newUpdateCmd(), "http://unused", "ws-1", []string{"s-1"}, output.Human)
 	if err == nil || !strings.Contains(err.Error(), "--name") {
@@ -224,6 +312,46 @@ func TestUpdateCmd_OnlySetFieldsSent(t *testing.T) {
 	}
 	if _, ok := gotBody["autoTerminateMinutes"]; ok {
 		t.Errorf("autoTerminateMinutes should be omitted, body=%v", gotBody)
+	}
+}
+
+func TestUpdateCmd_LabelsSentAndRendered(t *testing.T) {
+	var gotBody map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPatch {
+			t.Errorf("method = %s, want PATCH", r.Method)
+		}
+		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		_, _ = io.WriteString(w, `{"session":{"id":"`+uuidSession+`","name":"dev","status":"SESSION_STATUS_RUNNING","labels":{"branch":"main","team":"mobile"}}}`)
+	}))
+	defer srv.Close()
+
+	stdout, _, err := run(t, newUpdateCmd(), srv.URL, "ws-1",
+		[]string{uuidSession, "--label", "branch=main", "--unset-label", "wip"}, output.Human)
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	labels, ok := gotBody["labels"].(map[string]any)
+	if !ok || labels["branch"] != "main" {
+		t.Errorf("labels = %v, want branch=main", gotBody["labels"])
+	}
+	removed, ok := gotBody["removeLabels"].([]any)
+	if !ok || len(removed) != 1 || removed[0] != "wip" {
+		t.Errorf("removeLabels = %v, want [wip]", gotBody["removeLabels"])
+	}
+	// The human detail view renders the returned labels.
+	for _, want := range []string{"Labels", "branch", "main", "team", "mobile"} {
+		if !strings.Contains(stdout, want) {
+			t.Errorf("stdout missing %q:\n%s", want, stdout)
+		}
+	}
+}
+
+func TestUpdateCmd_LabelSetAndUnsetConflict(t *testing.T) {
+	_, _, err := run(t, newUpdateCmd(), "http://unused", "ws-1",
+		[]string{uuidSession, "--label", "wip=yes", "--unset-label", "wip"}, output.Human)
+	if err == nil || !strings.Contains(err.Error(), "both set") {
+		t.Errorf("error = %v, want set/unset conflict error", err)
 	}
 }
 

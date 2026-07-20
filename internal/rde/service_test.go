@@ -14,12 +14,13 @@ import (
 	rdeapi "github.com/bitrise-io/bitrise-cli/bitriseapi/rde"
 )
 
-// recordingServer captures the method, path, auth header, and body of the
-// last request, and replies with a canned JSON body.
+// recordingServer captures the method, path, query, auth header, and body
+// of the last request, and replies with a canned JSON body.
 type recordingServer struct {
 	srv        *httptest.Server
 	lastMethod string
 	lastPath   string
+	lastQuery  string
 	lastAuth   string
 	lastBody   []byte
 }
@@ -29,6 +30,7 @@ func newRecordingServer(t *testing.T, response string) *recordingServer {
 	rs := &recordingServer{}
 	rs.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		rs.lastMethod = r.Method
+		rs.lastQuery = r.URL.RawQuery
 		rs.lastPath = r.URL.Path
 		rs.lastAuth = r.Header.Get("Authorization")
 		rs.lastBody, _ = io.ReadAll(r.Body)
@@ -44,11 +46,11 @@ func (rs *recordingServer) service() *Service {
 
 func TestListSessions_PathAuthAndStatusMapping(t *testing.T) {
 	rs := newRecordingServer(t, `{"sessions":[
-		{"id":"s1","name":"dev","status":"SESSION_STATUS_RUNNING","templateSnapshot":{"templateName":"tmpl"}},
+		{"id":"s1","name":"dev","status":"SESSION_STATUS_RUNNING","templateSnapshot":{"templateName":"tmpl"},"labels":{"agent":"bot-1"}},
 		{"id":"s2","name":"old","status":"SESSION_STATUS_TERMINATED"}
 	]}`)
 
-	sessions, err := rs.service().ListSessions(context.Background(), "ws-1")
+	sessions, err := rs.service().ListSessions(context.Background(), "ws-1", nil)
 	if err != nil {
 		t.Fatalf("ListSessions: %v", err)
 	}
@@ -72,6 +74,20 @@ func TestListSessions_PathAuthAndStatusMapping(t *testing.T) {
 	}
 	if sessions[1].Status != "terminated" {
 		t.Errorf("status[1] = %q, want terminated", sessions[1].Status)
+	}
+	if sessions[0].Labels["agent"] != "bot-1" {
+		t.Errorf("labels[0] = %v, want agent=bot-1", sessions[0].Labels)
+	}
+}
+
+func TestListSessions_LabelSelectorsPassThrough(t *testing.T) {
+	rs := newRecordingServer(t, `{"sessions":[]}`)
+
+	if _, err := rs.service().ListSessions(context.Background(), "ws-1", []string{"agent=bot-1"}); err != nil {
+		t.Fatalf("ListSessions: %v", err)
+	}
+	if want := "labelSelectors=agent%3Dbot-1"; rs.lastQuery != want {
+		t.Errorf("query = %q, want %q", rs.lastQuery, want)
 	}
 }
 
@@ -401,7 +417,7 @@ func TestResolveSessionID_NoMatchError(t *testing.T) {
 
 func TestNilClientGuards(t *testing.T) {
 	svc := NewService(nil)
-	if _, err := svc.ListSessions(context.Background(), "ws"); err == nil {
+	if _, err := svc.ListSessions(context.Background(), "ws", nil); err == nil {
 		t.Error("ListSessions with nil client should error")
 	}
 	if _, err := svc.ListSavedInputs(context.Background()); err == nil {

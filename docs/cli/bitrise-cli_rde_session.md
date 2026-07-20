@@ -45,7 +45,7 @@ bitrise-cli rde session [flags]
 * [bitrise-cli rde session open-vnc](bitrise-cli_rde_session_open-vnc.md)	 - Open a session's VNC endpoint in the OS-default viewer
 * [bitrise-cli rde session restore](bitrise-cli_rde_session_restore.md)	 - Restore a terminated session (re-provisions its VM from the persistent disk)
 * [bitrise-cli rde session terminate](bitrise-cli_rde_session_terminate.md)	 - Terminate a running session (preserves it for later restart)
-* [bitrise-cli rde session update](bitrise-cli_rde_session_update.md)	 - Update a session's name, description, or auto-terminate duration
+* [bitrise-cli rde session update](bitrise-cli_rde_session_update.md)	 - Update a session's name, description, auto-terminate duration, or labels
 * [bitrise-cli rde session upload](bitrise-cli_rde_session_upload.md)	 - Upload a local file or directory into a session
 * [bitrise-cli rde session view](bitrise-cli_rde_session_view.md)	 - Show details of a single session
 * [bitrise-cli rde session vnc](bitrise-cli_rde_session_vnc.md)	 - Print VNC connection details, or forward the endpoint to a local port

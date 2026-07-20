@@ -16,9 +16,10 @@ import (
 //
 //	func TestMain(m *testing.M) { os.Exit(cmdtest.RunIsolated(m)) }
 //
-// XDG_CONFIG_HOME and BITRISE_TOKEN are the only env inputs that reach these
-// tests (config is otherwise injected via config.WithResolved); sandboxing
-// both makes the run hermetic regardless of the developer's machine.
+// XDG_CONFIG_HOME, BITRISE_TOKEN, and BITRISE_AGENT_ID are the only env
+// inputs that reach these tests (config is otherwise injected via
+// config.WithResolved); sandboxing them makes the run hermetic regardless
+// of the developer's machine.
 func RunIsolated(m *testing.M) int {
 	dir, err := os.MkdirTemp("", "bcli-test")
 	if err != nil {
@@ -29,6 +30,10 @@ func RunIsolated(m *testing.M) int {
 		panic(err)
 	}
 	if err := os.Unsetenv("BITRISE_TOKEN"); err != nil { // don't let a dev's exported token mask behavior
+		panic(err)
+	}
+	// Don't let a dev's exported agent ID auto-label sessions in create tests.
+	if err := os.Unsetenv("BITRISE_AGENT_ID"); err != nil {
 		panic(err)
 	}
 	return m.Run()

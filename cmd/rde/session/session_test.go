@@ -84,6 +84,59 @@ func TestListCmd_JSONOutput(t *testing.T) {
 	}
 }
 
+func TestListCmd_LabelSelectorsQuery(t *testing.T) {
+	var gotSelectors []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotSelectors = r.URL.Query()["labelSelectors"]
+		_, _ = io.WriteString(w, `{"sessions":[]}`)
+	}))
+	defer srv.Close()
+
+	_, _, err := run(t, newListCmd(), srv.URL, "ws-1",
+		[]string{"-l", "agent=bot-1", "--label-selector", "branch=main"}, output.Human)
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if len(gotSelectors) != 2 || gotSelectors[0] != "agent=bot-1" || gotSelectors[1] != "branch=main" {
+		t.Errorf("labelSelectors = %v, want [agent=bot-1 branch=main]", gotSelectors)
+	}
+}
+
+func TestListCmd_MalformedSelectorErrors(t *testing.T) {
+	_, _, err := run(t, newListCmd(), "http://unused", "ws-1",
+		[]string{"-l", "bare-key"}, output.Human)
+	if err == nil || !strings.Contains(err.Error(), "--label-selector") {
+		t.Errorf("error = %v, want selector parse error", err)
+	}
+}
+
+func TestListCmd_MineAddsAgentSelector(t *testing.T) {
+	t.Setenv(config.EnvAgentID, "bot-1")
+	var gotSelectors []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotSelectors = r.URL.Query()["labelSelectors"]
+		_, _ = io.WriteString(w, `{"sessions":[]}`)
+	}))
+	defer srv.Close()
+
+	_, _, err := run(t, newListCmd(), srv.URL, "ws-1", []string{"--mine"}, output.Human)
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if len(gotSelectors) != 1 || gotSelectors[0] != "agent=bot-1" {
+		t.Errorf("labelSelectors = %v, want [agent=bot-1]", gotSelectors)
+	}
+}
+
+func TestListCmd_MineRequiresAgentEnv(t *testing.T) {
+	// BITRISE_AGENT_ID is unset (cmdtest.RunIsolated clears it), so --mine
+	// has nothing to expand to and must fail before any HTTP call.
+	_, _, err := run(t, newListCmd(), "http://unused", "ws-1", []string{"--mine"}, output.Human)
+	if err == nil || !strings.Contains(err.Error(), "BITRISE_AGENT_ID") {
+		t.Errorf("error = %v, want BITRISE_AGENT_ID-required error", err)
+	}
+}
+
 func TestListCmd_MissingWorkspace(t *testing.T) {
 	// No WorkspaceID in Resolved and no --workspace flag → error before any HTTP call.
 	c := newListCmd()
