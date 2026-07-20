@@ -62,8 +62,8 @@ process arguments (readable by other users via 'ps'); marking it secret only
 governs how the backend stores the value, not how it reaches the CLI.
 
 Attach arbitrary key=value metadata with --label (repeatable); labels come
-back on view/list output and sessions can be filtered by them with
-'rde session list --label-selector key=value'.
+back on 'session view' and in 'session list --output json', and sessions
+can be filtered by them with 'rde session list --label-selector key=value'.
 
 Example values:
   --input key=value
