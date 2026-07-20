@@ -63,7 +63,7 @@ bitrise-cli rde session create NAME [flags]
       --feature-flag stringArray     name of a feature flag to enable on the session (repeatable)
   -h, --help                         help for create
       --input stringArray            session input as key=value (repeatable)
-      --label stringArray            label to attach to the session as key=value (repeatable; at most 32; keys use letters, digits, and . _ / -; the bitrise.io/ key prefix is reserved)
+      --label stringArray            label to attach to the session as key=value (repeatable; at most 32; keys use letters, digits, and . _ / -, values additionally : and +; the bitrise.io/ key prefix is reserved)
       --machine-type string          machine type name for a template-less session, or to override the template's machine type (see 'rde machine-type list --stack STACK_ID')
       --map-saved-inputs             auto-fill template session inputs from the user's saved inputs (matched by key)
       --saved-input stringArray      session input as key=savedInputID — uses a stored saved-input value (repeatable)

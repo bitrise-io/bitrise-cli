@@ -123,8 +123,9 @@ type CreateSessionRequest struct {
 	// Labels is arbitrary key=value metadata attached to the session. Sent
 	// verbatim; the backend enforces the constraints (at most 32 entries;
 	// keys 1-63 chars of [a-zA-Z0-9._/-] starting and ending alphanumeric;
-	// values non-empty, at most 255 bytes; the "bitrise.io/" key prefix is
-	// reserved for system-owned labels and rejected on writes).
+	// values 1-255 bytes of [a-zA-Z0-9._/:+-] with no positional rules;
+	// the "bitrise.io/" key prefix is reserved for system-owned labels and
+	// rejected on writes).
 	Labels map[string]string `json:"labels,omitempty"`
 }
 

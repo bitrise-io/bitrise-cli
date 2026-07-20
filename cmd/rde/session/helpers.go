@@ -13,7 +13,7 @@ import (
 
 // parseLabelFlags converts repeatable key=value flag values into a label
 // map; flagName names the flag in error messages. Only the shape is checked
-// here — key charset/length, value size, entry count, and the reserved
+// here — key and value charset/length, entry count, and the reserved
 // "bitrise.io/" key prefix are enforced by the backend, whose field
 // violations surface through the API error.
 func parseLabelFlags(flagName string, kvs []string) (map[string]string, error) {

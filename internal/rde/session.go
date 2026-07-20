@@ -119,7 +119,7 @@ type AutoMappedInput struct {
 // CreateSessionRequest is the CLI-side request shape. AutoTerminateMinutes
 // is a pointer so "not provided" stays distinguishable from "0 = disable".
 // Labels is arbitrary key=value metadata attached to the session; the
-// backend validates it (entry count, key charset/length, value size,
+// backend validates it (entry count, key and value charset/length,
 // reserved "bitrise.io/" key prefix).
 type CreateSessionRequest struct {
 	Name                    string
