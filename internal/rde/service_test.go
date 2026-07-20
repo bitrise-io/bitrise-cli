@@ -46,7 +46,7 @@ func (rs *recordingServer) service() *Service {
 
 func TestListSessions_PathAuthAndStatusMapping(t *testing.T) {
 	rs := newRecordingServer(t, `{"sessions":[
-		{"id":"s1","name":"dev","status":"SESSION_STATUS_RUNNING","templateSnapshot":{"templateName":"tmpl"},"labels":{"agent":"bot-1"}},
+		{"id":"s1","name":"dev","status":"SESSION_STATUS_RUNNING","templateSnapshot":{"templateName":"tmpl"},"labels":{"team":"mobile"}},
 		{"id":"s2","name":"old","status":"SESSION_STATUS_TERMINATED"}
 	]}`)
 
@@ -75,18 +75,18 @@ func TestListSessions_PathAuthAndStatusMapping(t *testing.T) {
 	if sessions[1].Status != "terminated" {
 		t.Errorf("status[1] = %q, want terminated", sessions[1].Status)
 	}
-	if sessions[0].Labels["agent"] != "bot-1" {
-		t.Errorf("labels[0] = %v, want agent=bot-1", sessions[0].Labels)
+	if sessions[0].Labels["team"] != "mobile" {
+		t.Errorf("labels[0] = %v, want team=mobile", sessions[0].Labels)
 	}
 }
 
 func TestListSessions_LabelSelectorsPassThrough(t *testing.T) {
 	rs := newRecordingServer(t, `{"sessions":[]}`)
 
-	if _, err := rs.service().ListSessions(context.Background(), "ws-1", []string{"agent=bot-1"}); err != nil {
+	if _, err := rs.service().ListSessions(context.Background(), "ws-1", []string{"team=mobile"}); err != nil {
 		t.Fatalf("ListSessions: %v", err)
 	}
-	if want := "labelSelectors=agent%3Dbot-1"; rs.lastQuery != want {
+	if want := "labelSelectors=team%3Dmobile"; rs.lastQuery != want {
 		t.Errorf("query = %q, want %q", rs.lastQuery, want)
 	}
 }

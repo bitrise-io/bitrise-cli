@@ -9,7 +9,7 @@ import (
 
 func TestListSessions_PathAndParse(t *testing.T) {
 	rs := newRecordingServer(t, `{"sessions":[
-		{"id":"s1","name":"dev","status":"SESSION_STATUS_RUNNING","templateSnapshot":{"templateName":"tmpl","stackId":"osx-xcode-16.0.x-edge"},"labels":{"agent":"bot-1"}},
+		{"id":"s1","name":"dev","status":"SESSION_STATUS_RUNNING","templateSnapshot":{"templateName":"tmpl","stackId":"osx-xcode-16.0.x-edge"},"labels":{"team":"mobile"}},
 		{"id":"s2","name":"old","status":"SESSION_STATUS_TERMINATED"}
 	]}`)
 
@@ -36,20 +36,20 @@ func TestListSessions_PathAndParse(t *testing.T) {
 	if sessions[0].Status != "SESSION_STATUS_RUNNING" {
 		t.Errorf("status = %q, want raw enum", sessions[0].Status)
 	}
-	if sessions[0].Labels["agent"] != "bot-1" {
-		t.Errorf("labels = %v, want agent=bot-1", sessions[0].Labels)
+	if sessions[0].Labels["team"] != "mobile" {
+		t.Errorf("labels = %v, want team=mobile", sessions[0].Labels)
 	}
 }
 
 func TestListSessions_LabelSelectorsQuery(t *testing.T) {
 	rs := newRecordingServer(t, `{"sessions":[]}`)
 
-	if _, err := rs.client().ListSessions(context.Background(), "ws-1", []string{"agent=bot-1", "branch=main"}); err != nil {
+	if _, err := rs.client().ListSessions(context.Background(), "ws-1", []string{"team=mobile", "branch=main"}); err != nil {
 		t.Fatalf("ListSessions: %v", err)
 	}
 	// One repeated labelSelectors param per selector, "=" percent-encoded,
 	// order preserved (grpc-gateway maps them onto the repeated proto field).
-	if want := "labelSelectors=agent%3Dbot-1&labelSelectors=branch%3Dmain"; rs.lastQuery != want {
+	if want := "labelSelectors=team%3Dmobile&labelSelectors=branch%3Dmain"; rs.lastQuery != want {
 		t.Errorf("query = %s, want %s", rs.lastQuery, want)
 	}
 }
@@ -130,7 +130,7 @@ func TestCreateSession_LabelsSent(t *testing.T) {
 
 	if _, _, err := rs.client().CreateSession(context.Background(), "ws-1", CreateSessionRequest{
 		Name:   "dev",
-		Labels: map[string]string{"agent": "bot-1", "branch": "main"},
+		Labels: map[string]string{"team": "mobile", "branch": "main"},
 	}); err != nil {
 		t.Fatalf("CreateSession: %v", err)
 	}
@@ -143,7 +143,7 @@ func TestCreateSession_LabelsSent(t *testing.T) {
 	if !ok {
 		t.Fatalf("labels missing from body: %s", rs.lastBody)
 	}
-	if labels["agent"] != "bot-1" || labels["branch"] != "main" {
+	if labels["team"] != "mobile" || labels["branch"] != "main" {
 		t.Errorf("sent labels = %v", labels)
 	}
 }

@@ -93,12 +93,12 @@ func TestListCmd_LabelSelectorsQuery(t *testing.T) {
 	defer srv.Close()
 
 	_, _, err := run(t, newListCmd(), srv.URL, "ws-1",
-		[]string{"-l", "agent=bot-1", "--label-selector", "branch=main"}, output.Human)
+		[]string{"-l", "team=mobile", "--label-selector", "branch=main"}, output.Human)
 	if err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
-	if len(gotSelectors) != 2 || gotSelectors[0] != "agent=bot-1" || gotSelectors[1] != "branch=main" {
-		t.Errorf("labelSelectors = %v, want [agent=bot-1 branch=main]", gotSelectors)
+	if len(gotSelectors) != 2 || gotSelectors[0] != "team=mobile" || gotSelectors[1] != "branch=main" {
+		t.Errorf("labelSelectors = %v, want [team=mobile branch=main]", gotSelectors)
 	}
 }
 
