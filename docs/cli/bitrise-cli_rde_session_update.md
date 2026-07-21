@@ -29,7 +29,7 @@ bitrise-cli rde session update SESSION_ID [flags]
       --auto-terminate-minutes int   auto-terminate duration in minutes; 0 disables. Resets the deadline to now + minutes.
       --description string           new session description
   -h, --help                         help for update
-      --label stringArray            label to set on the session as key=value (repeatable; merged into the existing labels)
+  -l, --label stringArray            label to set on the session as key=value (repeatable; merged into the existing labels)
       --name string                  new session name
       --unset-label stringArray      label key to remove from the session (repeatable; unknown keys are ignored)
 ```

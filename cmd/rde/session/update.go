@@ -89,7 +89,7 @@ a no-op.`,
 	c.Flags().StringVar(&name, "name", "", "new session name")
 	c.Flags().StringVar(&description, "description", "", "new session description")
 	c.Flags().IntVar(&autoTerminateMinutes, "auto-terminate-minutes", 0, "auto-terminate duration in minutes; 0 disables. Resets the deadline to now + minutes.")
-	c.Flags().StringArrayVar(&labels, "label", nil, "label to set on the session as key=value (repeatable; merged into the existing labels)")
+	c.Flags().StringArrayVarP(&labels, "label", "l", nil, "label to set on the session as key=value (repeatable; merged into the existing labels)")
 	c.Flags().StringArrayVar(&unsetLabels, "unset-label", nil, "label key to remove from the session (repeatable; unknown keys are ignored)")
 	return c
 }

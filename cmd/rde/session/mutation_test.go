@@ -201,7 +201,7 @@ func TestCreateCmd_LabelsSent(t *testing.T) {
 	defer srv.Close()
 
 	_, _, err := run(t, newCreateCmd(), srv.URL, "ws-1",
-		[]string{"dev", "--template", uuidTemplate, "--label", "branch=main", "--label", "team=mobile"}, output.Human)
+		[]string{"dev", "--template", uuidTemplate, "-l", "branch=main", "--label", "team=mobile"}, output.Human)
 	if err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
