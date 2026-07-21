@@ -84,6 +84,32 @@ func TestListCmd_JSONOutput(t *testing.T) {
 	}
 }
 
+func TestListCmd_LabelSelectorsQuery(t *testing.T) {
+	var gotSelectors []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotSelectors = r.URL.Query()["labelSelectors"]
+		_, _ = io.WriteString(w, `{"sessions":[]}`)
+	}))
+	defer srv.Close()
+
+	_, _, err := run(t, newListCmd(), srv.URL, "ws-1",
+		[]string{"-l", "team=mobile", "--label-selector", "branch=main"}, output.Human)
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if len(gotSelectors) != 2 || gotSelectors[0] != "team=mobile" || gotSelectors[1] != "branch=main" {
+		t.Errorf("labelSelectors = %v, want [team=mobile branch=main]", gotSelectors)
+	}
+}
+
+func TestListCmd_MalformedSelectorErrors(t *testing.T) {
+	_, _, err := run(t, newListCmd(), "http://unused", "ws-1",
+		[]string{"-l", "bare-key"}, output.Human)
+	if err == nil || !strings.Contains(err.Error(), "--label-selector") {
+		t.Errorf("error = %v, want selector parse error", err)
+	}
+}
+
 func TestListCmd_MissingWorkspace(t *testing.T) {
 	// No WorkspaceID in Resolved and no --workspace flag → error before any HTTP call.
 	c := newListCmd()

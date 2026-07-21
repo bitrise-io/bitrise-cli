@@ -19,19 +19,27 @@ type listResult struct {
 }
 
 func newListCmd() *cobra.Command {
-	return &cobra.Command{
+	var selectors []string
+	c := &cobra.Command{
 		Use:   "list",
 		Short: "List RDE sessions in the workspace",
 		Long: `List every RDE session the authenticated user has in the workspace.
+
+Filter by labels with --label-selector key=value (repeatable; selectors are
+exact matches and are ANDed, at most 8 per request).
 
 The session list comes from the backend in arbitrary order; the CLI does
 not paginate (the API doesn't paginate this endpoint either).`,
 		Example: `  bitrise-cli rde session list
   bitrise-cli rde session list --workspace my-workspace
+  bitrise-cli rde session list -l team=mobile -l branch=main
   bitrise-cli rde session list --output json | jq '.items[].id'`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			workspaceID, err := cmdutil.ResolveWorkspaceID(cmd)
 			if err != nil {
+				return err
+			}
+			if err := validateLabelSelectors(selectors); err != nil {
 				return err
 			}
 			format := cmdutil.ResolveFormat(cmd)
@@ -39,13 +47,15 @@ not paginate (the API doesn't paginate this endpoint either).`,
 			if err != nil {
 				return err
 			}
-			sessions, err := internalrde.NewService(client).ListSessions(cmd.Context(), workspaceID)
+			sessions, err := internalrde.NewService(client).ListSessions(cmd.Context(), workspaceID, selectors)
 			if err != nil {
 				return err
 			}
 			return output.Render(cmd.OutOrStdout(), format, listResult{Items: sessions}, renderSessionList)
 		},
 	}
+	c.Flags().StringArrayVarP(&selectors, "label-selector", "l", nil, "only sessions whose labels match key=value exactly (repeatable; multiple selectors must all match)")
+	return c
 }
 
 func renderSessionList(w io.Writer, res listResult) error {

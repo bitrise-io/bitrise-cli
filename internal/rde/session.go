@@ -41,10 +41,11 @@ type Session struct {
 	// Same handling as SSHPassword: excluded from --output json so the
 	// stable contract doesn't leak secrets. Surfaced only through the
 	// opt-in `rde session vnc` and `rde session open-vnc` commands.
-	VNCPassword          string     `json:"-"`
-	PersistentDiskStatus string     `json:"persistent_disk_status,omitempty"`
-	CreatedAt            *time.Time `json:"created_at,omitempty"`
-	UpdatedAt            *time.Time `json:"updated_at,omitempty"`
+	VNCPassword          string            `json:"-"`
+	PersistentDiskStatus string            `json:"persistent_disk_status,omitempty"`
+	Labels               map[string]string `json:"labels,omitempty"`
+	CreatedAt            *time.Time        `json:"created_at,omitempty"`
+	UpdatedAt            *time.Time        `json:"updated_at,omitempty"`
 }
 
 // Resumable reports whether `rde claude` can resume this session: a running
@@ -117,6 +118,9 @@ type AutoMappedInput struct {
 
 // CreateSessionRequest is the CLI-side request shape. AutoTerminateMinutes
 // is a pointer so "not provided" stays distinguishable from "0 = disable".
+// Labels is arbitrary key=value metadata attached to the session; the
+// backend validates it (entry count, key and value charset/length,
+// reserved "bitrise.io/" key prefix).
 type CreateSessionRequest struct {
 	Name                    string
 	Description             string
@@ -129,14 +133,19 @@ type CreateSessionRequest struct {
 	AIPrompt                string
 	AutoTerminateMinutes    *int
 	MapSavedToSessionInputs bool
+	Labels                  map[string]string
 }
 
 // UpdateSessionRequest carries optional patch fields. Pointer fields
-// preserve unset semantics.
+// preserve unset semantics. Labels upserts into the session's existing
+// labels; RemoveLabels deletes keys (a key in both is removed — the
+// backend gives removal precedence).
 type UpdateSessionRequest struct {
 	Name                 *string
 	Description          *string
 	AutoTerminateMinutes *int
+	Labels               map[string]string
+	RemoveLabels         []string
 }
 
 // CreateSessionResult is what the create endpoint returns: the new session
@@ -146,12 +155,14 @@ type CreateSessionResult struct {
 	AutoMappedInputs []AutoMappedInput `json:"auto_mapped_inputs,omitempty"`
 }
 
-// ListSessions returns every session in the workspace for the caller.
-func (s *Service) ListSessions(ctx context.Context, workspaceID string) ([]Session, error) {
+// ListSessions returns the caller's sessions in the workspace, optionally
+// filtered by label selectors ("key=value" exact matches, ANDed). Pass nil
+// for the full list.
+func (s *Service) ListSessions(ctx context.Context, workspaceID string, labelSelectors []string) ([]Session, error) {
 	if s.client == nil {
 		return nil, errClient()
 	}
-	wire, err := s.client.ListSessions(ctx, workspaceID)
+	wire, err := s.client.ListSessions(ctx, workspaceID, labelSelectors)
 	if err != nil {
 		return nil, err
 	}
@@ -189,7 +200,7 @@ func (s *Service) ResolveSessionID(ctx context.Context, workspaceID, value strin
 	if looksLikeUUID(value) {
 		return value, nil
 	}
-	sessions, err := s.ListSessions(ctx, workspaceID)
+	sessions, err := s.ListSessions(ctx, workspaceID, nil)
 	if err != nil {
 		return "", fmt.Errorf("list sessions to resolve %q: %w", value, err)
 	}
@@ -240,6 +251,7 @@ func (s *Service) CreateSession(ctx context.Context, workspaceID string, req Cre
 		AIPrompt:                req.AIPrompt,
 		AutoTerminateMinutes:    req.AutoTerminateMinutes,
 		MapSavedToSessionInputs: req.MapSavedToSessionInputs,
+		Labels:                  req.Labels,
 	})
 	if err != nil {
 		return CreateSessionResult{}, err
@@ -254,7 +266,8 @@ func (s *Service) CreateSession(ctx context.Context, workspaceID string, req Cre
 	return res, nil
 }
 
-// UpdateSession patches name, description, or auto-terminate minutes.
+// UpdateSession patches name, description, auto-terminate minutes, or
+// labels (upserts via Labels, removals via RemoveLabels).
 func (s *Service) UpdateSession(ctx context.Context, workspaceID, sessionID string, req UpdateSessionRequest) (Session, error) {
 	if s.client == nil {
 		return Session{}, errClient()
@@ -263,6 +276,8 @@ func (s *Service) UpdateSession(ctx context.Context, workspaceID, sessionID stri
 		Name:                 req.Name,
 		Description:          req.Description,
 		AutoTerminateMinutes: req.AutoTerminateMinutes,
+		Labels:               req.Labels,
+		RemoveLabels:         req.RemoveLabels,
 	})
 	if err != nil {
 		return Session{}, err
@@ -566,6 +581,7 @@ func sessionFromAPI(w rdeapi.Session) Session {
 		VNCUsername:          w.VNCUsername,
 		VNCPassword:          w.VNCPassword,
 		PersistentDiskStatus: diskStatusFromAPI(w.PersistentDiskStatus),
+		Labels:               w.Labels,
 	}
 	out.AgentSessionStatusUpdatedAt = parseTime(w.AgentSessionStatusUpdatedAt)
 	out.AutoTerminateAt = parseTime(w.AutoTerminateAt)

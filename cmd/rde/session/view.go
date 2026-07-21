@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"sort"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -150,6 +151,18 @@ func renderSessionDetail(w io.Writer, sess internalrde.Session) error {
 	}
 	if sess.UpdatedAt != nil {
 		ew.F("%s%s\n", lbl("Updated:"), formatTime(sess.UpdatedAt))
+	}
+	if len(sess.Labels) > 0 {
+		keys := make([]string, 0, len(sess.Labels))
+		for k := range sess.Labels {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		ew.Ln()
+		ew.Ln(s.Dim.Render("Labels"))
+		for _, k := range keys {
+			ew.F("%s %s\n", lbl("  "+k+":"), sess.Labels[k])
+		}
 	}
 	if snap := sess.TemplateSnapshot; snap != nil {
 		if snap.StackID != "" || snap.MachineType != "" {

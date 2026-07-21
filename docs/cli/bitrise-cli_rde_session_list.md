@@ -6,6 +6,9 @@ List RDE sessions in the workspace
 
 List every RDE session the authenticated user has in the workspace.
 
+Filter by labels with --label-selector key=value (repeatable; selectors are
+exact matches and are ANDed, at most 8 per request).
+
 The session list comes from the backend in arbitrary order; the CLI does
 not paginate (the API doesn't paginate this endpoint either).
 
@@ -18,13 +21,15 @@ bitrise-cli rde session list [flags]
 ```
   bitrise-cli rde session list
   bitrise-cli rde session list --workspace my-workspace
+  bitrise-cli rde session list -l team=mobile -l branch=main
   bitrise-cli rde session list --output json | jq '.items[].id'
 ```
 
 ### Options
 
 ```
-  -h, --help   help for list
+  -h, --help                         help for list
+  -l, --label-selector stringArray   only sessions whose labels match key=value exactly (repeatable; multiple selectors must all match)
 ```
 
 ### Options inherited from parent commands

@@ -24,6 +24,7 @@ func newCreateCmd() *cobra.Command {
 		inputs               []string
 		secretInputs         []string
 		savedInputs          []string
+		labels               []string
 		featureFlags         []string
 		cluster              string
 		aiPrompt             string
@@ -60,6 +61,10 @@ passed inline with --secret-input ends up in your shell history and in the
 process arguments (readable by other users via 'ps'); marking it secret only
 governs how the backend stores the value, not how it reaches the CLI.
 
+Attach arbitrary key=value metadata with --label (repeatable); labels come
+back on 'session view' and in 'session list --output json', and sessions
+can be filtered by them with 'rde session list --label-selector key=value'.
+
 Example values:
   --input key=value
   --saved-input session-key=SAVED_INPUT_ID   # secret stored ahead of time
@@ -92,6 +97,10 @@ Example values:
 			if err != nil {
 				return err
 			}
+			labelMap, err := parseLabelFlags("--label", labels)
+			if err != nil {
+				return err
+			}
 			req := internalrde.CreateSessionRequest{
 				Name:                    name,
 				Description:             description,
@@ -103,6 +112,7 @@ Example values:
 				Cluster:                 cluster,
 				AIPrompt:                aiPrompt,
 				MapSavedToSessionInputs: mapSavedInputs,
+				Labels:                  labelMap,
 			}
 			if setAutoTerminate {
 				m := autoTerminateMinutes
@@ -163,6 +173,7 @@ Example values:
 	c.Flags().StringArrayVar(&inputs, "input", nil, "session input as key=value (repeatable)")
 	c.Flags().StringArrayVar(&secretInputs, "secret-input", nil, "session input as key=value, stored as a secret at rest (repeatable; the value is visible in shell history and process args — prefer --saved-input)")
 	c.Flags().StringArrayVar(&savedInputs, "saved-input", nil, "session input as key=savedInputID — uses a stored saved-input value (repeatable)")
+	c.Flags().StringArrayVar(&labels, "label", nil, "label to attach to the session as key=value (repeatable; at most 32; keys use letters, digits, and . _ / -, values additionally : and +; the bitrise.io/ key prefix is reserved)")
 	c.Flags().StringArrayVar(&featureFlags, "feature-flag", nil, "name of a feature flag to enable on the session (repeatable)")
 	c.Flags().StringVar(&cluster, "cluster", "", "target cluster name (use 'rde machine-type list --stack STACK_ID' to find candidates when the stack + machine type combo is ambiguous)")
 	c.Flags().StringVar(&aiPrompt, "ai-prompt", "", "initial AI prompt passed to Claude Code on session start")

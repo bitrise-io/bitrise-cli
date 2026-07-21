@@ -9,11 +9,11 @@ import (
 
 func TestListSessions_PathAndParse(t *testing.T) {
 	rs := newRecordingServer(t, `{"sessions":[
-		{"id":"s1","name":"dev","status":"SESSION_STATUS_RUNNING","templateSnapshot":{"templateName":"tmpl","stackId":"osx-xcode-16.0.x-edge"}},
+		{"id":"s1","name":"dev","status":"SESSION_STATUS_RUNNING","templateSnapshot":{"templateName":"tmpl","stackId":"osx-xcode-16.0.x-edge"},"labels":{"team":"mobile"}},
 		{"id":"s2","name":"old","status":"SESSION_STATUS_TERMINATED"}
 	]}`)
 
-	sessions, err := rs.client().ListSessions(context.Background(), "ws-1")
+	sessions, err := rs.client().ListSessions(context.Background(), "ws-1", nil)
 	if err != nil {
 		t.Fatalf("ListSessions: %v", err)
 	}
@@ -22,6 +22,9 @@ func TestListSessions_PathAndParse(t *testing.T) {
 	}
 	if want := "/v1/workspaces/ws-1/sessions"; rs.lastPath != want {
 		t.Errorf("path = %s, want %s", rs.lastPath, want)
+	}
+	if rs.lastQuery != "" {
+		t.Errorf("query = %q, want none without selectors", rs.lastQuery)
 	}
 	if len(sessions) != 2 {
 		t.Fatalf("got %d sessions, want 2", len(sessions))
@@ -32,6 +35,22 @@ func TestListSessions_PathAndParse(t *testing.T) {
 	// Wire format keeps the raw enum string — mapping to snake_case lives in internal/rde.
 	if sessions[0].Status != "SESSION_STATUS_RUNNING" {
 		t.Errorf("status = %q, want raw enum", sessions[0].Status)
+	}
+	if sessions[0].Labels["team"] != "mobile" {
+		t.Errorf("labels = %v, want team=mobile", sessions[0].Labels)
+	}
+}
+
+func TestListSessions_LabelSelectorsQuery(t *testing.T) {
+	rs := newRecordingServer(t, `{"sessions":[]}`)
+
+	if _, err := rs.client().ListSessions(context.Background(), "ws-1", []string{"team=mobile", "branch=main"}); err != nil {
+		t.Fatalf("ListSessions: %v", err)
+	}
+	// One repeated labelSelectors param per selector, "=" percent-encoded,
+	// order preserved (grpc-gateway maps them onto the repeated proto field).
+	if want := "labelSelectors=team%3Dmobile&labelSelectors=branch%3Dmain"; rs.lastQuery != want {
+		t.Errorf("query = %s, want %s", rs.lastQuery, want)
 	}
 }
 
@@ -106,6 +125,29 @@ func TestCreateSession_BodyAndResponse(t *testing.T) {
 	}
 }
 
+func TestCreateSession_LabelsSent(t *testing.T) {
+	rs := newRecordingServer(t, `{"session":{"id":"new","name":"dev"}}`)
+
+	if _, _, err := rs.client().CreateSession(context.Background(), "ws-1", CreateSessionRequest{
+		Name:   "dev",
+		Labels: map[string]string{"team": "mobile", "branch": "main"},
+	}); err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+
+	var sent map[string]any
+	if err := json.Unmarshal(rs.lastBody, &sent); err != nil {
+		t.Fatalf("unmarshal sent body: %v", err)
+	}
+	labels, ok := sent["labels"].(map[string]any)
+	if !ok {
+		t.Fatalf("labels missing from body: %s", rs.lastBody)
+	}
+	if labels["team"] != "mobile" || labels["branch"] != "main" {
+		t.Errorf("sent labels = %v", labels)
+	}
+}
+
 func TestCreateSession_TemplatelessOmitsTemplateID(t *testing.T) {
 	rs := newRecordingServer(t, `{"session":{"id":"new","name":"dev"}}`)
 
@@ -150,11 +192,41 @@ func TestUpdateSession_OmitsUnsetPointerFields(t *testing.T) {
 	if sent["name"] != "renamed" {
 		t.Errorf("name = %v, want renamed", sent["name"])
 	}
-	if _, ok := sent["description"]; ok {
-		t.Errorf("description should be omitted, body = %s", rs.lastBody)
+	for _, field := range []string{"description", "autoTerminateMinutes", "labels", "removeLabels"} {
+		if _, ok := sent[field]; ok {
+			t.Errorf("%s should be omitted, body = %s", field, rs.lastBody)
+		}
 	}
-	if _, ok := sent["autoTerminateMinutes"]; ok {
-		t.Errorf("autoTerminateMinutes should be omitted, body = %s", rs.lastBody)
+}
+
+func TestUpdateSession_LabelsAndRemovals(t *testing.T) {
+	rs := newRecordingServer(t, `{"session":{"id":"s1","name":"dev","labels":{"branch":"main"}}}`)
+
+	sess, err := rs.client().UpdateSession(context.Background(), "ws-1", "s1", UpdateSessionRequest{
+		Labels:       map[string]string{"branch": "main"},
+		RemoveLabels: []string{"wip"},
+	})
+	if err != nil {
+		t.Fatalf("UpdateSession: %v", err)
+	}
+
+	var sent map[string]any
+	if err := json.Unmarshal(rs.lastBody, &sent); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	labels, ok := sent["labels"].(map[string]any)
+	if !ok || labels["branch"] != "main" {
+		t.Errorf("sent labels = %v, want branch=main", sent["labels"])
+	}
+	removed, ok := sent["removeLabels"].([]any)
+	if !ok || len(removed) != 1 || removed[0] != "wip" {
+		t.Errorf("sent removeLabels = %v, want [wip]", sent["removeLabels"])
+	}
+	if _, ok := sent["name"]; ok {
+		t.Errorf("name should be omitted, body = %s", rs.lastBody)
+	}
+	if sess.Labels["branch"] != "main" {
+		t.Errorf("response labels = %v, want branch=main", sess.Labels)
 	}
 }
 
@@ -248,7 +320,7 @@ func TestSessions_ValidationGuards(t *testing.T) {
 	ctx := context.Background()
 
 	cases := map[string]func() error{
-		"ListSessions/no-ws":           func() error { _, err := c.ListSessions(ctx, ""); return err },
+		"ListSessions/no-ws":           func() error { _, err := c.ListSessions(ctx, "", nil); return err },
 		"GetSession/no-ws":             func() error { _, err := c.GetSession(ctx, "", "s1"); return err },
 		"GetSession/no-session":        func() error { _, err := c.GetSession(ctx, "ws", ""); return err },
 		"CreateSession/no-ws":          func() error { _, _, err := c.CreateSession(ctx, "", CreateSessionRequest{}); return err },

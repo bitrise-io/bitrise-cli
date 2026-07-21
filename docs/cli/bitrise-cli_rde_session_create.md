@@ -27,6 +27,10 @@ passed inline with --secret-input ends up in your shell history and in the
 process arguments (readable by other users via 'ps'); marking it secret only
 governs how the backend stores the value, not how it reaches the CLI.
 
+Attach arbitrary key=value metadata with --label (repeatable); labels come
+back on 'session view' and in 'session list --output json', and sessions
+can be filtered by them with 'rde session list --label-selector key=value'.
+
 Example values:
   --input key=value
   --saved-input session-key=SAVED_INPUT_ID   # secret stored ahead of time
@@ -59,6 +63,7 @@ bitrise-cli rde session create NAME [flags]
       --feature-flag stringArray     name of a feature flag to enable on the session (repeatable)
   -h, --help                         help for create
       --input stringArray            session input as key=value (repeatable)
+      --label stringArray            label to attach to the session as key=value (repeatable; at most 32; keys use letters, digits, and . _ / -, values additionally : and +; the bitrise.io/ key prefix is reserved)
       --machine-type string          machine type name for a template-less session, or to override the template's machine type (see 'rde machine-type list --stack STACK_ID')
       --map-saved-inputs             auto-fill template session inputs from the user's saved inputs (matched by key)
       --saved-input stringArray      session input as key=savedInputID — uses a stored saved-input value (repeatable)

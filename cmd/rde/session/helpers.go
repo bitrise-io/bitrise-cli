@@ -1,6 +1,8 @@
 package session
 
 import (
+	"fmt"
+	"strings"
 	"time"
 
 	"github.com/charmbracelet/lipgloss"
@@ -8,6 +10,40 @@ import (
 	"github.com/bitrise-io/bitrise-cli/internal/output/style"
 	internalrde "github.com/bitrise-io/bitrise-cli/internal/rde"
 )
+
+// parseLabelFlags converts repeatable key=value flag values into a label
+// map; flagName names the flag in error messages. Only the shape is checked
+// here — key and value charset/length, entry count, and the reserved
+// "bitrise.io/" key prefix are enforced by the backend, whose field
+// violations surface through the API error.
+func parseLabelFlags(flagName string, kvs []string) (map[string]string, error) {
+	if len(kvs) == 0 {
+		return nil, nil
+	}
+	out := make(map[string]string, len(kvs))
+	for _, kv := range kvs {
+		k, v, ok := strings.Cut(kv, "=")
+		if !ok || k == "" || v == "" {
+			return nil, fmt.Errorf("%s %q: expected key=value", flagName, kv)
+		}
+		out[k] = v
+	}
+	return out, nil
+}
+
+// validateLabelSelectors rejects selector shapes that can never match (bare
+// keys, empty keys or values — label values are non-empty by contract). The
+// strings otherwise pass to the backend verbatim, which enforces the full
+// rules (at most 8 selectors, no duplicate keys).
+func validateLabelSelectors(selectors []string) error {
+	for _, sel := range selectors {
+		k, v, ok := strings.Cut(sel, "=")
+		if !ok || k == "" || v == "" {
+			return fmt.Errorf("--label-selector %q: expected key=value", sel)
+		}
+	}
+	return nil
+}
 
 // formatTime is the canonical timestamp format for session human output.
 // Empty pointer renders as "" so renderers can shove it directly into a

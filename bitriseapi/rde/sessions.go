@@ -34,6 +34,7 @@ type Session struct {
 	VNCUsername                 string                   `json:"vncUsername,omitempty"`
 	VNCPassword                 string                   `json:"vncPassword,omitempty"`
 	PersistentDiskStatus        string                   `json:"persistentDiskStatus,omitempty"`
+	Labels                      map[string]string        `json:"labels,omitempty"`
 	CreatedAt                   string                   `json:"createdAt,omitempty"`
 	UpdatedAt                   string                   `json:"updatedAt,omitempty"`
 }
@@ -119,15 +120,28 @@ type CreateSessionRequest struct {
 	AIPrompt                string              `json:"aiPrompt,omitempty"`
 	AutoTerminateMinutes    *int                `json:"autoTerminateMinutes,omitempty"`
 	MapSavedToSessionInputs bool                `json:"mapSavedToSessionInputs,omitempty"`
+	// Labels is arbitrary key=value metadata attached to the session. Sent
+	// verbatim; the backend enforces the constraints (at most 32 entries;
+	// keys 1-63 chars of [a-zA-Z0-9._/-] starting and ending alphanumeric;
+	// values 1-255 bytes of [a-zA-Z0-9._/:+-] with no positional rules;
+	// the "bitrise.io/" key prefix is reserved for system-owned labels and
+	// rejected on writes).
+	Labels map[string]string `json:"labels,omitempty"`
 }
 
 // UpdateSessionRequest is the PATCH body for updating a session. Pointer
 // fields let the caller distinguish "unset, leave alone" from "set to
-// empty/zero".
+// empty/zero". Labels are merged into the session's existing labels
+// (existing keys overwritten, other keys untouched) with the same
+// constraints as CreateSessionRequest.Labels; RemoveLabels lists keys to
+// delete (unknown keys ignored; when a key appears in both, the removal
+// wins server-side).
 type UpdateSessionRequest struct {
-	Name                 *string `json:"name,omitempty"`
-	Description          *string `json:"description,omitempty"`
-	AutoTerminateMinutes *int    `json:"autoTerminateMinutes,omitempty"`
+	Name                 *string           `json:"name,omitempty"`
+	Description          *string           `json:"description,omitempty"`
+	AutoTerminateMinutes *int              `json:"autoTerminateMinutes,omitempty"`
+	Labels               map[string]string `json:"labels,omitempty"`
+	RemoveLabels         []string          `json:"removeLabels,omitempty"`
 }
 
 type listSessionsResp struct {
@@ -216,19 +230,30 @@ func (c *Client) CompareSessionTemplate(ctx context.Context, workspaceID, sessio
 	return resp, nil
 }
 
-// ListSessions returns every session in the workspace for the caller.
+// ListSessions returns the caller's sessions in the workspace. Each
+// labelSelectors entry is a "key=value" exact-match label filter; multiple
+// selectors are ANDed. Selectors pass through verbatim — the backend
+// validates them (key=value form, at most 8, no duplicate keys).
 // Endpoint: GET /v1/workspaces/{workspaceId}/sessions.
 //
 // Deliberately does not pass include_secrets: its consumers — the
 // `session list` table and ResolveSessionID's name→ID lookup — read session
 // metadata only, never the snapshot's secret session-input values. See the
 // note on GetSession.
-func (c *Client) ListSessions(ctx context.Context, workspaceID string) ([]Session, error) {
+func (c *Client) ListSessions(ctx context.Context, workspaceID string, labelSelectors []string) ([]Session, error) {
 	if workspaceID == "" {
 		return nil, fmt.Errorf("workspace ID is required")
 	}
+	p := wsPath(workspaceID, "/sessions")
+	if len(labelSelectors) > 0 {
+		q := url.Values{}
+		for _, sel := range labelSelectors {
+			q.Add("labelSelectors", sel)
+		}
+		p += "?" + q.Encode()
+	}
 	var resp listSessionsResp
-	if err := c.getJSON(ctx, wsPath(workspaceID, "/sessions"), &resp); err != nil {
+	if err := c.getJSON(ctx, p, &resp); err != nil {
 		return nil, err
 	}
 	return resp.Sessions, nil
