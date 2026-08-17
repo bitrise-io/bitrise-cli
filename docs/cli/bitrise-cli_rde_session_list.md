@@ -4,10 +4,17 @@ List RDE sessions in the workspace
 
 ### Synopsis
 
-List every RDE session the authenticated user has in the workspace.
+List RDE sessions in the workspace.
 
 Filter by labels with --label-selector key=value (repeatable; selectors are
 exact matches and are ANDed, at most 8 per request).
+
+By default every session the authenticated user has in the workspace is
+listed. Pass --scope workspace for sessions owned by the workspace itself
+rather than by a user (for example sessions spawned by workspace device
+preview links) — every workspace member sees the same list. The owning user
+or workspace is reported via the owner_type and owner_id fields in
+--output json.
 
 The session list comes from the backend in arbitrary order; the CLI does
 not paginate (the API doesn't paginate this endpoint either).
@@ -21,6 +28,7 @@ bitrise-cli rde session list [flags]
 ```
   bitrise-cli rde session list
   bitrise-cli rde session list --workspace my-workspace
+  bitrise-cli rde session list --scope workspace
   bitrise-cli rde session list -l team=mobile -l branch=main
   bitrise-cli rde session list --output json | jq '.items[].id'
 ```
@@ -30,6 +38,7 @@ bitrise-cli rde session list [flags]
 ```
   -h, --help                         help for list
   -l, --label-selector stringArray   only sessions whose labels match key=value exactly (repeatable; multiple selectors must all match)
+      --scope string                 which sessions to list: mine (sessions you created) or workspace (sessions owned by the workspace itself, visible to every member) (default "mine")
 ```
 
 ### Options inherited from parent commands
