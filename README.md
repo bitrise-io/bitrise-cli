@@ -168,6 +168,7 @@ details) under [docs/cli](docs/cli/bitrise-cli.md).
 | [`rde template list`](docs/cli/bitrise-cli_rde_template_list.md) | List RDE templates in the workspace |
 | [`rde template update`](docs/cli/bitrise-cli_rde_template_update.md) | Update an existing RDE template from a JSON spec file |
 | [`rde template view`](docs/cli/bitrise-cli_rde_template_view.md) | Show details of a single template |
+| [`rde usage`](docs/cli/bitrise-cli_rde_usage.md) | Show the workspace's active session and resource usage |
 
 ### [`stack`](docs/cli/bitrise-cli_stack.md) — List available stacks
 
