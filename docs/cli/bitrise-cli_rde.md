@@ -48,4 +48,5 @@ Saved inputs are user-scoped — they do not require --workspace.
 * [bitrise-cli rde session](bitrise-cli_rde_session.md)	 - Create, list, inspect, and manage RDE sessions
 * [bitrise-cli rde stack](bitrise-cli_rde_stack.md)	 - List machine stacks available to the workspace
 * [bitrise-cli rde template](bitrise-cli_rde_template.md)	 - List and inspect RDE templates
+* [bitrise-cli rde usage](bitrise-cli_rde_usage.md)	 - Show the workspace's active session and resource usage
 

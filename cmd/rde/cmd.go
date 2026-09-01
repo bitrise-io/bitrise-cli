@@ -12,6 +12,7 @@ import (
 	rdesession "github.com/bitrise-io/bitrise-cli/cmd/rde/session"
 	rdestack "github.com/bitrise-io/bitrise-cli/cmd/rde/stack"
 	rdetemplate "github.com/bitrise-io/bitrise-cli/cmd/rde/template"
+	rdeusage "github.com/bitrise-io/bitrise-cli/cmd/rde/usage"
 )
 
 // NewCmd returns the `bitrise-cli rde` parent command.
@@ -42,6 +43,7 @@ Saved inputs are user-scoped — they do not require --workspace.`,
 		rdesavedinput.NewCmd(),
 		rdestack.NewCmd(),
 		rdemachinetype.NewCmd(),
+		rdeusage.NewCmd(),
 	)
 	return c
 }
