@@ -75,7 +75,7 @@ func TestUsageCmd_Human(t *testing.T) {
 	srv := usageServer(t, http.StatusOK, sparseReport)
 	defer srv.Close()
 
-	stdout, _, err := run(t, NewCmd(), srv.URL, "ws-1", output.Human)
+	stdout, stderr, err := run(t, NewCmd(), srv.URL, "ws-1", output.Human)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -85,11 +85,17 @@ func TestUsageCmd_Human(t *testing.T) {
 		"Memory GB:", "14", "(Linux 8, macOS 6)",
 		"alice@example.com", "(workspace)",
 		"2 / 8", "4 / 6",
-		"Note: 1 active session(s) have an unrecognized machine type",
+		"UNKNOWN VCPU/GB",
 	} {
 		if !strings.Contains(stdout, want) {
 			t.Errorf("stdout missing %q:\n%s", want, stdout)
 		}
+	}
+	if strings.Contains(stdout, "Warning") {
+		t.Errorf("diagnostics leaked into stdout:\n%s", stdout)
+	}
+	if !strings.Contains(stderr, "Warning:") || !strings.Contains(stderr, "(1 affected)") {
+		t.Errorf("stderr missing the undercount warning:\n%s", stderr)
 	}
 }
 
@@ -126,12 +132,39 @@ func TestUsageCmd_JSON_Densified(t *testing.T) {
 	if !ok || len(users) != 2 {
 		t.Fatalf("users = %v, want 2 rows", got["users"])
 	}
+	// The stable shape's user_id is the Bitrise user ID (the wire's slug);
+	// the backend's internal UUID (wire userId) is not exposed.
 	alice := users[0].(map[string]any)
-	if alice["user_slug"] != "alice-slug" {
-		t.Errorf("users[0].user_slug = %v, want alice-slug", alice["user_slug"])
+	if alice["user_id"] != "alice-slug" {
+		t.Errorf("users[0].user_id = %v, want alice-slug", alice["user_id"])
+	}
+	if _, leaked := alice["user_slug"]; leaked {
+		t.Errorf("users[0] leaks user_slug: %v", alice)
 	}
 	if got["unknown_machine_type_count"] != float64(1) {
 		t.Errorf("unknown_machine_type_count = %v, want 1", got["unknown_machine_type_count"])
+	}
+}
+
+func TestUsageCmd_Human_NoUnknownColumnWhenAllKnown(t *testing.T) {
+	srv := usageServer(t, http.StatusOK, `{
+		"totals": {"linux": {"sessionCount": 1, "vcpu": 2, "memoryGb": 8}},
+		"users": [{
+			"userSlug": "alice-slug", "email": "alice@example.com",
+			"totals": {"linux": {"sessionCount": 1, "vcpu": 2, "memoryGb": 8}}
+		}]
+	}`)
+	defer srv.Close()
+
+	stdout, stderr, err := run(t, NewCmd(), srv.URL, "ws-1", output.Human)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if strings.Contains(stdout, "UNKNOWN") || strings.Contains(stdout, "unknown") {
+		t.Errorf("unknown column/split rendered with nothing unknown:\n%s", stdout)
+	}
+	if stderr != "" {
+		t.Errorf("stderr = %q, want no diagnostics", stderr)
 	}
 }
 

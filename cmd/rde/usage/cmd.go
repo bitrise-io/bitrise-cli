@@ -42,7 +42,19 @@ billing-period report. Requires the workspace's billing-view permission
 			if err != nil {
 				return err
 			}
-			return output.Render(cmd.OutOrStdout(), format, res, renderUsage)
+			if err := output.Render(cmd.OutOrStdout(), format, res, renderUsage); err != nil {
+				return err
+			}
+			// Diagnostics go to stderr so piped stdout stays parse-safe; the
+			// JSON shape carries unknown_machine_type_count as data anyway.
+			if res.UnknownMachineTypeCount > 0 {
+				s := style.New(cmd.ErrOrStderr())
+				ew := cmdutil.NewErrWriter(cmd.ErrOrStderr())
+				ew.F("%s active sessions with unrecognized machine types contribute 0 vCPU/memory to the totals, so the sums may undercount (%d affected)\n",
+					s.Warn.Render("Warning:"), res.UnknownMachineTypeCount)
+				return ew.Err
+			}
+			return nil
 		},
 	}
 }
@@ -69,10 +81,6 @@ func renderUsage(w io.Writer, res internalrde.WorkspaceUsage) error {
 			return err
 		}
 	}
-
-	if res.UnknownMachineTypeCount > 0 {
-		ew.F("\nNote: %d active session(s) have an unrecognized machine type and contribute 0 to the vCPU/memory totals, so the sums may undercount.\n", res.UnknownMachineTypeCount)
-	}
 	return ew.Err
 }
 
@@ -97,15 +105,32 @@ func osSplit(t internalrde.UsageTotals, metric func(internalrde.PlatformUsage) i
 
 func renderUserTable(w io.Writer, s style.Styles, users []internalrde.UserUsage) error {
 	const colUser = 0
+	// The unknown-OS column appears only when some row needs it, so the
+	// common all-known case stays narrow — but when present it lets every
+	// row's session total reconcile with its per-OS resources.
+	showUnknown := false
+	for _, u := range users {
+		if u.Totals.Unknown != (internalrde.PlatformUsage{}) {
+			showUnknown = true
+			break
+		}
+	}
 	headers := []string{"USER", "SESSIONS", "LINUX VCPU/GB", "MACOS VCPU/GB"}
+	if showUnknown {
+		headers = append(headers, "UNKNOWN VCPU/GB")
+	}
 	rows := make([][]string, 0, len(users))
 	for _, u := range users {
-		rows = append(rows, []string{
+		row := []string{
 			userLabel(u),
 			strconv.Itoa(int(sumBuckets(u.Totals).SessionCount)),
 			vcpuGB(u.Totals.Linux),
 			vcpuGB(u.Totals.Macos),
-		})
+		}
+		if showUnknown {
+			row = append(row, vcpuGB(u.Totals.Unknown))
+		}
+		rows = append(rows, row)
 	}
 	styler := func(row, col int, content string) string {
 		if col == colUser && users[row].IsWorkspace {
@@ -117,7 +142,7 @@ func renderUserTable(w io.Writer, s style.Styles, users []internalrde.UserUsage)
 }
 
 // userLabel identifies a breakdown row: email when known, the workspace
-// bucket as "(workspace)", with username/slug fallbacks for user rows
+// bucket as "(workspace)", with username/ID fallbacks for user rows
 // missing an email.
 func userLabel(u internalrde.UserUsage) string {
 	switch {
@@ -128,7 +153,7 @@ func userLabel(u internalrde.UserUsage) string {
 	case u.Username != "":
 		return u.Username
 	default:
-		return u.UserSlug
+		return u.UserID
 	}
 }
 

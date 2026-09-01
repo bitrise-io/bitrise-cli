@@ -24,9 +24,13 @@ type UsageTotals struct {
 
 // UserUsage is one row of the per-user usage breakdown. The single
 // workspace-owned bucket row (IsWorkspace true) carries no user identity.
+//
+// UserID is the user's Bitrise ID (the wire's slug — the identifier other
+// Bitrise surfaces use; the backend's internal user UUID is not exposed).
+// Best-effort: may be empty, so detect the workspace bucket via IsWorkspace,
+// never via an empty UserID.
 type UserUsage struct {
 	UserID      string      `json:"user_id,omitempty"`
-	UserSlug    string      `json:"user_slug,omitempty"`
 	Email       string      `json:"email,omitempty"`
 	Username    string      `json:"username,omitempty"`
 	IsWorkspace bool        `json:"is_workspace,omitempty"`
@@ -70,8 +74,7 @@ func usageFromAPI(w rdeapi.WorkspaceUsage) WorkspaceUsage {
 	}
 	for _, u := range w.Users {
 		out.Users = append(out.Users, UserUsage{
-			UserID:      u.UserID,
-			UserSlug:    u.UserSlug,
+			UserID:      u.UserSlug,
 			Email:       u.Email,
 			Username:    u.Username,
 			IsWorkspace: u.IsWorkspace,
