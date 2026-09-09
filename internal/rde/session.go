@@ -54,6 +54,100 @@ type Session struct {
 	OwnerID   string     `json:"owner_id,omitempty"`
 	CreatedAt *time.Time `json:"created_at,omitempty"`
 	UpdatedAt *time.Time `json:"updated_at,omitempty"`
+	// Device is the session's virtual device (iOS simulator / Android
+	// emulator) and its readiness; nil when the session has no device.
+	// Status "running" does NOT mean the device is usable — read
+	// Device.State.
+	Device *SessionDevice `json:"device,omitempty"`
+}
+
+// DeviceSpec describes a virtual device in the preview-link vocabulary:
+// Platform "ios" or "android"; the rest optional (platform defaults).
+type DeviceSpec struct {
+	Platform    string `json:"platform"`
+	DeviceModel string `json:"device_model,omitempty"`
+	OSVersion   string `json:"os_version,omitempty"`
+	SystemImage string `json:"system_image,omitempty"`
+	RAMMb       uint32 `json:"ram_mb,omitempty"`
+	Cores       uint32 `json:"cores,omitempty"`
+	ColdBoot    bool   `json:"cold_boot,omitempty"`
+}
+
+// DeviceArtifact is an app build to install once the device is ready.
+type DeviceArtifact struct {
+	URL         string `json:"url"`
+	AppName     string `json:"app_name,omitempty"`
+	BuildNumber string `json:"build_number,omitempty"`
+	CommitSHA   string `json:"commit_sha,omitempty"`
+}
+
+// SessionDevice mirrors the API's Session.device. State/InstallStatus are
+// normalized like Status: "booting" / "ready" / "failed" / "" and
+// "pending" / "running" / "ok" / "failed" / "".
+type SessionDevice struct {
+	Spec               *DeviceSpec `json:"spec,omitempty"`
+	State              string      `json:"state,omitempty"`
+	DeviceNotes        string      `json:"device_notes,omitempty"`
+	InstallStatus      string      `json:"install_status,omitempty"`
+	InstallReason      string      `json:"install_reason,omitempty"`
+	AppName            string      `json:"app_name,omitempty"`
+	BuildNumber        string      `json:"build_number,omitempty"`
+	CommitSHA          string      `json:"commit_sha,omitempty"`
+	ViewerURL          string      `json:"viewer_url,omitempty"`
+	ViewerURLExpiresAt *time.Time  `json:"viewer_url_expires_at,omitempty"`
+}
+
+// deviceStateFromAPI maps PREVIEW_DEVICE_STATE_* to a short lowercase word
+// ("" for unspecified/unknown), like statusFromAPI does for sessions.
+func deviceStateFromAPI(v string) string {
+	switch v {
+	case "PREVIEW_DEVICE_STATE_BOOTING":
+		return "booting"
+	case "PREVIEW_DEVICE_STATE_READY":
+		return "ready"
+	case "PREVIEW_DEVICE_STATE_FAILED":
+		return "failed"
+	}
+	return ""
+}
+
+// installStatusFromAPI maps PREVIEW_INSTALL_STATUS_* to a short word.
+func installStatusFromAPI(v string) string {
+	switch v {
+	case "PREVIEW_INSTALL_STATUS_PENDING":
+		return "pending"
+	case "PREVIEW_INSTALL_STATUS_RUNNING":
+		return "running"
+	case "PREVIEW_INSTALL_STATUS_OK":
+		return "ok"
+	case "PREVIEW_INSTALL_STATUS_FAILED":
+		return "failed"
+	}
+	return ""
+}
+
+func deviceFromAPI(w *rdeapi.SessionDevice) *SessionDevice {
+	if w == nil {
+		return nil
+	}
+	out := &SessionDevice{
+		State:              deviceStateFromAPI(w.State),
+		DeviceNotes:        w.DeviceNotes,
+		InstallStatus:      installStatusFromAPI(w.InstallStatus),
+		InstallReason:      w.InstallReason,
+		AppName:            w.AppName,
+		BuildNumber:        w.BuildNumber,
+		CommitSHA:          w.CommitSHA,
+		ViewerURL:          w.ViewerURL,
+		ViewerURLExpiresAt: w.ViewerURLExpiresAt,
+	}
+	if w.Spec != nil {
+		out.Spec = &DeviceSpec{
+			Platform: w.Spec.Platform, DeviceModel: w.Spec.DeviceModel, OSVersion: w.Spec.OSVersion,
+			SystemImage: w.Spec.SystemImage, RAMMb: w.Spec.RAMMb, Cores: w.Spec.Cores, ColdBoot: w.Spec.ColdBoot,
+		}
+	}
+	return out
 }
 
 // Resumable reports whether `rde claude` can resume this session: a running
@@ -142,6 +236,11 @@ type CreateSessionRequest struct {
 	AutoTerminateMinutes    *int
 	MapSavedToSessionInputs bool
 	Labels                  map[string]string
+	// DeviceSpec boots a virtual device with the session (optional).
+	DeviceSpec *DeviceSpec
+	// Artifact is an app build to install once the device is ready
+	// (optional; requires DeviceSpec).
+	Artifact *DeviceArtifact
 }
 
 // UpdateSessionRequest carries optional patch fields. Pointer fields
@@ -273,6 +372,8 @@ func (s *Service) CreateSession(ctx context.Context, workspaceID string, req Cre
 		AutoTerminateMinutes:    req.AutoTerminateMinutes,
 		MapSavedToSessionInputs: req.MapSavedToSessionInputs,
 		Labels:                  req.Labels,
+		DeviceSpec:              deviceSpecToAPI(req.DeviceSpec),
+		Artifact:                artifactToAPI(req.Artifact),
 	})
 	if err != nil {
 		return CreateSessionResult{}, err
@@ -581,6 +682,23 @@ func (s *Service) DeleteTerminatedSessions(ctx context.Context, workspaceID stri
 	return s.client.DeleteTerminatedSessions(ctx, workspaceID)
 }
 
+func deviceSpecToAPI(d *DeviceSpec) *rdeapi.DeviceSpec {
+	if d == nil {
+		return nil
+	}
+	return &rdeapi.DeviceSpec{
+		Platform: d.Platform, DeviceModel: d.DeviceModel, OSVersion: d.OSVersion,
+		SystemImage: d.SystemImage, RAMMb: d.RAMMb, Cores: d.Cores, ColdBoot: d.ColdBoot,
+	}
+}
+
+func artifactToAPI(a *DeviceArtifact) *rdeapi.DeviceArtifact {
+	if a == nil {
+		return nil
+	}
+	return &rdeapi.DeviceArtifact{URL: a.URL, AppName: a.AppName, BuildNumber: a.BuildNumber, CommitSHA: a.CommitSHA}
+}
+
 func sessionFromAPI(w rdeapi.Session) Session {
 	out := Session{
 		ID:                   w.ID,
@@ -605,6 +723,7 @@ func sessionFromAPI(w rdeapi.Session) Session {
 		Labels:               w.Labels,
 		OwnerType:            w.OwnerType,
 		OwnerID:              w.OwnerID,
+		Device:               deviceFromAPI(w.Device),
 	}
 	out.AgentSessionStatusUpdatedAt = parseTime(w.AgentSessionStatusUpdatedAt)
 	out.AutoTerminateAt = parseTime(w.AutoTerminateAt)

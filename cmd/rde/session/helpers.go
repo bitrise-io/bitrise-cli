@@ -86,3 +86,16 @@ func diskStatusText(s style.Styles, status string) string {
 	}
 	return status
 }
+
+// deviceStateStyle colors the device readiness like statusStyle colors the
+// session status: ready is good, failed is bad, anything else is in flight.
+func deviceStateStyle(s style.Styles, state string) lipgloss.Style {
+	switch state {
+	case "ready":
+		return s.Success
+	case "failed":
+		return s.Failure
+	default:
+		return s.Dim
+	}
+}

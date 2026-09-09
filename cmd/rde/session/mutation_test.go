@@ -613,3 +613,52 @@ func TestDeleteTerminatedCmd_ProceedsOnYes(t *testing.T) {
 		t.Errorf("unexpected stdout: %q", stdout)
 	}
 }
+
+// A device session needs neither --template nor --stack/--machine-type: the
+// backend fills the platform defaults. The device spec and artifact ride on
+// the wire in the same shape a preview link uses.
+func TestCreateCmd_DeviceSpec(t *testing.T) {
+	var gotBody map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		_, _ = io.WriteString(w, `{"session":{"id":"s-dev","name":"ios-check","status":"SESSION_STATUS_PENDING","device":{"spec":{"platform":"ios","deviceModel":"iPhone 16"},"state":"PREVIEW_DEVICE_STATE_UNSPECIFIED"}}}`)
+	}))
+	defer srv.Close()
+
+	stdout, _, err := run(t, newCreateCmd(), srv.URL, "ws-1",
+		[]string{"ios-check", "--device-platform", "ios", "--device-model", "iPhone 16", "--device-os-version", "18.2", "--artifact-url", "https://cdn.example.com/app.zip", "--artifact-name", "Demo"}, output.Human)
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	spec, _ := gotBody["deviceSpec"].(map[string]any)
+	if spec["platform"] != "ios" || spec["deviceModel"] != "iPhone 16" || spec["osVersion"] != "18.2" {
+		t.Errorf("unexpected deviceSpec: %v", gotBody["deviceSpec"])
+	}
+	art, _ := gotBody["artifact"].(map[string]any)
+	if art["url"] != "https://cdn.example.com/app.zip" || art["appName"] != "Demo" {
+		t.Errorf("unexpected artifact: %v", gotBody["artifact"])
+	}
+	if _, has := gotBody["stackId"]; has {
+		t.Errorf("stackId must be omitted so the platform default applies: %v", gotBody)
+	}
+	if !strings.Contains(stdout, "s-dev") {
+		t.Errorf("stdout missing create confirmation:\n%s", stdout)
+	}
+}
+
+func TestCreateCmd_DeviceFlagsNeedPlatform(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("no request expected, got %s %s", r.Method, r.URL.Path)
+	}))
+	defer srv.Close()
+	_, _, err := run(t, newCreateCmd(), srv.URL, "ws-1",
+		[]string{"dev", "--stack", "osx-xcode-26.6.x", "--machine-type", "g2.mac.m2pro.4c-6g", "--device-model", "iPhone 16"}, output.Human)
+	if err == nil || !strings.Contains(err.Error(), "--device-platform") {
+		t.Fatalf("expected a --device-platform error, got %v", err)
+	}
+	_, _, err = run(t, newCreateCmd(), srv.URL, "ws-1",
+		[]string{"dev", "--device-platform", "android", "--device-os-version", "14"}, output.Human)
+	if err == nil || !strings.Contains(err.Error(), "iOS only") {
+		t.Fatalf("expected an iOS-only error, got %v", err)
+	}
+}

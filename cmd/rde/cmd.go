@@ -7,6 +7,7 @@ import (
 
 	"github.com/bitrise-io/bitrise-cli/cmd/cmdutil"
 	rdeclaude "github.com/bitrise-io/bitrise-cli/cmd/rde/claude"
+	rdedeviceguide "github.com/bitrise-io/bitrise-cli/cmd/rde/deviceguide"
 	rdemachinetype "github.com/bitrise-io/bitrise-cli/cmd/rde/machinetype"
 	rdesavedinput "github.com/bitrise-io/bitrise-cli/cmd/rde/savedinput"
 	rdesession "github.com/bitrise-io/bitrise-cli/cmd/rde/session"
@@ -44,6 +45,7 @@ Saved inputs are user-scoped — they do not require --workspace.`,
 		rdestack.NewCmd(),
 		rdemachinetype.NewCmd(),
 		rdeusage.NewCmd(),
+		rdedeviceguide.NewCmd(),
 	)
 	return c
 }

@@ -141,6 +141,51 @@ func renderSessionDetail(w io.Writer, sess internalrde.Session) error {
 	if sess.PersistentDiskStatus != "" {
 		ew.F("%s%s\n", lbl("Persistent disk:"), diskStatusText(s, sess.PersistentDiskStatus))
 	}
+	if d := sess.Device; d != nil {
+		what := "device"
+		if d.Spec != nil {
+			switch d.Spec.Platform {
+			case "ios":
+				what = "iOS simulator"
+			case "android":
+				what = "Android emulator"
+			}
+			if d.Spec.DeviceModel != "" {
+				what += " · " + d.Spec.DeviceModel
+			}
+			if d.Spec.OSVersion != "" {
+				what += " · " + d.Spec.OSVersion
+			}
+		}
+		state := d.State
+		if state == "" {
+			state = "not running"
+		}
+		ew.F("%s%s — %s\n", lbl("Device:"), what, deviceStateStyle(s, d.State).Render(state))
+		if d.DeviceNotes != "" {
+			ew.F("%s%s\n", lbl("Device notes:"), d.DeviceNotes)
+		}
+		if d.AppName != "" || d.InstallStatus != "" {
+			app := d.AppName
+			if app == "" {
+				app = "app"
+			}
+			if d.BuildNumber != "" {
+				app += " #" + d.BuildNumber
+			}
+			install := d.InstallStatus
+			if install == "" {
+				install = "not started"
+			}
+			if d.InstallStatus == "failed" && d.InstallReason != "" {
+				install += ": " + d.InstallReason
+			}
+			ew.F("%s%s — install %s\n", lbl("Device app:"), app, install)
+		}
+		if d.ViewerURL != "" {
+			ew.F("%s%s\n", lbl("Device view:"), d.ViewerURL)
+		}
+	}
 	if sess.AutoTerminateAt != nil {
 		ew.F("%s%s\n", lbl("Auto-terminates at:"), formatTime(sess.AutoTerminateAt))
 	} else if sess.AutoTerminateMinutes > 0 {
