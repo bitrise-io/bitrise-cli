@@ -31,6 +31,14 @@ Attach arbitrary key=value metadata with --label (repeatable); labels come
 back on 'session view' and in 'session list --output json', and sessions
 can be filtered by them with 'rde session list --label-selector key=value'.
 
+Boot a virtual device with the session by passing --device-platform ios (an
+iOS simulator on a macOS stack) or android (an Android emulator on a Linux
+stack). --stack/--machine-type may then be omitted: the deployment's
+known-good pair for the platform applies. Optionally pre-install an app with
+--artifact-url. Device sessions auto-terminate after 4 hours by default (not
+5 days). "running" does not mean the device is usable — 'session view' shows
+the device state; wait for "ready". Know-how: 'rde device-guide'.
+
 Example values:
   --input key=value
   --saved-input session-key=SAVED_INPUT_ID   # secret stored ahead of time
@@ -51,15 +59,24 @@ bitrise-cli rde session create NAME [flags]
   echo -n "ghp_xxx" | bitrise-cli rde saved-input create --key gh-token --value-stdin --secret
   bitrise-cli rde session create dev --template TEMPLATE_ID --saved-input gh-token=SAVED_INPUT_ID
   bitrise-cli rde session create dev --template TEMPLATE_ID --map-saved-inputs
+  # Boot an iOS simulator with the session (stack/machine type default to the platform's).
+  bitrise-cli rde session create ios-check --device-platform ios --device-model "iPhone 16" --device-os-version 18.2
+  bitrise-cli rde session create android-check --device-platform android --artifact-url https://…/app.apk
 ```
 
 ### Options
 
 ```
       --ai-prompt string             initial AI prompt passed to Claude Code on session start
+      --artifact-name string         display name of the app installed from --artifact-url
+      --artifact-url string          app build to install once the device is ready: absolute http(s) URL of a zipped simulator .app (iOS) or an .apk (Android); requires --device-platform
       --auto-terminate-minutes int   minutes until auto-termination; 0 disables; omitted uses backend default (~5 days)
       --cluster string               target cluster name (use 'rde machine-type list --stack STACK_ID' to find candidates when the stack + machine type combo is ambiguous)
       --description string           session description
+      --device-model string          device to boot: simctl device type ("iPhone 16") or emulator device profile ("pixel_7"); default: platform default
+      --device-os-version string     iOS only: iOS version ("18.2") or simctl runtime id; default: newest installed
+      --device-platform string       boot a virtual device with the session: ios (simulator, macOS stack) or android (emulator, Linux stack); --stack/--machine-type may then be omitted
+      --device-system-image string   Android only: sdkmanager system image package ("system-images;android-34;google_apis;x86_64"); default: platform default
       --feature-flag stringArray     name of a feature flag to enable on the session (repeatable)
   -h, --help                         help for create
       --input stringArray            session input as key=value (repeatable)
