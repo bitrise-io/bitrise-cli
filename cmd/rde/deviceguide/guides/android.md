@@ -1,7 +1,9 @@
 <!-- Mirror of the RDE device-session guide shipped with the RDE backend; keep in sync with the backend release you target — do not edit here. -->
 # Android emulator sessions — driving the device
 
-Read [README.md](README.md) first (create, wait for READY, connect, do-nots).
+Read the main device sessions guide first (create, wait for READY, connect,
+do-nots): `README.md` next to this file, the MCP resource
+`bitrise-devenv://guides/device-sessions`, or `bitrise-cli rde device-guide`.
 This page is the Android specifics. Everything here runs on the session VM
 (in-band via `execute`, or over SSH) or through the adb tunnel from your
 machine — the emulator is headless (`-no-window`).
@@ -54,7 +56,9 @@ adb shell cmd uimode night yes                        # dark mode
 
 Screenshots are ~1–2 MB PNG at native resolution. Do not base64 them into
 `execute` output — hand the human the `device.viewer_url`, or pull the file
-over the tunnel (`adb pull` after `adb exec-out screencap -p > /sdcard/s.png`).
+over the tunnel: `adb shell screencap -p /sdcard/s.png && adb pull
+/sdcard/s.png` (the redirect form above writes to the VM's filesystem, so
+use `shell screencap` when the file must live on the device).
 
 ## Do not
 

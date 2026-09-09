@@ -38,6 +38,7 @@ func newCreateCmd() *cobra.Command {
 		deviceOSVersion      string
 		deviceSystemImage    string
 		artifactURL          string
+		artifactURLStdin     bool
 		artifactName         string
 	)
 
@@ -75,9 +76,13 @@ Boot a virtual device with the session by passing --device-platform ios (an
 iOS simulator on a macOS stack) or android (an Android emulator on a Linux
 stack). --stack/--machine-type may then be omitted: the deployment's
 known-good pair for the platform applies. Optionally pre-install an app with
---artifact-url. Device sessions auto-terminate after 4 hours by default (not
-5 days). "running" does not mean the device is usable — 'session view' shows
-the device state; wait for "ready". Know-how: 'rde device-guide'.
+--artifact-url, or --artifact-url-stdin to read the URL from stdin: a signed
+(pre-authenticated) download URL is a bearer credential, and a value passed
+inline ends up in your shell history and in the process arguments (readable
+by other users via 'ps'). Device sessions auto-terminate after 4 hours by
+default (not 5 days). "running" does not mean the device is usable —
+'session view' shows the device state; wait for "ready". Know-how:
+'rde device-guide'.
 
 Example values:
   --input key=value
@@ -93,7 +98,9 @@ Example values:
   bitrise-cli rde session create dev --template TEMPLATE_ID --map-saved-inputs
   # Boot an iOS simulator with the session (stack/machine type default to the platform's).
   bitrise-cli rde session create ios-check --device-platform ios --device-model "iPhone 16" --device-os-version 18.2
-  bitrise-cli rde session create android-check --device-platform android --artifact-url https://…/app.apk`,
+  bitrise-cli rde session create android-check --device-platform android --artifact-url https://…/app.apk
+  # Keep a signed artifact URL out of shell history and process args.
+  echo -n "https://…/app.apk?X-Amz-Signature=…" | bitrise-cli rde session create android-check --device-platform android --artifact-url-stdin`,
 		Args: cmdutil.RequireArgs("NAME"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
@@ -113,8 +120,21 @@ Example values:
 			default:
 				return fmt.Errorf("--device-platform must be ios or android")
 			}
-			if devicePlatform == "" && (deviceModel != "" || deviceOSVersion != "" || deviceSystemImage != "" || artifactURL != "" || artifactName != "") {
-				return fmt.Errorf("--device-model, --device-os-version, --device-system-image, --artifact-url and --artifact-name require --device-platform")
+			if devicePlatform == "" && (deviceModel != "" || deviceOSVersion != "" || deviceSystemImage != "" || artifactURL != "" || artifactURLStdin || artifactName != "") {
+				return fmt.Errorf("--device-model, --device-os-version, --device-system-image, --artifact-url, --artifact-url-stdin and --artifact-name require --device-platform")
+			}
+			if artifactURLStdin {
+				// Signed download URLs are bearer credentials; reading them
+				// from stdin keeps them out of shell history and `ps` (same
+				// rationale as `saved-input create --value-stdin`).
+				v, err := cmdutil.ReadSecretInput(cmd.InOrStdin(), cmd.ErrOrStderr(), "", true)
+				if err != nil {
+					return fmt.Errorf("reading --artifact-url-stdin: %w", err)
+				}
+				if v == "" {
+					return fmt.Errorf("--artifact-url-stdin: no URL read from stdin")
+				}
+				artifactURL = v
 			}
 			if devicePlatform == "ios" && deviceSystemImage != "" {
 				return fmt.Errorf("--device-system-image applies to Android only")
@@ -123,7 +143,7 @@ Example values:
 				return fmt.Errorf("--device-os-version applies to iOS only (pick an Android API level via --device-system-image)")
 			}
 			if artifactName != "" && artifactURL == "" {
-				return fmt.Errorf("--artifact-name requires --artifact-url")
+				return fmt.Errorf("--artifact-name requires --artifact-url or --artifact-url-stdin")
 			}
 			workspaceID, err := cmdutil.ResolveWorkspaceID(cmd)
 			if err != nil {
@@ -230,10 +250,12 @@ Example values:
 	c.Flags().StringVar(&deviceModel, "device-model", "", "device to boot: simctl device type (\"iPhone 16\") or emulator device profile (\"pixel_7\"); default: platform default")
 	c.Flags().StringVar(&deviceOSVersion, "device-os-version", "", "iOS only: iOS version (\"18.2\") or simctl runtime id; default: newest installed")
 	c.Flags().StringVar(&deviceSystemImage, "device-system-image", "", "Android only: sdkmanager system image package (\"system-images;android-34;google_apis;x86_64\"); default: platform default")
-	c.Flags().StringVar(&artifactURL, "artifact-url", "", "app build to install once the device is ready: absolute http(s) URL of a zipped simulator .app (iOS) or an .apk (Android); requires --device-platform")
-	c.Flags().StringVar(&artifactName, "artifact-name", "", "display name of the app installed from --artifact-url")
+	c.Flags().StringVar(&artifactURL, "artifact-url", "", "app build to install once the device is ready: absolute http(s) URL of a zipped simulator .app (iOS) or an .apk (Android); requires --device-platform (a signed URL is visible in shell history and process args — prefer --artifact-url-stdin)")
+	c.Flags().BoolVar(&artifactURLStdin, "artifact-url-stdin", false, "read the --artifact-url value from stdin instead of the command line; keeps signed URLs out of shell history and process args; requires --device-platform")
+	c.Flags().StringVar(&artifactName, "artifact-name", "", "display name of the app installed from --artifact-url / --artifact-url-stdin")
 	c.Flags().BoolVar(&wait, "wait", false, "wait until the session leaves provisioning (running, failed, …) before returning; exits 1 if the final status isn't running")
 	c.Flags().DurationVar(&waitTimeout, "wait-timeout", 10*time.Minute, "max time to wait when --wait is set (uses Go duration syntax: 30s, 5m, 1h)")
+	c.MarkFlagsMutuallyExclusive("artifact-url", "artifact-url-stdin")
 
 	c.PreRun = func(cmd *cobra.Command, _ []string) {
 		// Track whether --auto-terminate-minutes was explicitly set so we

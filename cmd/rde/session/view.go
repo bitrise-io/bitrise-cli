@@ -153,8 +153,15 @@ func renderSessionDetail(w io.Writer, sess internalrde.Session) error {
 			if d.Spec.DeviceModel != "" {
 				what += " · " + d.Spec.DeviceModel
 			}
-			if d.Spec.OSVersion != "" {
-				what += " · " + d.Spec.OSVersion
+			// iOS carries the OS version; Android identifies the OS by its
+			// system image package instead, so fall back to it to keep the
+			// "platform · model · version" detail complete on both.
+			version := d.Spec.OSVersion
+			if version == "" {
+				version = d.Spec.SystemImage
+			}
+			if version != "" {
+				what += " · " + version
 			}
 		}
 		state := d.State

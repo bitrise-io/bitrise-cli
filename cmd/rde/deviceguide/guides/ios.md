@@ -1,7 +1,9 @@
 <!-- Mirror of the RDE device-session guide shipped with the RDE backend; keep in sync with the backend release you target — do not edit here. -->
 # iOS simulator sessions — driving the device
 
-Read [README.md](README.md) first (create, wait for READY, connect, do-nots).
+Read the main device sessions guide first (create, wait for READY, connect,
+do-nots): `README.md` next to this file, the MCP resource
+`bitrise-devenv://guides/device-sessions`, or `bitrise-cli rde device-guide`.
 This page is the iOS specifics. Everything here runs on the session VM
 (in-band via `execute`, or over SSH); the simulator is **headless** — there is
 no Simulator.app window and the macOS desktop screenshot shows nothing.

@@ -11,6 +11,9 @@ import (
 	"fmt"
 
 	"github.com/spf13/cobra"
+
+	"github.com/bitrise-io/bitrise-cli/cmd/cmdutil"
+	"github.com/bitrise-io/bitrise-cli/internal/output"
 )
 
 //go:embed guides/device-sessions.md
@@ -33,12 +36,20 @@ func NewCmd() *cobra.Command {
 device ('rde session create --device-platform ios|android'), wait for the
 device to be ready ('rde session view'), connect, drive it efficiently
 (accessibility tree first, then input), let a human watch, and what never to
-do. Pass ios or android for that platform's specifics.`,
+do. Pass ios or android for that platform's specifics.
+
+The guide is Markdown prose; --output json is rejected (there is no
+single-object JSON shape for it).`,
 		Example: `  bitrise-cli rde device-guide
   bitrise-cli rde device-guide ios
   bitrise-cli rde device-guide android`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// The inherited --output flag has no JSON shape here: the guide
+			// is Markdown prose, not a single object (mirrors `session logs`).
+			if cmdutil.ResolveFormat(cmd) == output.JSON {
+				return fmt.Errorf("device-guide prints Markdown; --output json is not supported")
+			}
 			body := guideDeviceSessions
 			if len(args) == 1 {
 				switch args[0] {

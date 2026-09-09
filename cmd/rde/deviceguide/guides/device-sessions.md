@@ -8,10 +8,13 @@ a human can watch what you do on it in the browser. This guide is the
 know-how: how to create one, how to know it is ready, how to drive the device
 efficiently, and what never to do.
 
-The same text is served by the `bitrise-dev-environments` MCP server as the
-resources `bitrise-devenv://guides/device-sessions`, `.../ios` and
-`.../android`, and the `bitrise rde` CLI prints it with
-`bitrise rde device-guide [ios|android]`.
+Where to find this guide and the platform specifics, whichever way you reach
+RDE: in the `bitrise-dev-environments` MCP server as the resources
+`bitrise-devenv://guides/device-sessions`, `bitrise-devenv://guides/device-sessions/ios`
+and `bitrise-devenv://guides/device-sessions/android`; in the CLI as
+`bitrise-cli rde device-guide`, `bitrise-cli rde device-guide ios` and
+`bitrise-cli rde device-guide android`; in the docs folder as `README.md`,
+`ios.md` and `android.md`.
 
 ## 1. Create
 
@@ -31,7 +34,7 @@ MCP:
   "artifact": { "url": "https://…signed…/app.apk", "app_name": "Demo" } }
 ```
 
-CLI: `bitrise rde session create ios-check --device-platform ios --device-model "iPhone 16" --device-os-version 18.2`
+CLI: `bitrise-cli rde session create ios-check --device-platform ios --device-model "iPhone 16" --device-os-version 18.2`
 
 REST: `POST /v1/workspaces/{ws}/sessions` with the same fields (`device_spec`,
 `artifact`).
@@ -59,20 +62,25 @@ Rules:
 
 The session turns `running` when its startup script begins; the device boots
 in the background for another 30 s (iOS warm) to ~2 min (Android/iOS cold).
-Poll the session (`bitrise_devenv_get` / `rde session view` / `GET
-/sessions/{id}`) and read `device`:
+Poll the session (`bitrise_devenv_get` / `bitrise-cli rde session view` /
+`GET /sessions/{id}`) and read `device.state`. The MCP and REST return the
+wire enum names; the CLI (human output and `--output json`) normalizes them
+to the short words in the last column and omits the unspecified state.
 
-| `device.state` | Meaning | You |
-|---|---|---|
-| `PREVIEW_DEVICE_STATE_UNSPECIFIED` | VM not running yet (or a VM predating the signal) | wait |
-| `PREVIEW_DEVICE_STATE_BOOTING` | VM running, device not yet proven | wait |
-| `PREVIEW_DEVICE_STATE_READY` | device booted **and** its stream delivers frames | go |
-| `PREVIEW_DEVICE_STATE_FAILED` | the VM gave up on this boot; `device.device_notes` says why | see §6 |
+| `device.state` (MCP / REST) | CLI | Meaning | You |
+|---|---|---|---|
+| `PREVIEW_DEVICE_STATE_UNSPECIFIED` (or absent) | (absent) | VM not running yet (or a VM predating the signal) | wait |
+| `PREVIEW_DEVICE_STATE_BOOTING` | `booting` | VM running, device not yet proven | wait |
+| `PREVIEW_DEVICE_STATE_READY` | `ready` | device booted **and** its stream delivers frames | go |
+| `PREVIEW_DEVICE_STATE_FAILED` | `failed` | the VM gave up on this boot; `device.device_notes` says why | see §6 |
 
-If you supplied an `artifact`, also watch `device.install_status`: `PENDING`
-(waiting for the device) → `RUNNING` → `OK` or `FAILED` (`install_reason`
-says why). A failed install leaves the device usable — install the app
-yourself (§4). Give up waiting for an install after ~3 minutes past READY.
+If you supplied an `artifact`, also watch `device.install_status` — wire
+values `PREVIEW_INSTALL_STATUS_PENDING` (waiting for the device) →
+`PREVIEW_INSTALL_STATUS_RUNNING` → `PREVIEW_INSTALL_STATUS_OK` or
+`PREVIEW_INSTALL_STATUS_FAILED` (`device.install_reason` says why); the CLI
+shows `pending` / `running` / `ok` / `failed`. A failed install leaves the
+device usable — install the app yourself (§4). Give up waiting for an install
+after ~3 minutes past READY.
 
 Poll every ~5 s; budget 5 minutes for READY before treating the boot as
 stuck. `device.device_notes` may also carry *degradations* (e.g. "requested
@@ -92,16 +100,18 @@ Two ways, in order of preference:
    - iOS: `-L 3200:127.0.0.1:3200` gives you serve-sim's HTTP/WS API (stream,
      `/ax`, gestures). For `idb` install it locally (`pipx install fb-idb`)
      and run `idb_companion` on the VM yourself if you want it.
-2. **In-band through `execute`** (`bitrise_devenv_execute` / `rde session
-   exec`): runs a login shell on the VM, 2-minute limit per call, returns
+2. **In-band through `execute`** (`bitrise_devenv_execute` / `bitrise-cli rde
+   session exec`): runs a login shell on the VM, 2-minute limit per call, returns
    text. Everything below works this way. Pixels do not travel well as text
    (a downscaled PNG is ~120 K base64 chars) — prefer the accessibility tree,
    and use the viewer URL or the tunnel when you must look.
 
 ## 4. Drive the device
 
-Platform specifics live in [ios.md](ios.md) and [android.md](android.md). The
-shape is the same on both:
+Platform specifics live in the iOS and Android guides (`ios.md` /
+`android.md`; MCP resources `bitrise-devenv://guides/device-sessions/ios` and
+`.../android`; CLI `bitrise-cli rde device-guide ios|android`). The shape is
+the same on both:
 
 - **Accessibility tree, not pixels.** iOS: `curl -s
   http://127.0.0.1:3200/helper/<UDID>/ax` (labels, types, frames, ids as
@@ -149,6 +159,6 @@ and the viewer recovers by itself. Logs: `~/simulator-up.log`,
 
 ## 7. Clean up
 
-Delete the session when you are done (`bitrise_devenv_delete` / `rde session
-delete`). A terminated-but-not-deleted device session can be restored; the
+Delete the session when you are done (`bitrise_devenv_delete` /
+`bitrise-cli rde session delete`). A terminated-but-not-deleted device session can be restored; the
 device boots again on restore and readiness is re-reported.

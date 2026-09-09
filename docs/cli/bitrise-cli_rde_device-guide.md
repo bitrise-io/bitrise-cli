@@ -10,6 +10,9 @@ device to be ready ('rde session view'), connect, drive it efficiently
 (accessibility tree first, then input), let a human watch, and what never to
 do. Pass ios or android for that platform's specifics.
 
+The guide is Markdown prose; --output json is rejected (there is no
+single-object JSON shape for it).
+
 ```
 bitrise-cli rde device-guide [ios|android] [flags]
 ```

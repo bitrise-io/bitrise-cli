@@ -35,9 +35,13 @@ Boot a virtual device with the session by passing --device-platform ios (an
 iOS simulator on a macOS stack) or android (an Android emulator on a Linux
 stack). --stack/--machine-type may then be omitted: the deployment's
 known-good pair for the platform applies. Optionally pre-install an app with
---artifact-url. Device sessions auto-terminate after 4 hours by default (not
-5 days). "running" does not mean the device is usable — 'session view' shows
-the device state; wait for "ready". Know-how: 'rde device-guide'.
+--artifact-url, or --artifact-url-stdin to read the URL from stdin: a signed
+(pre-authenticated) download URL is a bearer credential, and a value passed
+inline ends up in your shell history and in the process arguments (readable
+by other users via 'ps'). Device sessions auto-terminate after 4 hours by
+default (not 5 days). "running" does not mean the device is usable —
+'session view' shows the device state; wait for "ready". Know-how:
+'rde device-guide'.
 
 Example values:
   --input key=value
@@ -62,14 +66,17 @@ bitrise-cli rde session create NAME [flags]
   # Boot an iOS simulator with the session (stack/machine type default to the platform's).
   bitrise-cli rde session create ios-check --device-platform ios --device-model "iPhone 16" --device-os-version 18.2
   bitrise-cli rde session create android-check --device-platform android --artifact-url https://…/app.apk
+  # Keep a signed artifact URL out of shell history and process args.
+  echo -n "https://…/app.apk?X-Amz-Signature=…" | bitrise-cli rde session create android-check --device-platform android --artifact-url-stdin
 ```
 
 ### Options
 
 ```
       --ai-prompt string             initial AI prompt passed to Claude Code on session start
-      --artifact-name string         display name of the app installed from --artifact-url
-      --artifact-url string          app build to install once the device is ready: absolute http(s) URL of a zipped simulator .app (iOS) or an .apk (Android); requires --device-platform
+      --artifact-name string         display name of the app installed from --artifact-url / --artifact-url-stdin
+      --artifact-url string          app build to install once the device is ready: absolute http(s) URL of a zipped simulator .app (iOS) or an .apk (Android); requires --device-platform (a signed URL is visible in shell history and process args — prefer --artifact-url-stdin)
+      --artifact-url-stdin           read the --artifact-url value from stdin instead of the command line; keeps signed URLs out of shell history and process args; requires --device-platform
       --auto-terminate-minutes int   minutes until auto-termination; 0 disables; omitted uses backend default (~5 days)
       --cluster string               target cluster name (use 'rde machine-type list --stack STACK_ID' to find candidates when the stack + machine type combo is ambiguous)
       --description string           session description

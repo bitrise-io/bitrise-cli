@@ -3,6 +3,7 @@ package rde
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	rdeapi "github.com/bitrise-io/bitrise-cli/bitriseapi/rde"
@@ -98,32 +99,32 @@ type SessionDevice struct {
 }
 
 // deviceStateFromAPI maps PREVIEW_DEVICE_STATE_* to a short lowercase word
-// ("" for unspecified/unknown), like statusFromAPI does for sessions.
+// ("booting" / "ready" / "failed"; "" for unspecified) the same way
+// statusFromAPI does for sessions: the prefix is stripped and the rest
+// lowercased, so a state added after this code was written still reaches
+// callers as a recognizable word instead of collapsing to "".
 func deviceStateFromAPI(v string) string {
-	switch v {
-	case "PREVIEW_DEVICE_STATE_BOOTING":
-		return "booting"
-	case "PREVIEW_DEVICE_STATE_READY":
-		return "ready"
-	case "PREVIEW_DEVICE_STATE_FAILED":
-		return "failed"
-	}
-	return ""
+	return enumFromAPI("PREVIEW_DEVICE_STATE_", v)
 }
 
-// installStatusFromAPI maps PREVIEW_INSTALL_STATUS_* to a short word.
+// installStatusFromAPI maps PREVIEW_INSTALL_STATUS_* to a short word
+// ("pending" / "running" / "ok" / "failed"; "" for unspecified), forward
+// compatible like deviceStateFromAPI.
 func installStatusFromAPI(v string) string {
-	switch v {
-	case "PREVIEW_INSTALL_STATUS_PENDING":
-		return "pending"
-	case "PREVIEW_INSTALL_STATUS_RUNNING":
-		return "running"
-	case "PREVIEW_INSTALL_STATUS_OK":
-		return "ok"
-	case "PREVIEW_INSTALL_STATUS_FAILED":
-		return "failed"
+	return enumFromAPI("PREVIEW_INSTALL_STATUS_", v)
+}
+
+// enumFromAPI strips prefix from a proto enum name and lowercases the rest;
+// the empty string and the *_UNSPECIFIED zero value map to "".
+func enumFromAPI(prefix, v string) string {
+	if v == "" {
+		return ""
 	}
-	return ""
+	v = strings.TrimPrefix(v, prefix)
+	if v == "UNSPECIFIED" {
+		return ""
+	}
+	return strings.ToLower(v)
 }
 
 func deviceFromAPI(w *rdeapi.SessionDevice) *SessionDevice {

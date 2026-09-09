@@ -646,6 +646,68 @@ func TestCreateCmd_DeviceSpec(t *testing.T) {
 	}
 }
 
+// TestCreateCmd_ArtifactURLStdin: a signed artifact URL is a bearer
+// credential, so --artifact-url-stdin reads it from stdin (trimmed) and the
+// request body carries it exactly as if it had been passed inline.
+func TestCreateCmd_ArtifactURLStdin(t *testing.T) {
+	const signed = "https://cdn.example.com/app.apk?X-Amz-Signature=abc123"
+	var gotBody map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		_, _ = io.WriteString(w, `{"session":{"id":"s-dev","name":"android-check","status":"SESSION_STATUS_PENDING"}}`)
+	}))
+	defer srv.Close()
+
+	c := newCreateCmd()
+	c.SetIn(strings.NewReader(signed + "\n"))
+	stdout, _, err := run(t, c, srv.URL, "ws-1",
+		[]string{"android-check", "--device-platform", "android", "--artifact-url-stdin", "--artifact-name", "Demo"}, output.Human)
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	art, _ := gotBody["artifact"].(map[string]any)
+	if art["url"] != signed || art["appName"] != "Demo" {
+		t.Errorf("unexpected artifact: %v", gotBody["artifact"])
+	}
+	if !strings.Contains(stdout, "s-dev") {
+		t.Errorf("stdout missing create confirmation:\n%s", stdout)
+	}
+}
+
+func TestCreateCmd_ArtifactURLStdinValidation(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("no request expected, got %s %s", r.Method, r.URL.Path)
+	}))
+	defer srv.Close()
+
+	// Mutually exclusive with --artifact-url.
+	c := newCreateCmd()
+	c.SetIn(strings.NewReader("https://cdn.example.com/a.apk\n"))
+	_, _, err := run(t, c, srv.URL, "ws-1",
+		[]string{"dev", "--device-platform", "android", "--artifact-url", "https://cdn.example.com/b.apk", "--artifact-url-stdin"}, output.Human)
+	if err == nil || !strings.Contains(err.Error(), "artifact-url") {
+		t.Errorf("error = %v, want --artifact-url / --artifact-url-stdin exclusivity error", err)
+	}
+
+	// Requires --device-platform, like the other device flags.
+	c = newCreateCmd()
+	c.SetIn(strings.NewReader("https://cdn.example.com/a.apk\n"))
+	_, _, err = run(t, c, srv.URL, "ws-1",
+		[]string{"dev", "--stack", "linux-docker-android", "--machine-type", "g2.linux.large", "--artifact-url-stdin"}, output.Human)
+	if err == nil || !strings.Contains(err.Error(), "--device-platform") {
+		t.Errorf("error = %v, want --device-platform requirement", err)
+	}
+
+	// Empty stdin is an error rather than a silent no-artifact session.
+	c = newCreateCmd()
+	c.SetIn(strings.NewReader("\n"))
+	_, _, err = run(t, c, srv.URL, "ws-1",
+		[]string{"dev", "--device-platform", "android", "--artifact-url-stdin"}, output.Human)
+	if err == nil || !strings.Contains(err.Error(), "stdin") {
+		t.Errorf("error = %v, want empty-stdin error", err)
+	}
+}
+
 func TestCreateCmd_DeviceFlagsNeedPlatform(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		t.Errorf("no request expected, got %s %s", r.Method, r.URL.Path)
