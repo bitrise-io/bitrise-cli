@@ -646,6 +646,47 @@ func TestCreateCmd_DeviceSpec(t *testing.T) {
 	}
 }
 
+// TestCreateCmd_NoDevice: --no-device travels as noDevice: true so the RDE
+// backend skips the template's declared device for this session.
+func TestCreateCmd_NoDevice(t *testing.T) {
+	var gotBody map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		_, _ = io.WriteString(w, `{"session":{"id":"s-noemu","name":"no-emu","status":"SESSION_STATUS_PENDING"}}`)
+	}))
+	defer srv.Close()
+
+	stdout, _, err := run(t, newCreateCmd(), srv.URL, "ws-1",
+		[]string{"no-emu", "--template", uuidTemplate, "--no-device"}, output.Human)
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if gotBody["noDevice"] != true {
+		t.Errorf("noDevice = %v, want true; body: %v", gotBody["noDevice"], gotBody)
+	}
+	if _, has := gotBody["deviceSpec"]; has {
+		t.Errorf("deviceSpec must be omitted with --no-device: %v", gotBody)
+	}
+	if !strings.Contains(stdout, "s-noemu") {
+		t.Errorf("stdout missing create confirmation:\n%s", stdout)
+	}
+}
+
+// TestCreateCmd_NoDeviceExclusive: --no-device and --device-platform
+// contradict each other; the CLI rejects the pair before any request.
+func TestCreateCmd_NoDeviceExclusive(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("no request expected, got %s %s", r.Method, r.URL.Path)
+	}))
+	defer srv.Close()
+
+	_, _, err := run(t, newCreateCmd(), srv.URL, "ws-1",
+		[]string{"dev", "--device-platform", "android", "--no-device"}, output.Human)
+	if err == nil || !strings.Contains(err.Error(), "--no-device") || !strings.Contains(err.Error(), "--device-platform") {
+		t.Errorf("error = %v, want --no-device / --device-platform exclusivity error", err)
+	}
+}
+
 // TestCreateCmd_ArtifactURLStdin: a signed artifact URL is a bearer
 // credential, so --artifact-url-stdin reads it from stdin (trimmed) and the
 // request body carries it exactly as if it had been passed inline.

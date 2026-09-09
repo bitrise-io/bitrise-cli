@@ -41,7 +41,9 @@ inline ends up in your shell history and in the process arguments (readable
 by other users via 'ps'). Device sessions auto-terminate after 4 hours by
 default (not 5 days). "running" does not mean the device is usable —
 'session view' shows the device state; wait for "ready". Know-how:
-'rde device-guide'.
+'rde device-guide'. Conversely, if the template itself declares a device (an
+Android emulator), pass --no-device to skip booting it for this session;
+--no-device cannot be combined with --device-platform.
 
 Example values:
   --input key=value
@@ -66,6 +68,8 @@ bitrise-cli rde session create NAME [flags]
   # Boot an iOS simulator with the session (stack/machine type default to the platform's).
   bitrise-cli rde session create ios-check --device-platform ios --device-model "iPhone 16" --device-os-version 18.2
   bitrise-cli rde session create android-check --device-platform android --artifact-url https://…/app.apk
+  # Skip the emulator a template declares, for a plain coding session on it.
+  bitrise-cli rde session create no-emu --template TEMPLATE_ID --no-device
   # Keep a signed artifact URL out of shell history and process args.
   echo -n "https://…/app.apk?X-Amz-Signature=…" | bitrise-cli rde session create android-check --device-platform android --artifact-url-stdin
 ```
@@ -90,6 +94,7 @@ bitrise-cli rde session create NAME [flags]
   -l, --label stringArray            label to attach to the session as key=value (repeatable; at most 32; keys use letters, digits, and . _ / -, values additionally : and +; the bitrise.io/ key prefix is reserved)
       --machine-type string          machine type name for a template-less session, or to override the template's machine type (see 'rde machine-type list --stack STACK_ID')
       --map-saved-inputs             auto-fill template session inputs from the user's saved inputs (matched by key)
+      --no-device                    do not boot the template's declared device (Android emulator) for this session; cannot be combined with --device-platform
       --saved-input stringArray      session input as key=savedInputID — uses a stored saved-input value (repeatable)
       --secret-input stringArray     session input as key=value, stored as a secret at rest (repeatable; the value is visible in shell history and process args — prefer --saved-input)
       --stack string                 stack ID for a template-less session, or to override the template's stack (see 'rde stack list')

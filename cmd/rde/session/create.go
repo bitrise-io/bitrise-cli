@@ -40,6 +40,7 @@ func newCreateCmd() *cobra.Command {
 		artifactURL          string
 		artifactURLStdin     bool
 		artifactName         string
+		noDevice             bool
 	)
 
 	c := &cobra.Command{
@@ -82,7 +83,9 @@ inline ends up in your shell history and in the process arguments (readable
 by other users via 'ps'). Device sessions auto-terminate after 4 hours by
 default (not 5 days). "running" does not mean the device is usable —
 'session view' shows the device state; wait for "ready". Know-how:
-'rde device-guide'.
+'rde device-guide'. Conversely, if the template itself declares a device (an
+Android emulator), pass --no-device to skip booting it for this session;
+--no-device cannot be combined with --device-platform.
 
 Example values:
   --input key=value
@@ -99,6 +102,8 @@ Example values:
   # Boot an iOS simulator with the session (stack/machine type default to the platform's).
   bitrise-cli rde session create ios-check --device-platform ios --device-model "iPhone 16" --device-os-version 18.2
   bitrise-cli rde session create android-check --device-platform android --artifact-url https://…/app.apk
+  # Skip the emulator a template declares, for a plain coding session on it.
+  bitrise-cli rde session create no-emu --template TEMPLATE_ID --no-device
   # Keep a signed artifact URL out of shell history and process args.
   echo -n "https://…/app.apk?X-Amz-Signature=…" | bitrise-cli rde session create android-check --device-platform android --artifact-url-stdin`,
 		Args: cmdutil.RequireArgs("NAME"),
@@ -119,6 +124,9 @@ Example values:
 			case "", "ios", "android":
 			default:
 				return fmt.Errorf("--device-platform must be ios or android")
+			}
+			if noDevice && devicePlatform != "" {
+				return fmt.Errorf("--no-device cannot be combined with --device-platform: either skip the template's declared device or request one, not both")
 			}
 			if devicePlatform == "" && (deviceModel != "" || deviceOSVersion != "" || deviceSystemImage != "" || artifactURL != "" || artifactURLStdin || artifactName != "") {
 				return fmt.Errorf("--device-model, --device-os-version, --device-system-image, --artifact-url, --artifact-url-stdin and --artifact-name require --device-platform")
@@ -169,6 +177,7 @@ Example values:
 				AIPrompt:                aiPrompt,
 				MapSavedToSessionInputs: mapSavedInputs,
 				Labels:                  labelMap,
+				NoDevice:                noDevice,
 			}
 			if setAutoTerminate {
 				m := autoTerminateMinutes
@@ -253,6 +262,7 @@ Example values:
 	c.Flags().StringVar(&artifactURL, "artifact-url", "", "app build to install once the device is ready: absolute http(s) URL of a zipped simulator .app (iOS) or an .apk (Android); requires --device-platform (a signed URL is visible in shell history and process args — prefer --artifact-url-stdin)")
 	c.Flags().BoolVar(&artifactURLStdin, "artifact-url-stdin", false, "read the --artifact-url value from stdin instead of the command line; keeps signed URLs out of shell history and process args; requires --device-platform")
 	c.Flags().StringVar(&artifactName, "artifact-name", "", "display name of the app installed from --artifact-url / --artifact-url-stdin")
+	c.Flags().BoolVar(&noDevice, "no-device", false, "do not boot the template's declared device (Android emulator) for this session; cannot be combined with --device-platform")
 	c.Flags().BoolVar(&wait, "wait", false, "wait until the session leaves provisioning (running, failed, …) before returning; exits 1 if the final status isn't running")
 	c.Flags().DurationVar(&waitTimeout, "wait-timeout", 10*time.Minute, "max time to wait when --wait is set (uses Go duration syntax: 30s, 5m, 1h)")
 	c.MarkFlagsMutuallyExclusive("artifact-url", "artifact-url-stdin")

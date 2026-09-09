@@ -146,6 +146,9 @@ type CreateSessionRequest struct {
 	// Artifact is an optional app build to install once the device is
 	// ready; requires DeviceSpec.
 	Artifact *DeviceArtifact `json:"artifact,omitempty"`
+	// NoDevice skips the template's device declaration (its Android
+	// emulator) for this session. Mutually exclusive with DeviceSpec.
+	NoDevice bool `json:"noDevice,omitempty"`
 }
 
 // DeviceSpec describes a virtual device in the preview-link vocabulary.
