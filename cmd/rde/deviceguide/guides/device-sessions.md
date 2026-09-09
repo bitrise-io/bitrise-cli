@@ -49,10 +49,16 @@ Rules:
   for iOS, an Android-flavored Linux stack for Android; 4 vCPU / 6–8 GB
   minimum) or the request is rejected with the reason. Prefer omitting them.
 - `artifact.url` must be an absolute http(s) URL the VM can download (a signed
-  URL is fine; it is never returned by the API). iOS: a zipped simulator
-  `.app`; Android: an `.apk`. Omit it when you build the app yourself.
+  URL is fine; it is never returned by the API and is stored encrypted at
+  rest in the session — it is decrypted only to hand it to the VM's
+  installer). iOS: a zipped simulator `.app`; Android: an `.apk`. Omit it
+  when you build the app yourself.
 - A template is optional and works as usual (scripts, inputs, links). A
-  `device_spec` wins over the template's own Android emulator declaration.
+  template that declares an Android emulator boots one on any Linux stack
+  when the request says nothing about devices — the same request from the
+  web UI, MCP, CLI or REST creates the same session. A `device_spec` wins
+  over that declaration; `no_device: true` skips it for this session (no
+  emulator, ordinary session). The two are mutually exclusive.
 - `auto_terminate_minutes` defaults to **240** (4 hours) for device sessions,
   not 5 days: devices run on scarce hardware and nothing extends them while
   you work. Set it explicitly for longer jobs, and **delete the session when
@@ -160,5 +166,8 @@ and the viewer recovers by itself. Logs: `~/simulator-up.log`,
 ## 7. Clean up
 
 Delete the session when you are done (`bitrise_devenv_delete` /
-`bitrise-cli rde session delete`). A terminated-but-not-deleted device session can be restored; the
-device boots again on restore and readiness is re-reported.
+`bitrise-cli rde session delete`). A terminated-but-not-deleted device session
+can be restored: the device boots again, readiness is re-reported and the
+`artifact` (if any) is installed again. `device.state` and
+`device.install_status` describe the current boot only — a terminate clears
+both, so a stopped session never reports a ready device or an installed app.
