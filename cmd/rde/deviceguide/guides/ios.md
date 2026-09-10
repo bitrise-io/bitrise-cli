@@ -74,7 +74,7 @@ xcrun simctl openurl "$UDID" "myapp://deep/link"
 
 Screenshots are ~350 KB PNG at native resolution; `sips -Z 800 in.png --out
 small.png` gets ~90 KB. Do not base64 them into `execute` output unless you
-must — hand the human the `device.viewer_url`, or copy the file out over the
+must — point the human at the session page's device view, or copy the file out over the
 tunnel / `bitrise_devenv_download`.
 
 ## Do not

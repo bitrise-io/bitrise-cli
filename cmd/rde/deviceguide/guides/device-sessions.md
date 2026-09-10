@@ -111,7 +111,7 @@ Two ways, in order of preference:
    session exec`): runs a login shell on the VM, 2-minute limit per call, returns
    text. Everything below works this way. Pixels do not travel well as text
    (a downscaled PNG is ~120 K base64 chars) — prefer the accessibility tree,
-   and use the viewer URL or the tunnel when you must look.
+   and use the device view (§5) or the tunnel when you must look.
 
 ## 4. Drive the device
 
@@ -132,20 +132,20 @@ the same on both:
   + `adb shell monkey -p <package> 1` (or `am start`).
 - **Screenshot.** iOS: `xcrun simctl io <UDID> screenshot /tmp/s.png`.
   Android: `adb exec-out screencap -p > /tmp/s.png`. Bring the file out over
-  the tunnel/`download`, or hand a human the viewer URL instead.
+  the tunnel/`download`, or point a human at the device view (§5) instead.
 - **Logs.** iOS: `xcrun simctl spawn <UDID> log stream --predicate '…'`.
   Android: `adb logcat`.
 
 ## 5. Let a human watch
 
-`device.viewer_url` opens the **device viewer page** — the same page a PR
-preview link opens — attach-only for this session: it attaches, never
-creates, and cannot delete or terminate the session. It is minted by
-`GetSession` and by the create/restore responses (the session *list* omits
-it — call get for a link) and expires after at most 24 h or at the session's
-auto-terminate deadline, whichever is sooner. Anyone holding the URL can view
-*and touch* the device, so share it deliberately. Human taps and your taps go
-to the same device; do not fight over it.
+A human watches and drives the device from the session's page in the RDE web
+UI: Sessions → the session → the **Device** row → **Open device view**. It is
+the same viewer page a PR preview link opens, attach-only for this session
+(it attaches, never creates, and cannot delete or terminate the session), but
+it requires being logged in with access to the session — its owner for a
+personal session, any workspace member for a workspace-owned one. There is no
+shareable link. Human taps and your taps go to the same device; do not fight
+over it.
 
 ## 6. Do not break the stream — and what to do if you did
 

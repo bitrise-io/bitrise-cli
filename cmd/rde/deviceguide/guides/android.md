@@ -55,7 +55,7 @@ adb shell cmd uimode night yes                        # dark mode
 ```
 
 Screenshots are ~1–2 MB PNG at native resolution. Do not base64 them into
-`execute` output — hand the human the `device.viewer_url`, or pull the file
+`execute` output — point the human at the session page's device view, or pull the file
 over the tunnel: `adb shell screencap -p /sdcard/s.png && adb pull
 /sdcard/s.png` (the redirect form above writes to the VM's filesystem, so
 use `shell screencap` when the file must live on the device).
