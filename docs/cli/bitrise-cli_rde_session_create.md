@@ -32,9 +32,11 @@ back on 'session view' and in 'session list --output json', and sessions
 can be filtered by them with 'rde session list --label-selector key=value'.
 
 Boot a virtual device with the session by passing --device-platform ios (an
-iOS simulator on a macOS stack) or android (an Android emulator on a Linux
-stack). --stack/--machine-type may then be omitted: the deployment's
-known-good pair for the platform applies. Optionally pre-install an app with
+iOS simulator on a macOS stack) or android (an Android emulator on a dockerless
+Android Linux stack such as ubuntu-resolute-26.04-bitrise-2026-android; the
+Docker-based linux-docker-* stacks are rejected). --stack/--machine-type may
+then be omitted, and --cluster is never needed: the deployment's known-good
+pair for the platform applies. Optionally pre-install an app with
 --artifact-url, or --artifact-url-stdin to read the URL from stdin: a signed
 (pre-authenticated) download URL is a bearer credential, and a value passed
 inline ends up in your shell history and in the process arguments (readable
