@@ -242,9 +242,6 @@ type CreateSessionRequest struct {
 	// Artifact is an app build to install once the device is ready
 	// (optional; requires DeviceSpec).
 	Artifact *DeviceArtifact
-	// NoDevice skips the template's declared device (its Android emulator)
-	// for this session. Mutually exclusive with DeviceSpec.
-	NoDevice bool
 }
 
 // UpdateSessionRequest carries optional patch fields. Pointer fields
@@ -378,7 +375,6 @@ func (s *Service) CreateSession(ctx context.Context, workspaceID string, req Cre
 		Labels:                  req.Labels,
 		DeviceSpec:              deviceSpecToAPI(req.DeviceSpec),
 		Artifact:                artifactToAPI(req.Artifact),
-		NoDevice:                req.NoDevice,
 	})
 	if err != nil {
 		return CreateSessionResult{}, err

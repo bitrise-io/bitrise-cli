@@ -38,12 +38,9 @@ known-good pair for the platform applies. Optionally pre-install an app with
 --artifact-url, or --artifact-url-stdin to read the URL from stdin: a signed
 (pre-authenticated) download URL is a bearer credential, and a value passed
 inline ends up in your shell history and in the process arguments (readable
-by other users via 'ps'). Device sessions auto-terminate after 4 hours by
-default (not 5 days). "running" does not mean the device is usable —
-'session view' shows the device state; wait for "ready". Know-how:
-'rde device-guide'. Conversely, if the template itself declares a device (an
-Android emulator), pass --no-device to skip booting it for this session;
---no-device cannot be combined with --device-platform.
+by other users via 'ps'). "running" does not mean the device is usable —
+'session view' shows the device state; wait for "ready" (--wait does so for
+you when a device was requested). Know-how: 'rde device-guide'.
 
 Example values:
   --input key=value
@@ -68,10 +65,8 @@ bitrise-cli rde session create NAME [flags]
   # Boot an iOS simulator with the session (stack/machine type default to the platform's).
   bitrise-cli rde session create ios-check --device-platform ios --device-model "iPhone 16" --device-os-version 18.2
   bitrise-cli rde session create android-check --device-platform android --artifact-url https://…/app.apk
-  # Skip the emulator a template declares, for a plain coding session on it.
-  bitrise-cli rde session create no-emu --template TEMPLATE_ID --no-device
-  # Keep a signed artifact URL out of shell history and process args.
-  echo -n "https://…/app.apk?X-Amz-Signature=…" | bitrise-cli rde session create android-check --device-platform android --artifact-url-stdin
+  # Keep a signed artifact URL out of shell history and process args: read it from a file.
+  bitrise-cli rde session create android-check --device-platform android --artifact-url-stdin < artifact-url.txt
 ```
 
 ### Options
@@ -81,7 +76,7 @@ bitrise-cli rde session create NAME [flags]
       --artifact-name string         display name of the app installed from --artifact-url / --artifact-url-stdin
       --artifact-url string          app build to install once the device is ready: absolute http(s) URL of a zipped simulator .app (iOS) or an .apk (Android); requires --device-platform (a signed URL is visible in shell history and process args — prefer --artifact-url-stdin)
       --artifact-url-stdin           read the --artifact-url value from stdin instead of the command line; keeps signed URLs out of shell history and process args; requires --device-platform
-      --auto-terminate-minutes int   minutes until auto-termination; 0 disables; omitted uses backend default (~5 days)
+      --auto-terminate-minutes int   minutes until auto-termination; 0 disables; omitted uses the backend default (~5 days)
       --cluster string               target cluster name (use 'rde machine-type list --stack STACK_ID' to find candidates when the stack + machine type combo is ambiguous)
       --description string           session description
       --device-model string          device to boot: simctl device type ("iPhone 16") or emulator device profile ("pixel_7"); default: platform default
@@ -94,12 +89,11 @@ bitrise-cli rde session create NAME [flags]
   -l, --label stringArray            label to attach to the session as key=value (repeatable; at most 32; keys use letters, digits, and . _ / -, values additionally : and +; the bitrise.io/ key prefix is reserved)
       --machine-type string          machine type name for a template-less session, or to override the template's machine type (see 'rde machine-type list --stack STACK_ID')
       --map-saved-inputs             auto-fill template session inputs from the user's saved inputs (matched by key)
-      --no-device                    do not boot the template's declared device (Android emulator) for this session; cannot be combined with --device-platform
       --saved-input stringArray      session input as key=savedInputID — uses a stored saved-input value (repeatable)
       --secret-input stringArray     session input as key=value, stored as a secret at rest (repeatable; the value is visible in shell history and process args — prefer --saved-input)
       --stack string                 stack ID for a template-less session, or to override the template's stack (see 'rde stack list')
       --template string              template ID or name to create the session from (omit to create a template-less session with --stack and --machine-type)
-      --wait                         wait until the session leaves provisioning (running, failed, …) before returning; exits 1 if the final status isn't running
+      --wait                         wait until the session leaves provisioning (running, failed, …) — and, with --device-platform, until the device is ready or failed — before returning; exits 1 if the final status isn't running
       --wait-timeout duration        max time to wait when --wait is set (uses Go duration syntax: 30s, 5m, 1h) (default 10m0s)
 ```
 
