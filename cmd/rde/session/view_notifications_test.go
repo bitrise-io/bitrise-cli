@@ -79,8 +79,7 @@ func TestViewCmd_JSONOmitsSSHPassword(t *testing.T) {
 
 // TestViewCmd_DeviceIOS: a device session's human output carries a Device
 // line with platform, model and iOS version plus the normalized state, the
-// device notes, the app install state with its failure reason, and the
-// viewer URL.
+// device notes, and the app install state with its failure reason.
 func TestViewCmd_DeviceIOS(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = io.WriteString(w, `{"session":{
@@ -91,8 +90,7 @@ func TestViewCmd_DeviceIOS(t *testing.T) {
 				"installStatus":"PREVIEW_INSTALL_STATUS_FAILED",
 				"installReason":"artifact is not a zipped simulator .app",
 				"deviceNotes":"warm boot from snapshot",
-				"appName":"Demo","buildNumber":"42",
-				"viewerUrl":"https://viewer.example.com/d/abc"
+				"appName":"Demo","buildNumber":"42"
 			}
 		}}`)
 	}))
@@ -106,7 +104,6 @@ func TestViewCmd_DeviceIOS(t *testing.T) {
 		"Device:", "iOS simulator · iPhone 16 · com.apple.CoreSimulator.SimRuntime.iOS-18-2 — ready",
 		"Device notes:", "warm boot from snapshot",
 		"Device app:", "Demo #42 — install failed: artifact is not a zipped simulator .app",
-		"Device view:", "https://viewer.example.com/d/abc",
 	} {
 		if !strings.Contains(stdout, want) {
 			t.Errorf("stdout missing %q:\n%s", want, stdout)
@@ -120,7 +117,7 @@ func TestViewCmd_DeviceIOS(t *testing.T) {
 
 // TestViewCmd_DeviceAndroidSystemImage: Android specs carry no osVersion —
 // the system image package identifies the OS, so the Device line falls back
-// to it. A booting device with no app shows neither an app nor a viewer line.
+// to it. A booting device with no app shows neither an app nor a notes line.
 func TestViewCmd_DeviceAndroidSystemImage(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = io.WriteString(w, `{"session":{
@@ -140,7 +137,7 @@ func TestViewCmd_DeviceAndroidSystemImage(t *testing.T) {
 	if want := "Android emulator · pixel_7 · system-images;android-34;google_apis;x86_64 — booting"; !strings.Contains(stdout, want) {
 		t.Errorf("stdout missing %q:\n%s", want, stdout)
 	}
-	for _, absent := range []string{"Device app:", "Device view:", "Device notes:"} {
+	for _, absent := range []string{"Device app:", "Device notes:"} {
 		if strings.Contains(stdout, absent) {
 			t.Errorf("stdout should not contain %q for a booting device without an app:\n%s", absent, stdout)
 		}
@@ -180,8 +177,7 @@ func TestViewCmd_JSONOutput_Device(t *testing.T) {
 				"installStatus":"PREVIEW_INSTALL_STATUS_FAILED",
 				"installReason":"bad artifact",
 				"deviceNotes":"warm boot",
-				"appName":"Demo","buildNumber":"42",
-				"viewerUrl":"https://viewer.example.com/d/abc"
+				"appName":"Demo","buildNumber":"42"
 			}
 		}}`)
 	}))
@@ -206,7 +202,6 @@ func TestViewCmd_JSONOutput_Device(t *testing.T) {
 			DeviceNotes   string `json:"device_notes"`
 			AppName       string `json:"app_name"`
 			BuildNumber   string `json:"build_number"`
-			ViewerURL     string `json:"viewer_url"`
 		} `json:"device"`
 	}
 	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
@@ -222,7 +217,7 @@ func TestViewCmd_JSONOutput_Device(t *testing.T) {
 	if d.Spec.Platform != "ios" || d.Spec.DeviceModel != "iPhone 16" || d.Spec.OSVersion != "com.apple.CoreSimulator.SimRuntime.iOS-18-2" {
 		t.Errorf("unexpected spec: %+v", d.Spec)
 	}
-	if d.InstallReason != "bad artifact" || d.DeviceNotes != "warm boot" || d.AppName != "Demo" || d.BuildNumber != "42" || d.ViewerURL != "https://viewer.example.com/d/abc" {
+	if d.InstallReason != "bad artifact" || d.DeviceNotes != "warm boot" || d.AppName != "Demo" || d.BuildNumber != "42" {
 		t.Errorf("unexpected device fields: %+v", d)
 	}
 	if strings.Contains(stdout, "PREVIEW_") {

@@ -189,9 +189,6 @@ func renderSessionDetail(w io.Writer, sess internalrde.Session) error {
 			}
 			ew.F("%s%s — install %s\n", lbl("Device app:"), app, install)
 		}
-		if d.ViewerURL != "" {
-			ew.F("%s%s\n", lbl("Device view:"), d.ViewerURL)
-		}
 	}
 	if sess.AutoTerminateAt != nil {
 		ew.F("%s%s\n", lbl("Auto-terminates at:"), formatTime(sess.AutoTerminateAt))

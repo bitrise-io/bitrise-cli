@@ -506,7 +506,6 @@ func TestDeviceFromAPI(t *testing.T) {
 		DeviceNotes:   "cold boot",
 		AppName:       "Demo",
 		BuildNumber:   "42",
-		ViewerURL:     "https://viewer.example.com/d/1",
 	})
 	if got == nil {
 		t.Fatal("deviceFromAPI returned nil for a populated device")
@@ -517,7 +516,7 @@ func TestDeviceFromAPI(t *testing.T) {
 	if got.Spec == nil || got.Spec.Platform != "android" || got.Spec.DeviceModel != "pixel_7" || got.Spec.SystemImage != "system-images;android-34;google_apis;x86_64" {
 		t.Errorf("unexpected spec: %+v", got.Spec)
 	}
-	if got.InstallReason != "adb: INSTALL_FAILED_OLDER_SDK" || got.DeviceNotes != "cold boot" || got.AppName != "Demo" || got.BuildNumber != "42" || got.ViewerURL != "https://viewer.example.com/d/1" {
+	if got.InstallReason != "adb: INSTALL_FAILED_OLDER_SDK" || got.DeviceNotes != "cold boot" || got.AppName != "Demo" || got.BuildNumber != "42" {
 		t.Errorf("pass-through fields lost: %+v", got)
 	}
 }

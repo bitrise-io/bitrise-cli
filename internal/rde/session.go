@@ -86,16 +86,14 @@ type DeviceArtifact struct {
 // normalized like Status: "booting" / "ready" / "failed" / "" and
 // "pending" / "running" / "ok" / "failed" / "".
 type SessionDevice struct {
-	Spec               *DeviceSpec `json:"spec,omitempty"`
-	State              string      `json:"state,omitempty"`
-	DeviceNotes        string      `json:"device_notes,omitempty"`
-	InstallStatus      string      `json:"install_status,omitempty"`
-	InstallReason      string      `json:"install_reason,omitempty"`
-	AppName            string      `json:"app_name,omitempty"`
-	BuildNumber        string      `json:"build_number,omitempty"`
-	CommitSHA          string      `json:"commit_sha,omitempty"`
-	ViewerURL          string      `json:"viewer_url,omitempty"`
-	ViewerURLExpiresAt *time.Time  `json:"viewer_url_expires_at,omitempty"`
+	Spec          *DeviceSpec `json:"spec,omitempty"`
+	State         string      `json:"state,omitempty"`
+	DeviceNotes   string      `json:"device_notes,omitempty"`
+	InstallStatus string      `json:"install_status,omitempty"`
+	InstallReason string      `json:"install_reason,omitempty"`
+	AppName       string      `json:"app_name,omitempty"`
+	BuildNumber   string      `json:"build_number,omitempty"`
+	CommitSHA     string      `json:"commit_sha,omitempty"`
 }
 
 // deviceStateFromAPI maps PREVIEW_DEVICE_STATE_* to a short lowercase word
@@ -132,15 +130,13 @@ func deviceFromAPI(w *rdeapi.SessionDevice) *SessionDevice {
 		return nil
 	}
 	out := &SessionDevice{
-		State:              deviceStateFromAPI(w.State),
-		DeviceNotes:        w.DeviceNotes,
-		InstallStatus:      installStatusFromAPI(w.InstallStatus),
-		InstallReason:      w.InstallReason,
-		AppName:            w.AppName,
-		BuildNumber:        w.BuildNumber,
-		CommitSHA:          w.CommitSHA,
-		ViewerURL:          w.ViewerURL,
-		ViewerURLExpiresAt: w.ViewerURLExpiresAt,
+		State:         deviceStateFromAPI(w.State),
+		DeviceNotes:   w.DeviceNotes,
+		InstallStatus: installStatusFromAPI(w.InstallStatus),
+		InstallReason: w.InstallReason,
+		AppName:       w.AppName,
+		BuildNumber:   w.BuildNumber,
+		CommitSHA:     w.CommitSHA,
 	}
 	if w.Spec != nil {
 		out.Spec = &DeviceSpec{

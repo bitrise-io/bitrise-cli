@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
-	"time"
 )
 
 // Session is the wire-format session record returned by the RDE API.
@@ -172,16 +171,14 @@ type DeviceArtifact struct {
 // (Session.device). "running" does not mean the device is usable: State
 // is the VM-asserted verdict (PREVIEW_DEVICE_STATE_BOOTING / READY / FAILED).
 type SessionDevice struct {
-	Spec               *DeviceSpec `json:"spec,omitempty"`
-	State              string      `json:"state,omitempty"`
-	DeviceNotes        string      `json:"deviceNotes,omitempty"`
-	InstallStatus      string      `json:"installStatus,omitempty"`
-	InstallReason      string      `json:"installReason,omitempty"`
-	AppName            string      `json:"appName,omitempty"`
-	BuildNumber        string      `json:"buildNumber,omitempty"`
-	CommitSHA          string      `json:"commitSha,omitempty"`
-	ViewerURL          string      `json:"viewerUrl,omitempty"`
-	ViewerURLExpiresAt *time.Time  `json:"viewerUrlExpiresAt,omitempty"`
+	Spec          *DeviceSpec `json:"spec,omitempty"`
+	State         string      `json:"state,omitempty"`
+	DeviceNotes   string      `json:"deviceNotes,omitempty"`
+	InstallStatus string      `json:"installStatus,omitempty"`
+	InstallReason string      `json:"installReason,omitempty"`
+	AppName       string      `json:"appName,omitempty"`
+	BuildNumber   string      `json:"buildNumber,omitempty"`
+	CommitSHA     string      `json:"commitSha,omitempty"`
 }
 
 // UpdateSessionRequest is the PATCH body for updating a session. Pointer
