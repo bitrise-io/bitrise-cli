@@ -46,8 +46,12 @@ Rules:
   `os_version` (iOS only, "18.2" or a simctl runtime id; empty = newest
   installed), `system_image` / `ram_mb` / `cores` / `cold_boot` (Android only).
 - If you name a `stack_id`/`machine_type`, they must fit the platform (macOS
-  for iOS, an Android-flavored Linux stack for Android; 4 vCPU / 6–8 GB
-  minimum) or the request is rejected with the reason. Prefer omitting them.
+  for iOS; for Android a *dockerless* Android stack such as
+  `ubuntu-resolute-26.04-bitrise-2026-android` — the Docker-based
+  `linux-docker-*` stacks keep the Android SDK inside a container and are
+  rejected; 4 vCPU / 6–8 GB minimum) or the request is rejected with the
+  reason. Prefer omitting them: the deployment default is the known-good
+  pair. `cluster` is never needed with a `device_spec`; the backend picks one.
 - `artifact.url` must be an absolute http(s) URL the VM can download (a signed
   URL is fine; it is never returned by the API and is stored encrypted at
   rest in the session — it is decrypted only to hand it to the VM's
@@ -159,8 +163,13 @@ its streamer process. **Never**:
 - open `Simulator.app` or use the macOS desktop screenshot tool to look at the
   simulator — it is headless; the desktop shows nothing.
 
-If the device did break (`FAILED`, or the stream died): re-run the idempotent
-orchestrator on the VM — `~/bin/simulator-up.sh` (iOS) or
+If `device.state` is `FAILED` and the notes say *setup failed during
+provisioning*, the device never existed on this VM: the platform setup itself
+failed (wrong stack, no KVM). There is nothing to recover — delete the session
+and create a new one, preferably without `stack_id` so the default applies.
+
+If the device did break later (`FAILED` after it was READY, or the stream
+died): re-run the idempotent orchestrator on the VM — `~/bin/simulator-up.sh` (iOS) or
 `~/bin/emulator-up.sh` (Android). It reboots the device if needed, restarts
 the streamer, and re-reports readiness, so `device.state` returns to READY
 and the viewer recovers by itself. Logs: `~/simulator-up.log`,
