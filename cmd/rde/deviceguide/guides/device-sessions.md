@@ -53,15 +53,11 @@ Rules:
   rest in the session — it is decrypted only to hand it to the VM's
   installer). iOS: a zipped simulator `.app`; Android: an `.apk`. Omit it
   when you build the app yourself.
-- A template is optional and works as usual (scripts, inputs, links). A
-  template that declares an Android emulator boots one on any Linux stack
-  when the request says nothing about devices — the same request from the
-  web UI, MCP, CLI or REST creates the same session. A `device_spec` wins
-  over that declaration; `no_device: true` skips it for this session (no
-  emulator, ordinary session). The two are mutually exclusive.
-- `auto_terminate_minutes` defaults to **240** (4 hours) for device sessions,
-  not 5 days: devices run on scarce hardware and nothing extends them while
-  you work. Set it explicitly for longer jobs, and **delete the session when
+- A template is optional and works as usual (scripts, inputs, links); with a
+  template, its stack and machine type are used and must fit the platform. A
+  session has a device only when the request carries a `device_spec`.
+- `auto_terminate_minutes` works exactly as for any session (default 5 days,
+  0 disables). Devices run on scarce hardware, so **delete the session when
   you are done**.
 
 ## 2. Wait for the device — "running" is not "ready"
@@ -69,24 +65,29 @@ Rules:
 The session turns `running` when its startup script begins; the device boots
 in the background for another 30 s (iOS warm) to ~2 min (Android/iOS cold).
 Poll the session (`bitrise_devenv_get` / `bitrise-cli rde session view` /
-`GET /sessions/{id}`) and read `device.state`. The MCP and REST return the
-wire enum names; the CLI (human output and `--output json`) normalizes them
-to the short words in the last column and omits the unspecified state.
+`GET /sessions/{id}`) and read `device.state` **together with the session
+`status`**. The MCP and REST return the wire enum names; the CLI normalizes
+them to the short words in the CLI column (`--output json` omits the
+unspecified state; the human output prints `not running` for it).
 
 | `device.state` (MCP / REST) | CLI | Meaning | You |
 |---|---|---|---|
-| `PREVIEW_DEVICE_STATE_UNSPECIFIED` (or absent) | (absent) | VM not running yet (or a VM predating the signal) | wait |
+| `PREVIEW_DEVICE_STATE_UNSPECIFIED` (or absent) + `status` pending/starting | `not running` / (absent) | VM not running yet | wait |
+| `PREVIEW_DEVICE_STATE_UNSPECIFIED` + `status` terminated/terminating/draining/drained/failed | `not running` / (absent) | the device is gone with the VM | stop polling; restore the session or create a new one |
 | `PREVIEW_DEVICE_STATE_BOOTING` | `booting` | VM running, device not yet proven | wait |
 | `PREVIEW_DEVICE_STATE_READY` | `ready` | device booted **and** its stream delivers frames | go |
 | `PREVIEW_DEVICE_STATE_FAILED` | `failed` | the VM gave up on this boot; `device.device_notes` says why | see §6 |
 
 If you supplied an `artifact`, also watch `device.install_status` — wire
-values `PREVIEW_INSTALL_STATUS_PENDING` (waiting for the device) →
+values `PREVIEW_INSTALL_STATUS_UNSPECIFIED` (not fired yet) →
+`PREVIEW_INSTALL_STATUS_PENDING` (waiting for the device) →
 `PREVIEW_INSTALL_STATUS_RUNNING` → `PREVIEW_INSTALL_STATUS_OK` or
 `PREVIEW_INSTALL_STATUS_FAILED` (`device.install_reason` says why); the CLI
-shows `pending` / `running` / `ok` / `failed`. A failed install leaves the
-device usable — install the app yourself (§4). Give up waiting for an install
-after ~3 minutes past READY.
+shows `pending` / `running` / `ok` / `failed`. A failed install is final for
+this boot and leaves the device usable — install the app yourself (§4), or
+restore the session to re-run it. Give up waiting for an install after ~3
+minutes past READY; keep polling the session while you wait, the poll itself
+is what re-fires an install whose runner was lost.
 
 Poll every ~5 s; budget 5 minutes for READY before treating the boot as
 stuck. `device.device_notes` may also carry *degradations* (e.g. "requested
@@ -137,12 +138,14 @@ the same on both:
 
 ## 5. Let a human watch
 
-`device.viewer_url` (on every session read) opens the **device viewer page**
-— the same page a PR preview link opens — in watch mode for this session: it
-attaches, never creates, offers no delete. Anyone holding the URL can view
-*and touch* the device until it expires (24 h max, re-minted on every read),
-so share it deliberately. Human taps and your taps go to the same device; do
-not fight over it.
+`device.viewer_url` opens the **device viewer page** — the same page a PR
+preview link opens — attach-only for this session: it attaches, never
+creates, and cannot delete or terminate the session. It is minted by
+`GetSession` and by the create/restore responses (the session *list* omits
+it — call get for a link) and expires after at most 24 h or at the session's
+auto-terminate deadline, whichever is sooner. Anyone holding the URL can view
+*and touch* the device, so share it deliberately. Human taps and your taps go
+to the same device; do not fight over it.
 
 ## 6. Do not break the stream — and what to do if you did
 
