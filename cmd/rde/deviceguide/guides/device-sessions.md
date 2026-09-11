@@ -11,7 +11,9 @@ efficiently, and what never to do.
 Where to find this guide and the platform specifics, whichever way you reach
 RDE: in the `bitrise-dev-environments` MCP server as the resources
 `bitrise-devenv://guides/device-sessions`, `bitrise-devenv://guides/device-sessions/ios`
-and `bitrise-devenv://guides/device-sessions/android`; in the CLI as
+and `bitrise-devenv://guides/device-sessions/android` (or, when your MCP client
+cannot read resources, the `bitrise_devenv_device_guide` tool returns the same
+text); in the CLI as
 `bitrise-cli rde device-guide`, `bitrise-cli rde device-guide ios` and
 `bitrise-cli rde device-guide android`; in the docs folder as `README.md`,
 `ios.md` and `android.md`.
@@ -123,7 +125,8 @@ Two ways, in order of preference:
 
 Platform specifics live in the iOS and Android guides (`ios.md` /
 `android.md`; MCP resources `bitrise-devenv://guides/device-sessions/ios` and
-`.../android`; CLI `bitrise-cli rde device-guide ios|android`). The shape is
+`.../android`, or the `bitrise_devenv_device_guide` tool with `ios`/`android`;
+CLI `bitrise-cli rde device-guide ios|android`). The shape is
 the same on both:
 
 - **Accessibility tree, not pixels.** iOS: `curl -s

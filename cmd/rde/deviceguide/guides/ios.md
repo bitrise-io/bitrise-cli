@@ -3,7 +3,8 @@
 
 Read the main device sessions guide first (create, wait for READY, connect,
 do-nots): `README.md` next to this file, the MCP resource
-`bitrise-devenv://guides/device-sessions`, or `bitrise-cli rde device-guide`.
+`bitrise-devenv://guides/device-sessions` (or the `bitrise_devenv_device_guide`
+tool when resources are unavailable), or `bitrise-cli rde device-guide`.
 This page is the iOS specifics. Everything here runs on the session VM
 (in-band via `execute`, or over SSH); the simulator is **headless** — there is
 no Simulator.app window and the macOS desktop screenshot shows nothing.
