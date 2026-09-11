@@ -39,8 +39,9 @@ Declared device: pass --device-platform ios or android (plus optionally
 --device-model, --device-os-version, --device-system-image — the same flags
 'rde session create' takes) to declare a virtual device on the template.
 Sessions created from the template then boot that device as declared;
-'rde session create' can override it per field with its own --device-*
-flags or skip it with --no-device. The template's stack and machine type
+'rde session create' can tweak it per field with --device-model etc. (no
+--device-platform), replace it (with --device-platform) or skip it with
+--no-device. The template's stack and machine type
 must fit the platform (iOS: a macOS stack; Android: a dockerless Android
 Linux stack). The flags take precedence over a device_spec in the file.
 Read 'bitrise-cli rde device-guide' before declaring one.

@@ -47,13 +47,13 @@ device.
 
 A template may declare a device of its own ('rde template view' shows it as
 "Device:"). Sessions created from such a template boot that device as
-declared — no device flags needed. The template's device is the base and the
-device flags override it per field: with --template, --device-model,
---device-os-version and --device-system-image may be given without
---device-platform and the unset fields inherit the template's; passing
---device-platform with the template's platform behaves the same, while the
-other platform replaces the template's device wholesale. Pass --no-device to
-create the session without the template's device. Optionally pre-install an
+declared — no device flags needed. The template's device is the base: with
+--template, --device-model, --device-os-version and --device-system-image may
+be given without --device-platform and tweak the template's device per field
+(unset fields inherit the template's). Passing --device-platform makes the
+flags the complete device to boot: the template's is ignored and unset fields
+are the platform defaults. Pass --no-device to create the session without the
+template's device. Optionally pre-install an
 app with
 --artifact-url, or --artifact-url-stdin to read the URL from stdin: a signed
 (pre-authenticated) download URL is a bearer credential, and a value passed

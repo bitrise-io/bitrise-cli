@@ -49,10 +49,12 @@ form in the web UI). The template is the base and the request overrides it the
 way `stack_id` / `machine_type` do:
 
 - no `device_spec` on the request → the template's device boots as declared;
-- a `device_spec` with the same platform (or no platform) → per-field
-  override: fields you leave empty inherit the template's (`{"device_model":
-  "iPhone 15"}` changes only the model);
-- a `device_spec` for the other platform → yours replaces the template's whole;
+- a `device_spec` **without** a `platform` → a per-field tweak: fields you
+  leave empty inherit the template's (`{"device_model": "iPhone 15"}` changes
+  only the model; CLI `--template T --device-model "iPhone 15"`);
+- a `device_spec` **with** a `platform` → the complete device to boot: the
+  template's is ignored and empty fields are the platform defaults (this is
+  what the web form sends, so what it shows is what boots);
 - `no_device: true` (CLI `--no-device`) → the session boots no device.
 
 Rules:
