@@ -16,8 +16,9 @@ machine — the emulator is headless (`-no-window`).
 - **ws-scrcpy** on `127.0.0.1:8000` — the viewer's video source. Leave it.
 - The Android SDK (`$ANDROID_HOME`, platform-tools, emulator, build-tools).
 - Service ports on the session: `adb` (VM 5555 → local 15555) and
-  `emulator-web-view` (8000). From your machine:
-  `ssh -N -L 15555:127.0.0.1:5555 … && adb connect 127.0.0.1:15555`.
+  `device-web-view` (VM 8000 → local 3200, the same name and local port an
+  iOS session uses). From your machine:
+  `ssh -N -L 15555:127.0.0.1:5555 -L 3200:127.0.0.1:8000 … && adb connect 127.0.0.1:15555`.
 
 ## Accessibility tree (what is on screen, where)
 

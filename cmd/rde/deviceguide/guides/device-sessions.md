@@ -110,11 +110,17 @@ Two ways, in order of preference:
    session's `ssh_address`/`ssh_password` and `template_snapshot.service_ports`
    are in every session read. Forward the platform's ports and use your local
    tooling:
+   The ports are named the same on both platforms: `device-web-view` is the
+   browser view of the device, forwarded to **local 3200** whichever platform
+   (the VM side differs: serve-sim on 3200 for iOS, ws-scrcpy on 8000 for
+   Android); Android adds `adb`.
    - Android: `-L 15555:127.0.0.1:5555` then `adb connect 127.0.0.1:15555` —
-     the full adb surface (~50 ms per command).
+     the full adb surface (~50 ms per command); `-L 3200:127.0.0.1:8000` for
+     the web view.
    - iOS: `-L 3200:127.0.0.1:3200` gives you serve-sim's HTTP/WS API (stream,
-     `/ax`, gestures). For `idb` install it locally (`pipx install fb-idb`)
-     and run `idb_companion` on the VM yourself if you want it.
+     `/ax`, gestures) and the web view. For `idb` install it locally
+     (`pipx install fb-idb`) and run `idb_companion` on the VM yourself if
+     you want it.
 2. **In-band through `execute`** (`bitrise_devenv_execute` / `bitrise-cli rde
    session exec`): runs a login shell on the VM, 2-minute limit per call, returns
    text. Everything below works this way. Pixels do not travel well as text

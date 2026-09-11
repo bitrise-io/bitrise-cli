@@ -18,6 +18,9 @@ no Simulator.app window and the macOS desktop screenshot shows nothing.
 - **serve-sim** (pinned npm package in `~/serve-sim`) streaming it on
   `127.0.0.1:3200` — this is the viewer's video source *and* your input/AX
   API. Its CLI: `cd ~/serve-sim && node node_modules/.bin/serve-sim …`.
+- Service port on the session: `device-web-view` (VM 3200 → local 3200, the
+  same name and local port an Android session uses). From your machine:
+  `ssh -N -L 3200:127.0.0.1:3200 …` then `http://127.0.0.1:3200`.
 - Xcode with the stack's iOS runtimes; `xcrun simctl` for everything device
   lifecycle-ish (install, launch, screenshot, logs, appearance, location…).
 - Python 3.13 (asdf) — `pipx install fb-idb` works if you want the `idb`
