@@ -30,10 +30,17 @@ Workspace resolution (highest to lowest precedence):
   default_workspace_id      saved with 'bitrise-cli config set'
   auto-detect               when none of the above is set and you have exactly one workspace
 
-Saved inputs are user-scoped — they do not require --workspace.`,
+Saved inputs are user-scoped — they do not require --workspace.
+
+Device sessions: a session can boot an iOS simulator or Android emulator
+('rde session create --device-platform ios|android'). Before creating one,
+read 'rde device-guide' (then 'rde device-guide ios' or 'android'): it is the
+know-how for waiting until the device is ready, connecting, driving it, and
+what never to do.`,
 		Example: `  bitrise-cli rde session list --workspace WORKSPACE_ID
   bitrise-cli rde session list --output json
-  bitrise-cli rde template list`,
+  bitrise-cli rde template list
+  bitrise-cli rde device-guide          # read before creating a session with a device`,
 	}
 	c.PersistentFlags().String(cmdutil.FlagWorkspace, "", "workspace ID (or set BITRISE_WORKSPACE_ID or default_workspace_id; auto-detected if you have exactly one workspace)")
 

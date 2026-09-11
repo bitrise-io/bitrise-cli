@@ -15,12 +15,19 @@ Workspace resolution (highest to lowest precedence):
 
 Saved inputs are user-scoped — they do not require --workspace.
 
+Device sessions: a session can boot an iOS simulator or Android emulator
+('rde session create --device-platform ios|android'). Before creating one,
+read 'rde device-guide' (then 'rde device-guide ios' or 'android'): it is the
+know-how for waiting until the device is ready, connecting, driving it, and
+what never to do.
+
 ### Examples
 
 ```
   bitrise-cli rde session list --workspace WORKSPACE_ID
   bitrise-cli rde session list --output json
   bitrise-cli rde template list
+  bitrise-cli rde device-guide          # read before creating a session with a device
 ```
 
 ### Options

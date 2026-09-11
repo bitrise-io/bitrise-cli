@@ -72,6 +72,11 @@ Attach arbitrary key=value metadata with --label (repeatable); labels come
 back on 'session view' and in 'session list --output json', and sessions
 can be filtered by them with 'rde session list --label-selector key=value'.
 
+Want a device on the session? READ THE GUIDE FIRST: 'bitrise-cli rde
+device-guide' (then 'rde device-guide ios' or 'android' for the platform you
+boot). It covers the readiness contract, connecting, driving the device
+efficiently, letting a human watch, recovery, and what never to do.
+
 Boot a virtual device with the session by passing --device-platform ios (an
 iOS simulator on a macOS stack) or android (an Android emulator on a dockerless
 Android Linux stack such as ubuntu-resolute-26.04-bitrise-2026-android; the
@@ -85,7 +90,7 @@ device. Optionally pre-install an app with
 inline ends up in your shell history and in the process arguments (readable
 by other users via 'ps'). "running" does not mean the device is usable —
 'session view' shows the device state; wait for "ready" (--wait does so for
-you when a device was requested). Know-how: 'rde device-guide'.
+you when a device was requested).
 
 Example values:
   --input key=value
@@ -100,6 +105,7 @@ Example values:
   bitrise-cli rde session create dev --template TEMPLATE_ID --saved-input gh-token=SAVED_INPUT_ID
   bitrise-cli rde session create dev --template TEMPLATE_ID --map-saved-inputs
   # Boot an iOS simulator with the session (stack/machine type default to the platform's).
+  bitrise-cli rde device-guide ios     # read first: readiness, connecting, driving, do-nots
   bitrise-cli rde session create ios-check --device-platform ios --device-model "iPhone 16" --device-os-version 18.2
   bitrise-cli rde session create android-check --device-platform android --artifact-url https://…/app.apk
   # Keep a signed artifact URL out of shell history and process args: read it from a file.
@@ -262,7 +268,7 @@ Example values:
 	c.Flags().StringVar(&aiPrompt, "ai-prompt", "", "initial AI prompt passed to Claude Code on session start")
 	c.Flags().IntVar(&autoTerminateMinutes, "auto-terminate-minutes", 0, "minutes until auto-termination; 0 disables; omitted uses the backend default (~5 days)")
 	c.Flags().BoolVar(&mapSavedInputs, "map-saved-inputs", false, "auto-fill template session inputs from the user's saved inputs (matched by key)")
-	c.Flags().StringVar(&devicePlatform, "device-platform", "", "boot a virtual device with the session: ios (simulator, macOS stack) or android (emulator, Linux stack); --stack/--machine-type may then be omitted")
+	c.Flags().StringVar(&devicePlatform, "device-platform", "", "boot a virtual device with the session: ios (simulator, macOS stack) or android (emulator, Linux stack); --stack/--machine-type may then be omitted; read 'rde device-guide' first")
 	c.Flags().StringVar(&deviceModel, "device-model", "", "device to boot: simctl device type (\"iPhone 16\") or emulator device profile (\"pixel_7\"); default: platform default")
 	c.Flags().StringVar(&deviceOSVersion, "device-os-version", "", "iOS only: an iOS version (\"18.2\") or simctl runtime id — anything else is rejected; default: newest installed")
 	c.Flags().StringVar(&deviceSystemImage, "device-system-image", "", "Android only: sdkmanager system image package (\"system-images;android-34;google_apis;x86_64\"); default: platform default")
@@ -320,6 +326,14 @@ func renderCreateResult(w io.Writer, res internalrde.CreateSessionResult) error 
 	ew.F("%s %s\n", s.BuildStatus("success").Render("✓"), "Session created")
 	if err := renderSessionDetail(w, res.Session); err != nil {
 		return err
+	}
+	if d := res.Session.Device; d != nil {
+		guide := "bitrise-cli rde device-guide"
+		if d.Spec != nil && (d.Spec.Platform == "ios" || d.Spec.Platform == "android") {
+			guide += " " + d.Spec.Platform
+		}
+		ew.Ln()
+		ew.Ln(s.Dim.Render(fmt.Sprintf("Next: wait until 'rde session view %s' shows the device ready, then drive it per '%s'.", res.Session.ID, guide)))
 	}
 	if len(res.AutoMappedInputs) > 0 {
 		ew.Ln()

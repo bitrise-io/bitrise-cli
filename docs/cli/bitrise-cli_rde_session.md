@@ -10,6 +10,9 @@ Commands that take a SESSION_ID also accept a session name — it's resolved to
 an ID for you. Names aren't unique, so if more than one session shares the name
 the command errors and lists the candidate IDs to pick from.
 
+To boot an iOS simulator or Android emulator with a session, read
+'rde device-guide' first, then 'rde session create --device-platform ios|android'.
+
 ```
 bitrise-cli rde session [flags]
 ```

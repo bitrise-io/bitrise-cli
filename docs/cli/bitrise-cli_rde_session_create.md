@@ -31,6 +31,11 @@ Attach arbitrary key=value metadata with --label (repeatable); labels come
 back on 'session view' and in 'session list --output json', and sessions
 can be filtered by them with 'rde session list --label-selector key=value'.
 
+Want a device on the session? READ THE GUIDE FIRST: 'bitrise-cli rde
+device-guide' (then 'rde device-guide ios' or 'android' for the platform you
+boot). It covers the readiness contract, connecting, driving the device
+efficiently, letting a human watch, recovery, and what never to do.
+
 Boot a virtual device with the session by passing --device-platform ios (an
 iOS simulator on a macOS stack) or android (an Android emulator on a dockerless
 Android Linux stack such as ubuntu-resolute-26.04-bitrise-2026-android; the
@@ -44,7 +49,7 @@ device. Optionally pre-install an app with
 inline ends up in your shell history and in the process arguments (readable
 by other users via 'ps'). "running" does not mean the device is usable —
 'session view' shows the device state; wait for "ready" (--wait does so for
-you when a device was requested). Know-how: 'rde device-guide'.
+you when a device was requested).
 
 Example values:
   --input key=value
@@ -67,6 +72,7 @@ bitrise-cli rde session create NAME [flags]
   bitrise-cli rde session create dev --template TEMPLATE_ID --saved-input gh-token=SAVED_INPUT_ID
   bitrise-cli rde session create dev --template TEMPLATE_ID --map-saved-inputs
   # Boot an iOS simulator with the session (stack/machine type default to the platform's).
+  bitrise-cli rde device-guide ios     # read first: readiness, connecting, driving, do-nots
   bitrise-cli rde session create ios-check --device-platform ios --device-model "iPhone 16" --device-os-version 18.2
   bitrise-cli rde session create android-check --device-platform android --artifact-url https://…/app.apk
   # Keep a signed artifact URL out of shell history and process args: read it from a file.
@@ -85,7 +91,7 @@ bitrise-cli rde session create NAME [flags]
       --description string           session description
       --device-model string          device to boot: simctl device type ("iPhone 16") or emulator device profile ("pixel_7"); default: platform default
       --device-os-version string     iOS only: an iOS version ("18.2") or simctl runtime id — anything else is rejected; default: newest installed
-      --device-platform string       boot a virtual device with the session: ios (simulator, macOS stack) or android (emulator, Linux stack); --stack/--machine-type may then be omitted
+      --device-platform string       boot a virtual device with the session: ios (simulator, macOS stack) or android (emulator, Linux stack); --stack/--machine-type may then be omitted; read 'rde device-guide' first
       --device-system-image string   Android only: sdkmanager system image package ("system-images;android-34;google_apis;x86_64"); default: platform default
       --feature-flag stringArray     name of a feature flag to enable on the session (repeatable)
   -h, --help                         help for create
