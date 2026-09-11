@@ -264,7 +264,7 @@ Example values:
 	c.Flags().BoolVar(&mapSavedInputs, "map-saved-inputs", false, "auto-fill template session inputs from the user's saved inputs (matched by key)")
 	c.Flags().StringVar(&devicePlatform, "device-platform", "", "boot a virtual device with the session: ios (simulator, macOS stack) or android (emulator, Linux stack); --stack/--machine-type may then be omitted")
 	c.Flags().StringVar(&deviceModel, "device-model", "", "device to boot: simctl device type (\"iPhone 16\") or emulator device profile (\"pixel_7\"); default: platform default")
-	c.Flags().StringVar(&deviceOSVersion, "device-os-version", "", "iOS only: iOS version (\"18.2\") or simctl runtime id; default: newest installed")
+	c.Flags().StringVar(&deviceOSVersion, "device-os-version", "", "iOS only: an iOS version (\"18.2\") or simctl runtime id — anything else is rejected; default: newest installed")
 	c.Flags().StringVar(&deviceSystemImage, "device-system-image", "", "Android only: sdkmanager system image package (\"system-images;android-34;google_apis;x86_64\"); default: platform default")
 	c.Flags().StringVar(&artifactURL, "artifact-url", "", "app build to install once the device is ready: absolute http(s) URL of a zipped simulator .app (iOS) or an .apk (Android); requires --device-platform (a signed URL is visible in shell history and process args — prefer --artifact-url-stdin)")
 	c.Flags().BoolVar(&artifactURLStdin, "artifact-url-stdin", false, "read the --artifact-url value from stdin instead of the command line; keeps signed URLs out of shell history and process args; requires --device-platform")

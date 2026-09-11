@@ -84,7 +84,7 @@ bitrise-cli rde session create NAME [flags]
       --cluster string               target cluster name (use 'rde machine-type list --stack STACK_ID' to find candidates when the stack + machine type combo is ambiguous)
       --description string           session description
       --device-model string          device to boot: simctl device type ("iPhone 16") or emulator device profile ("pixel_7"); default: platform default
-      --device-os-version string     iOS only: iOS version ("18.2") or simctl runtime id; default: newest installed
+      --device-os-version string     iOS only: an iOS version ("18.2") or simctl runtime id — anything else is rejected; default: newest installed
       --device-platform string       boot a virtual device with the session: ios (simulator, macOS stack) or android (emulator, Linux stack); --stack/--machine-type may then be omitted
       --device-system-image string   Android only: sdkmanager system image package ("system-images;android-34;google_apis;x86_64"); default: platform default
       --feature-flag stringArray     name of a feature flag to enable on the session (repeatable)

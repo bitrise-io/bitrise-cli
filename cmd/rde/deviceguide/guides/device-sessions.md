@@ -43,8 +43,10 @@ Rules:
 
 - `platform` is `ios` or `android`. Everything else in `device_spec` is
   optional: `device_model` (simctl device type / emulator device profile),
-  `os_version` (iOS only, "18.2" or a simctl runtime id; empty = newest
-  installed), `system_image` / `ram_mb` / `cores` / `cold_boot` (Android only).
+  `os_version` (iOS only: an iOS version such as "18.2", or a simctl runtime
+  id; anything else — and any value on Android — is rejected with a 400;
+  empty = newest installed), `system_image` / `ram_mb` / `cores` /
+  `cold_boot` (Android only).
 - If you name a `stack_id`/`machine_type`, they must fit the platform (macOS
   for iOS; for Android a *dockerless* Android stack such as
   `ubuntu-resolute-26.04-bitrise-2026-android` — the Docker-based
