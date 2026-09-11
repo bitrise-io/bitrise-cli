@@ -41,6 +41,20 @@ CLI: `bitrise-cli rde session create ios-check --device-platform ios --device-mo
 REST: `POST /v1/workspaces/{ws}/sessions` with the same fields (`device_spec`,
 `artifact`).
 
+**From a template.** A template can declare the device every session created
+from it boots (`Template.device_spec`, the same message; set it with
+`bitrise_devenv_create_template` / `bitrise_devenv_update_template`,
+`bitrise-cli rde template create|update --device-platform …`, or the template
+form in the web UI). The template is the base and the request overrides it the
+way `stack_id` / `machine_type` do:
+
+- no `device_spec` on the request → the template's device boots as declared;
+- a `device_spec` with the same platform (or no platform) → per-field
+  override: fields you leave empty inherit the template's (`{"device_model":
+  "iPhone 15"}` changes only the model);
+- a `device_spec` for the other platform → yours replaces the template's whole;
+- `no_device: true` (CLI `--no-device`) → the session boots no device.
+
 Rules:
 
 - `platform` is `ios` or `android`. Everything else in `device_spec` is

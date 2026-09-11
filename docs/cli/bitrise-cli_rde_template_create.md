@@ -31,6 +31,19 @@ Optional fields:
   feature_flags       array of {name, description}
   workspace_links     array of {label, folder_path, feature_flag_name} — IDE
                       folder shortcuts
+  device_spec         {platform, device_model, os_version, system_image} — a
+                      virtual device sessions created from the template boot
+                      unless overridden (see below)
+
+Declared device: pass --device-platform ios or android (plus optionally
+--device-model, --device-os-version, --device-system-image — the same flags
+'rde session create' takes) to declare a virtual device on the template.
+Sessions created from the template then boot that device as declared;
+'rde session create' can override it per field with its own --device-*
+flags or skip it with --no-device. The template's stack and machine type
+must fit the platform (iOS: a macOS stack; Android: a dockerless Android
+Linux stack). The flags take precedence over a device_spec in the file.
+Read 'bitrise-cli rde device-guide' before declaring one.
 
 Example spec exercising every field (a macOS iOS-app dev environment —
 adjust to taste):
@@ -67,7 +80,8 @@ adjust to taste):
     "workspace_links": [
       {"label": "Open app in Xcode", "folder_path": "/Users/vagrant/git/ios"},
       {"label": "Open scripts (beta only)", "folder_path": "/Users/vagrant/git/scripts", "feature_flag_name": "enable_beta_simulator"}
-    ]
+    ],
+    "device_spec": {"platform": "ios", "device_model": "iPhone 16", "os_version": "18.2"}
   }
 
 ```
@@ -79,13 +93,19 @@ bitrise-cli rde template create [flags]
 ```
   bitrise-cli rde template create --file template.json
   cat template.json | bitrise-cli rde template create --file -
+  # Declare an iOS simulator every session from this template boots by default.
+  bitrise-cli rde template create --file template.json --device-platform ios --device-model "iPhone 16"
 ```
 
 ### Options
 
 ```
-  -f, --file string   path to a JSON spec file (use '-' for stdin)
-  -h, --help          help for create
+      --device-model string          device to boot: simctl device type ("iPhone 16") or emulator device profile ("pixel_7"); default: platform default; requires --device-platform
+      --device-os-version string     iOS only: an iOS version ("18.2") or simctl runtime id — anything else is rejected; default: newest installed; requires --device-platform
+      --device-platform string       declare a virtual device sessions created from the template boot unless overridden: ios (simulator, macOS stack) or android (emulator, Linux stack); read 'rde device-guide' first
+      --device-system-image string   Android only: sdkmanager system image package ("system-images;android-34;google_apis;x86_64"); default: platform default; requires --device-platform
+  -f, --file string                  path to a JSON spec file (use '-' for stdin)
+  -h, --help                         help for create
 ```
 
 ### Options inherited from parent commands

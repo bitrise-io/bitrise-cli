@@ -775,3 +775,68 @@ func TestCreateCmd_WaitDeviceFailedExitsNonZero(t *testing.T) {
 		t.Fatalf("expected a device-failed error carrying the notes, got %v", err)
 	}
 }
+
+// TestCreateCmd_TemplateDeviceOverride: with --template, the per-device
+// fields may be given without --device-platform. The spec goes out with an
+// empty platform so the backend merges it over the template's declared
+// device and the unset fields inherit the template's.
+func TestCreateCmd_TemplateDeviceOverride(t *testing.T) {
+	var gotBody map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		_, _ = io.WriteString(w, `{"session":{"id":"s-dev","name":"ios-check","status":"SESSION_STATUS_PENDING","device":{"spec":{"platform":"ios","deviceModel":"iPhone 15"}}}}`)
+	}))
+	defer srv.Close()
+
+	_, _, err := run(t, newCreateCmd(), srv.URL, "ws-1",
+		[]string{"ios-check", "--template", uuidTemplate, "--device-model", "iPhone 15"}, output.Human)
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	spec, ok := gotBody["deviceSpec"].(map[string]any)
+	if !ok {
+		t.Fatalf("deviceSpec missing from body: %v", gotBody)
+	}
+	if spec["deviceModel"] != "iPhone 15" {
+		t.Errorf("deviceModel = %v, want iPhone 15", spec["deviceModel"])
+	}
+	if p, has := spec["platform"]; has && p != "" {
+		t.Errorf("platform must be left empty so the template's is inherited, got %v", p)
+	}
+	if _, has := gotBody["noDevice"]; has {
+		t.Errorf("noDevice must be omitted unless --no-device was passed: %v", gotBody)
+	}
+}
+
+// TestCreateCmd_NoDevice: --no-device rides on the wire as noDevice and is
+// mutually exclusive with every device flag.
+func TestCreateCmd_NoDevice(t *testing.T) {
+	var gotBody map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		_, _ = io.WriteString(w, `{"session":{"id":"s-1","name":"dev","status":"SESSION_STATUS_PENDING"}}`)
+	}))
+	defer srv.Close()
+
+	_, _, err := run(t, newCreateCmd(), srv.URL, "ws-1",
+		[]string{"dev", "--template", uuidTemplate, "--no-device"}, output.Human)
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if gotBody["noDevice"] != true {
+		t.Errorf("noDevice = %v, want true (body=%v)", gotBody["noDevice"], gotBody)
+	}
+	if _, has := gotBody["deviceSpec"]; has {
+		t.Errorf("deviceSpec must be omitted with --no-device: %v", gotBody)
+	}
+
+	gotBody = nil
+	_, _, err = run(t, newCreateCmd(), srv.URL, "ws-1",
+		[]string{"dev", "--template", uuidTemplate, "--no-device", "--device-platform", "ios"}, output.Human)
+	if err == nil || !strings.Contains(err.Error(), "no-device") || !strings.Contains(err.Error(), "device-platform") {
+		t.Fatalf("expected a --no-device/--device-platform exclusivity error, got %v", err)
+	}
+	if gotBody != nil {
+		t.Errorf("server must not be hit when the flags conflict")
+	}
+}

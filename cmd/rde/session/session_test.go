@@ -200,3 +200,29 @@ func TestParseSessionInputs(t *testing.T) {
 		t.Error("expected error for --saved-input with empty ID")
 	}
 }
+
+// TestDiffCmd_ShowsDeviceChange: a template that gained (or changed) its
+// declared device shows up as a "Device:" line like stack/machine type do.
+func TestDiffCmd_ShowsDeviceChange(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/workspaces/ws-1/sessions/"+uuidSession+"/template-diff" {
+			t.Errorf("unexpected path: %s", r.URL.Path)
+		}
+		_, _ = io.WriteString(w, `{
+			"snapshot":{"stackId":"osx-xcode-16.0.x-edge","machineType":"g2.mac"},
+			"current":{"stackId":"osx-xcode-16.0.x-edge","machineType":"g2.mac","deviceSpec":{"platform":"ios","deviceModel":"iPhone 16","osVersion":"18.2"}}
+		}`)
+	}))
+	defer srv.Close()
+
+	stdout, _, err := run(t, newDiffCmd(), srv.URL, "ws-1", []string{uuidSession}, output.Human)
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if !strings.Contains(stdout, "Device:") || !strings.Contains(stdout, "(unset) → iOS simulator · iPhone 16 · 18.2") {
+		t.Errorf("stdout missing the device change:\n%s", stdout)
+	}
+	if strings.Contains(stdout, "Stack:") {
+		t.Errorf("unchanged stack must not be listed:\n%s", stdout)
+	}
+}

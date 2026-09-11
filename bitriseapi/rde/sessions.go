@@ -145,6 +145,10 @@ type CreateSessionRequest struct {
 	// Artifact is an optional app build to install once the device is
 	// ready; requires DeviceSpec.
 	Artifact *DeviceArtifact `json:"artifact,omitempty"`
+	// NoDevice creates the session without the device its template declares.
+	// Invalid together with DeviceSpec; ignored when the template declares
+	// no device.
+	NoDevice bool `json:"noDevice,omitempty"`
 }
 
 // DeviceSpec describes a virtual device in the preview-link vocabulary.
@@ -231,6 +235,7 @@ type TemplateConfig struct {
 	FeatureFlags      []TemplateConfigFlag     `json:"featureFlags,omitempty"`
 	TemplateVariables []TemplateConfigVariable `json:"templateVariables,omitempty"`
 	WorkspaceLinks    []SnapshotLink           `json:"workspaceLinks,omitempty"`
+	DeviceSpec        *DeviceSpec              `json:"deviceSpec,omitempty"`
 	UpdatedAt         string                   `json:"updatedAt,omitempty"`
 }
 

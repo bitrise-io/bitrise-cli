@@ -144,25 +144,7 @@ func renderSessionDetail(w io.Writer, sess internalrde.Session) error {
 	if d := sess.Device; d != nil {
 		what := "device"
 		if d.Spec != nil {
-			switch d.Spec.Platform {
-			case "ios":
-				what = "iOS simulator"
-			case "android":
-				what = "Android emulator"
-			}
-			if d.Spec.DeviceModel != "" {
-				what += " · " + d.Spec.DeviceModel
-			}
-			// iOS carries the OS version; Android identifies the OS by its
-			// system image package instead, so fall back to it to keep the
-			// "platform · model · version" detail complete on both.
-			version := d.Spec.OSVersion
-			if version == "" {
-				version = d.Spec.SystemImage
-			}
-			if version != "" {
-				what += " · " + version
-			}
+			what = d.Spec.Summary()
 		}
 		state := d.State
 		if state == "" {

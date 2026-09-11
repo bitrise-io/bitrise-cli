@@ -37,6 +37,7 @@ func newCreateCmd() *cobra.Command {
 		deviceModel          string
 		deviceOSVersion      string
 		deviceSystemImage    string
+		noDevice             bool
 		artifactURL          string
 		artifactURLStdin     bool
 		artifactName         string
@@ -84,7 +85,18 @@ Docker-based linux-docker-* stacks are rejected). On a template-less session
 --stack/--machine-type may then be omitted: the deployment's known-good pair
 for the platform applies; with --template the template's stack and machine
 type are used and must fit the platform. --cluster is never needed with a
-device. Optionally pre-install an app with
+device.
+
+A template may declare a device of its own ('rde template view' shows it as
+"Device:"). Sessions created from such a template boot that device as
+declared — no device flags needed. The template's device is the base and the
+device flags override it per field: with --template, --device-model,
+--device-os-version and --device-system-image may be given without
+--device-platform and the unset fields inherit the template's; passing
+--device-platform with the template's platform behaves the same, while the
+other platform replaces the template's device wholesale. Pass --no-device to
+create the session without the template's device. Optionally pre-install an
+app with
 --artifact-url, or --artifact-url-stdin to read the URL from stdin: a signed
 (pre-authenticated) download URL is a bearer credential, and a value passed
 inline ends up in your shell history and in the process arguments (readable
@@ -108,6 +120,10 @@ Example values:
   bitrise-cli rde device-guide ios     # read first: readiness, connecting, driving, do-nots
   bitrise-cli rde session create ios-check --device-platform ios --device-model "iPhone 16" --device-os-version 18.2
   bitrise-cli rde session create android-check --device-platform android --artifact-url https://…/app.apk
+  # From a template that declares a device: boot it as declared, override one field, or skip it.
+  bitrise-cli rde session create ios-check --template TEMPLATE_ID
+  bitrise-cli rde session create ios-check --template TEMPLATE_ID --device-model "iPhone 15"
+  bitrise-cli rde session create no-sim --template TEMPLATE_ID --no-device
   # Keep a signed artifact URL out of shell history and process args: read it from a file.
   bitrise-cli rde session create android-check --device-platform android --artifact-url-stdin < artifact-url.txt`,
 		Args: cmdutil.RequireArgs("NAME"),
@@ -129,8 +145,17 @@ Example values:
 			default:
 				return fmt.Errorf("--device-platform must be ios or android")
 			}
-			if devicePlatform == "" && (deviceModel != "" || deviceOSVersion != "" || deviceSystemImage != "" || artifactURL != "" || artifactURLStdin || artifactName != "") {
-				return fmt.Errorf("--device-model, --device-os-version, --device-system-image, --artifact-url, --artifact-url-stdin and --artifact-name require --device-platform")
+			// The per-device fields need a platform to attach to — unless a
+			// template supplies it: then they override the template's
+			// declared device per field and the platform is inherited.
+			deviceFieldsSet := deviceModel != "" || deviceOSVersion != "" || deviceSystemImage != ""
+			if devicePlatform == "" && templateID == "" && deviceFieldsSet {
+				return fmt.Errorf("--device-model, --device-os-version and --device-system-image require --device-platform (or --template with a declared device)")
+			}
+			// An artifact needs a device to land on: one requested here, or the
+			// one a template declares (the backend rejects a template without one).
+			if devicePlatform == "" && templateID == "" && (artifactURL != "" || artifactURLStdin || artifactName != "") {
+				return fmt.Errorf("--artifact-url, --artifact-url-stdin and --artifact-name require --device-platform (or --template with a template that declares a device)")
 			}
 			if artifactURLStdin {
 				// Signed download URLs are bearer credentials; reading them
@@ -180,7 +205,10 @@ Example values:
 				m := autoTerminateMinutes
 				req.AutoTerminateMinutes = &m
 			}
-			if devicePlatform != "" {
+			if devicePlatform != "" || deviceFieldsSet {
+				// An empty Platform is deliberate: with --template the
+				// backend merges this spec over the template's device and
+				// fills the platform (and any other unset field) from it.
 				req.DeviceSpec = &internalrde.DeviceSpec{
 					Platform:    devicePlatform,
 					DeviceModel: deviceModel,
@@ -191,6 +219,7 @@ Example values:
 					req.Artifact = &internalrde.DeviceArtifact{URL: artifactURL, AppName: artifactName}
 				}
 			}
+			req.NoDevice = noDevice
 			format := cmdutil.ResolveFormat(cmd)
 			client, err := cmdutil.NewRDEClient(cmd)
 			if err != nil {
@@ -269,15 +298,19 @@ Example values:
 	c.Flags().IntVar(&autoTerminateMinutes, "auto-terminate-minutes", 0, "minutes until auto-termination; 0 disables; omitted uses the backend default (~5 days)")
 	c.Flags().BoolVar(&mapSavedInputs, "map-saved-inputs", false, "auto-fill template session inputs from the user's saved inputs (matched by key)")
 	c.Flags().StringVar(&devicePlatform, "device-platform", "", "boot a virtual device with the session: ios (simulator, macOS stack) or android (emulator, Linux stack); --stack/--machine-type may then be omitted; read 'rde device-guide' first")
-	c.Flags().StringVar(&deviceModel, "device-model", "", "device to boot: simctl device type (\"iPhone 16\") or emulator device profile (\"pixel_7\"); default: platform default")
-	c.Flags().StringVar(&deviceOSVersion, "device-os-version", "", "iOS only: an iOS version (\"18.2\") or simctl runtime id — anything else is rejected; default: newest installed")
-	c.Flags().StringVar(&deviceSystemImage, "device-system-image", "", "Android only: sdkmanager system image package (\"system-images;android-34;google_apis;x86_64\"); default: platform default")
-	c.Flags().StringVar(&artifactURL, "artifact-url", "", "app build to install once the device is ready: absolute http(s) URL of a zipped simulator .app (iOS) or an .apk (Android); requires --device-platform (a signed URL is visible in shell history and process args — prefer --artifact-url-stdin)")
+	c.Flags().StringVar(&deviceModel, "device-model", "", "device to boot: simctl device type (\"iPhone 16\") or emulator device profile (\"pixel_7\"); default: the template's device model, else the platform default")
+	c.Flags().StringVar(&deviceOSVersion, "device-os-version", "", "iOS only: an iOS version (\"18.2\") or simctl runtime id — anything else is rejected; default: the template's, else newest installed")
+	c.Flags().StringVar(&deviceSystemImage, "device-system-image", "", "Android only: sdkmanager system image package (\"system-images;android-34;google_apis;x86_64\"); default: the template's, else the platform default")
+	c.Flags().BoolVar(&noDevice, "no-device", false, "create without the template's device (ignored when the template declares none)")
+	c.Flags().StringVar(&artifactURL, "artifact-url", "", "app build to install once the device is ready: absolute http(s) URL of a zipped simulator .app (iOS) or an .apk (Android); requires --device-platform or a --template that declares a device (a signed URL is visible in shell history and process args — prefer --artifact-url-stdin)")
 	c.Flags().BoolVar(&artifactURLStdin, "artifact-url-stdin", false, "read the --artifact-url value from stdin instead of the command line; keeps signed URLs out of shell history and process args; requires --device-platform")
 	c.Flags().StringVar(&artifactName, "artifact-name", "", "display name of the app installed from --artifact-url / --artifact-url-stdin")
 	c.Flags().BoolVar(&wait, "wait", false, "wait until the session leaves provisioning (running, failed, …) — and, with --device-platform, until the device is ready or failed — before returning; exits 1 if the final status isn't running")
 	c.Flags().DurationVar(&waitTimeout, "wait-timeout", 10*time.Minute, "max time to wait when --wait is set (uses Go duration syntax: 30s, 5m, 1h)")
 	c.MarkFlagsMutuallyExclusive("artifact-url", "artifact-url-stdin")
+	for _, f := range []string{"device-platform", "device-model", "device-os-version", "device-system-image", "artifact-url", "artifact-url-stdin", "artifact-name"} {
+		c.MarkFlagsMutuallyExclusive("no-device", f)
+	}
 
 	c.PreRun = func(cmd *cobra.Command, _ []string) {
 		// Track whether --auto-terminate-minutes was explicitly set so we

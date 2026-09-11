@@ -43,7 +43,18 @@ Docker-based linux-docker-* stacks are rejected). On a template-less session
 --stack/--machine-type may then be omitted: the deployment's known-good pair
 for the platform applies; with --template the template's stack and machine
 type are used and must fit the platform. --cluster is never needed with a
-device. Optionally pre-install an app with
+device.
+
+A template may declare a device of its own ('rde template view' shows it as
+"Device:"). Sessions created from such a template boot that device as
+declared — no device flags needed. The template's device is the base and the
+device flags override it per field: with --template, --device-model,
+--device-os-version and --device-system-image may be given without
+--device-platform and the unset fields inherit the template's; passing
+--device-platform with the template's platform behaves the same, while the
+other platform replaces the template's device wholesale. Pass --no-device to
+create the session without the template's device. Optionally pre-install an
+app with
 --artifact-url, or --artifact-url-stdin to read the URL from stdin: a signed
 (pre-authenticated) download URL is a bearer credential, and a value passed
 inline ends up in your shell history and in the process arguments (readable
@@ -75,6 +86,10 @@ bitrise-cli rde session create NAME [flags]
   bitrise-cli rde device-guide ios     # read first: readiness, connecting, driving, do-nots
   bitrise-cli rde session create ios-check --device-platform ios --device-model "iPhone 16" --device-os-version 18.2
   bitrise-cli rde session create android-check --device-platform android --artifact-url https://…/app.apk
+  # From a template that declares a device: boot it as declared, override one field, or skip it.
+  bitrise-cli rde session create ios-check --template TEMPLATE_ID
+  bitrise-cli rde session create ios-check --template TEMPLATE_ID --device-model "iPhone 15"
+  bitrise-cli rde session create no-sim --template TEMPLATE_ID --no-device
   # Keep a signed artifact URL out of shell history and process args: read it from a file.
   bitrise-cli rde session create android-check --device-platform android --artifact-url-stdin < artifact-url.txt
 ```
@@ -84,21 +99,22 @@ bitrise-cli rde session create NAME [flags]
 ```
       --ai-prompt string             initial AI prompt passed to Claude Code on session start
       --artifact-name string         display name of the app installed from --artifact-url / --artifact-url-stdin
-      --artifact-url string          app build to install once the device is ready: absolute http(s) URL of a zipped simulator .app (iOS) or an .apk (Android); requires --device-platform (a signed URL is visible in shell history and process args — prefer --artifact-url-stdin)
+      --artifact-url string          app build to install once the device is ready: absolute http(s) URL of a zipped simulator .app (iOS) or an .apk (Android); requires --device-platform or a --template that declares a device (a signed URL is visible in shell history and process args — prefer --artifact-url-stdin)
       --artifact-url-stdin           read the --artifact-url value from stdin instead of the command line; keeps signed URLs out of shell history and process args; requires --device-platform
       --auto-terminate-minutes int   minutes until auto-termination; 0 disables; omitted uses the backend default (~5 days)
       --cluster string               target cluster name (use 'rde machine-type list --stack STACK_ID' to find candidates when the stack + machine type combo is ambiguous)
       --description string           session description
-      --device-model string          device to boot: simctl device type ("iPhone 16") or emulator device profile ("pixel_7"); default: platform default
-      --device-os-version string     iOS only: an iOS version ("18.2") or simctl runtime id — anything else is rejected; default: newest installed
+      --device-model string          device to boot: simctl device type ("iPhone 16") or emulator device profile ("pixel_7"); default: the template's device model, else the platform default
+      --device-os-version string     iOS only: an iOS version ("18.2") or simctl runtime id — anything else is rejected; default: the template's, else newest installed
       --device-platform string       boot a virtual device with the session: ios (simulator, macOS stack) or android (emulator, Linux stack); --stack/--machine-type may then be omitted; read 'rde device-guide' first
-      --device-system-image string   Android only: sdkmanager system image package ("system-images;android-34;google_apis;x86_64"); default: platform default
+      --device-system-image string   Android only: sdkmanager system image package ("system-images;android-34;google_apis;x86_64"); default: the template's, else the platform default
       --feature-flag stringArray     name of a feature flag to enable on the session (repeatable)
   -h, --help                         help for create
       --input stringArray            session input as key=value (repeatable)
   -l, --label stringArray            label to attach to the session as key=value (repeatable; at most 32; keys use letters, digits, and . _ / -, values additionally : and +; the bitrise.io/ key prefix is reserved)
       --machine-type string          machine type name for a template-less session, or to override the template's machine type (see 'rde machine-type list --stack STACK_ID')
       --map-saved-inputs             auto-fill template session inputs from the user's saved inputs (matched by key)
+      --no-device                    create without the template's device (ignored when the template declares none)
       --saved-input stringArray      session input as key=savedInputID — uses a stored saved-input value (repeatable)
       --secret-input stringArray     session input as key=value, stored as a secret at rest (repeatable; the value is visible in shell history and process args — prefer --saved-input)
       --stack string                 stack ID for a template-less session, or to override the template's stack (see 'rde stack list')

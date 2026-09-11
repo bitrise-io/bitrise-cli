@@ -74,6 +74,37 @@ type DeviceSpec struct {
 	ColdBoot    bool   `json:"cold_boot,omitempty"`
 }
 
+// PlatformLabel is the human name of the device kind: "iOS simulator",
+// "Android emulator", or "device" for an unknown/unset platform.
+func (d DeviceSpec) PlatformLabel() string {
+	switch d.Platform {
+	case "ios":
+		return "iOS simulator"
+	case "android":
+		return "Android emulator"
+	}
+	return "device"
+}
+
+// Summary renders the device as "platform · model · version" for human
+// output, omitting the parts that aren't set. iOS carries the OS version;
+// Android identifies the OS by its system image package instead, so that
+// stands in for the version to keep the detail complete on both platforms.
+func (d DeviceSpec) Summary() string {
+	what := d.PlatformLabel()
+	if d.DeviceModel != "" {
+		what += " · " + d.DeviceModel
+	}
+	version := d.OSVersion
+	if version == "" {
+		version = d.SystemImage
+	}
+	if version != "" {
+		what += " · " + version
+	}
+	return what
+}
+
 // DeviceArtifact is an app build to install once the device is ready.
 type DeviceArtifact struct {
 	URL         string `json:"url"`
@@ -138,13 +169,18 @@ func deviceFromAPI(w *rdeapi.SessionDevice) *SessionDevice {
 		BuildNumber:   w.BuildNumber,
 		CommitSHA:     w.CommitSHA,
 	}
-	if w.Spec != nil {
-		out.Spec = &DeviceSpec{
-			Platform: w.Spec.Platform, DeviceModel: w.Spec.DeviceModel, OSVersion: w.Spec.OSVersion,
-			SystemImage: w.Spec.SystemImage, RAMMb: w.Spec.RAMMb, Cores: w.Spec.Cores, ColdBoot: w.Spec.ColdBoot,
-		}
-	}
+	out.Spec = deviceSpecFromAPI(w.Spec)
 	return out
+}
+
+func deviceSpecFromAPI(w *rdeapi.DeviceSpec) *DeviceSpec {
+	if w == nil {
+		return nil
+	}
+	return &DeviceSpec{
+		Platform: w.Platform, DeviceModel: w.DeviceModel, OSVersion: w.OSVersion,
+		SystemImage: w.SystemImage, RAMMb: w.RAMMb, Cores: w.Cores, ColdBoot: w.ColdBoot,
+	}
 }
 
 // Resumable reports whether `rde claude` can resume this session: a running
@@ -238,6 +274,9 @@ type CreateSessionRequest struct {
 	// Artifact is an app build to install once the device is ready
 	// (optional; requires DeviceSpec).
 	Artifact *DeviceArtifact
+	// NoDevice creates the session without the device its template
+	// declares (invalid together with DeviceSpec).
+	NoDevice bool
 }
 
 // UpdateSessionRequest carries optional patch fields. Pointer fields
@@ -371,6 +410,7 @@ func (s *Service) CreateSession(ctx context.Context, workspaceID string, req Cre
 		Labels:                  req.Labels,
 		DeviceSpec:              deviceSpecToAPI(req.DeviceSpec),
 		Artifact:                artifactToAPI(req.Artifact),
+		NoDevice:                req.NoDevice,
 	})
 	if err != nil {
 		return CreateSessionResult{}, err
@@ -444,6 +484,7 @@ type TemplateConfig struct {
 	FeatureFlags      []TemplateConfigFlag     `json:"feature_flags,omitempty"`
 	TemplateVariables []TemplateConfigVariable `json:"template_variables,omitempty"`
 	WorkspaceLinks    []SnapshotLink           `json:"workspace_links,omitempty"`
+	DeviceSpec        *DeviceSpec              `json:"device_spec,omitempty"`
 	UpdatedAt         *time.Time               `json:"updated_at,omitempty"`
 }
 
@@ -508,6 +549,7 @@ func templateConfigFromAPI(w rdeapi.TemplateConfig) TemplateConfig {
 		WorkingDirectory: w.WorkingDirectory,
 		StartupScript:    w.StartupScript,
 		WarmupScript:     w.WarmupScript,
+		DeviceSpec:       deviceSpecFromAPI(w.DeviceSpec),
 		UpdatedAt:        parseTime(w.UpdatedAt),
 	}
 	for _, i := range w.SessionInputs {
