@@ -77,6 +77,175 @@ func TestViewCmd_JSONOmitsSSHPassword(t *testing.T) {
 	}
 }
 
+// TestViewCmd_DeviceIOS: a device session's human output carries a Device
+// line with platform, model and iOS version plus the normalized state, the
+// device notes, and the app install state with its failure reason.
+func TestViewCmd_DeviceIOS(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, `{"session":{
+			"id":"s-1","name":"ios-check","status":"SESSION_STATUS_RUNNING",
+			"device":{
+				"spec":{"platform":"ios","deviceModel":"iPhone 16","osVersion":"com.apple.CoreSimulator.SimRuntime.iOS-18-2"},
+				"state":"PREVIEW_DEVICE_STATE_READY",
+				"installStatus":"PREVIEW_INSTALL_STATUS_FAILED",
+				"installReason":"artifact is not a zipped simulator .app",
+				"deviceNotes":"warm boot from snapshot",
+				"appName":"Demo","buildNumber":"42"
+			}
+		}}`)
+	}))
+	defer srv.Close()
+
+	stdout, _, err := run(t, newViewCmd(), srv.URL, "ws-1", []string{uuidSession}, output.Human)
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	for _, want := range []string{
+		"Device:", "iOS simulator · iPhone 16 · com.apple.CoreSimulator.SimRuntime.iOS-18-2 — ready",
+		"Device notes:", "warm boot from snapshot",
+		"Device app:", "Demo #42 — install failed: artifact is not a zipped simulator .app",
+	} {
+		if !strings.Contains(stdout, want) {
+			t.Errorf("stdout missing %q:\n%s", want, stdout)
+		}
+	}
+	// The wire enum names must not leak into human output.
+	if strings.Contains(stdout, "PREVIEW_") {
+		t.Errorf("wire enum leaked into human output:\n%s", stdout)
+	}
+}
+
+// TestViewCmd_DeviceAndroidSystemImage: Android specs carry no osVersion —
+// the system image package identifies the OS, so the Device line falls back
+// to it. A booting device with no app shows neither an app nor a notes line.
+func TestViewCmd_DeviceAndroidSystemImage(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, `{"session":{
+			"id":"s-2","name":"android-check","status":"SESSION_STATUS_RUNNING",
+			"device":{
+				"spec":{"platform":"android","deviceModel":"pixel_7","systemImage":"system-images;android-34;google_apis;x86_64"},
+				"state":"PREVIEW_DEVICE_STATE_BOOTING"
+			}
+		}}`)
+	}))
+	defer srv.Close()
+
+	stdout, _, err := run(t, newViewCmd(), srv.URL, "ws-1", []string{uuidSession}, output.Human)
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if want := "Android emulator · pixel_7 · system-images;android-34;google_apis;x86_64 — booting"; !strings.Contains(stdout, want) {
+		t.Errorf("stdout missing %q:\n%s", want, stdout)
+	}
+	for _, absent := range []string{"Device app:", "Device notes:"} {
+		if strings.Contains(stdout, absent) {
+			t.Errorf("stdout should not contain %q for a booting device without an app:\n%s", absent, stdout)
+		}
+	}
+}
+
+// TestViewCmd_DeviceNotRunning: an unspecified device state (VM not up yet)
+// renders as "not running" rather than an empty word.
+func TestViewCmd_DeviceNotRunning(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, `{"session":{
+			"id":"s-3","name":"ios-check","status":"SESSION_STATUS_PENDING",
+			"device":{"spec":{"platform":"ios"},"state":"PREVIEW_DEVICE_STATE_UNSPECIFIED"}
+		}}`)
+	}))
+	defer srv.Close()
+
+	stdout, _, err := run(t, newViewCmd(), srv.URL, "ws-1", []string{uuidSession}, output.Human)
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if want := "iOS simulator — not running"; !strings.Contains(stdout, want) {
+		t.Errorf("stdout missing %q:\n%s", want, stdout)
+	}
+}
+
+// TestViewCmd_JSONOutput_Device pins the additive `device` object in the
+// stable JSON shape: snake_case keys, enums normalized to the same short
+// words the human output prints, spec fields passed through.
+func TestViewCmd_JSONOutput_Device(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, `{"session":{
+			"id":"s-1","name":"ios-check","status":"SESSION_STATUS_RUNNING",
+			"device":{
+				"spec":{"platform":"ios","deviceModel":"iPhone 16","osVersion":"com.apple.CoreSimulator.SimRuntime.iOS-18-2"},
+				"state":"PREVIEW_DEVICE_STATE_READY",
+				"installStatus":"PREVIEW_INSTALL_STATUS_FAILED",
+				"installReason":"bad artifact",
+				"deviceNotes":"warm boot",
+				"appName":"Demo","buildNumber":"42"
+			}
+		}}`)
+	}))
+	defer srv.Close()
+
+	stdout, _, err := run(t, newViewCmd(), srv.URL, "ws-1", []string{uuidSession}, output.JSON)
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	var got struct {
+		ID     string `json:"id"`
+		Status string `json:"status"`
+		Device *struct {
+			Spec struct {
+				Platform    string `json:"platform"`
+				DeviceModel string `json:"device_model"`
+				OSVersion   string `json:"os_version"`
+			} `json:"spec"`
+			State         string `json:"state"`
+			InstallStatus string `json:"install_status"`
+			InstallReason string `json:"install_reason"`
+			DeviceNotes   string `json:"device_notes"`
+			AppName       string `json:"app_name"`
+			BuildNumber   string `json:"build_number"`
+		} `json:"device"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
+		t.Fatalf("unmarshal JSON output: %v\n%s", err, stdout)
+	}
+	if got.Device == nil {
+		t.Fatalf("device object missing from JSON:\n%s", stdout)
+	}
+	d := got.Device
+	if d.State != "ready" || d.InstallStatus != "failed" {
+		t.Errorf("state/install_status = %q/%q, want ready/failed", d.State, d.InstallStatus)
+	}
+	if d.Spec.Platform != "ios" || d.Spec.DeviceModel != "iPhone 16" || d.Spec.OSVersion != "com.apple.CoreSimulator.SimRuntime.iOS-18-2" {
+		t.Errorf("unexpected spec: %+v", d.Spec)
+	}
+	if d.InstallReason != "bad artifact" || d.DeviceNotes != "warm boot" || d.AppName != "Demo" || d.BuildNumber != "42" {
+		t.Errorf("unexpected device fields: %+v", d)
+	}
+	if strings.Contains(stdout, "PREVIEW_") {
+		t.Errorf("wire enum leaked into JSON output:\n%s", stdout)
+	}
+}
+
+// TestViewCmd_JSONOutput_NoDevice: sessions without a device keep the
+// pre-existing JSON shape — no `device` key at all.
+func TestViewCmd_JSONOutput_NoDevice(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, `{"session":{"id":"s-1","name":"dev","status":"SESSION_STATUS_RUNNING"}}`)
+	}))
+	defer srv.Close()
+
+	stdout, _, err := run(t, newViewCmd(), srv.URL, "ws-1", []string{uuidSession}, output.JSON)
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	var got map[string]any
+	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
+		t.Fatalf("unmarshal JSON output: %v\n%s", err, stdout)
+	}
+	if _, has := got["device"]; has {
+		t.Errorf("device key must be absent for a plain session: %v", got)
+	}
+}
+
 func TestViewCmd_WatchRejectsJSON(t *testing.T) {
 	// --watch + --output json must fail fast before any HTTP call (the JSON
 	// contract is a single object, not a stream).

@@ -3,6 +3,7 @@ package rde
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	rdeapi "github.com/bitrise-io/bitrise-cli/bitriseapi/rde"
@@ -54,6 +55,132 @@ type Session struct {
 	OwnerID   string     `json:"owner_id,omitempty"`
 	CreatedAt *time.Time `json:"created_at,omitempty"`
 	UpdatedAt *time.Time `json:"updated_at,omitempty"`
+	// Device is the session's virtual device (iOS simulator / Android
+	// emulator) and its readiness; nil when the session has no device.
+	// Status "running" does NOT mean the device is usable — read
+	// Device.State.
+	Device *SessionDevice `json:"device,omitempty"`
+}
+
+// DeviceSpec describes a virtual device in the preview-link vocabulary:
+// Platform "ios" or "android"; the rest optional (platform defaults).
+type DeviceSpec struct {
+	Platform    string `json:"platform"`
+	DeviceModel string `json:"device_model,omitempty"`
+	OSVersion   string `json:"os_version,omitempty"`
+	SystemImage string `json:"system_image,omitempty"`
+	RAMMb       uint32 `json:"ram_mb,omitempty"`
+	Cores       uint32 `json:"cores,omitempty"`
+	ColdBoot    bool   `json:"cold_boot,omitempty"`
+}
+
+// PlatformLabel is the human name of the device kind: "iOS simulator",
+// "Android emulator", or "device" for an unknown/unset platform.
+func (d DeviceSpec) PlatformLabel() string {
+	switch d.Platform {
+	case "ios":
+		return "iOS simulator"
+	case "android":
+		return "Android emulator"
+	}
+	return "device"
+}
+
+// Summary renders the device as "platform · model · version" for human
+// output, omitting the parts that aren't set. iOS carries the OS version;
+// Android identifies the OS by its system image package instead, so that
+// stands in for the version to keep the detail complete on both platforms.
+func (d DeviceSpec) Summary() string {
+	what := d.PlatformLabel()
+	if d.DeviceModel != "" {
+		what += " · " + d.DeviceModel
+	}
+	version := d.OSVersion
+	if version == "" {
+		version = d.SystemImage
+	}
+	if version != "" {
+		what += " · " + version
+	}
+	return what
+}
+
+// DeviceArtifact is an app build to install once the device is ready.
+type DeviceArtifact struct {
+	URL         string `json:"url"`
+	AppName     string `json:"app_name,omitempty"`
+	BuildNumber string `json:"build_number,omitempty"`
+	CommitSHA   string `json:"commit_sha,omitempty"`
+}
+
+// SessionDevice mirrors the API's Session.device. State/InstallStatus are
+// normalized like Status: "booting" / "ready" / "failed" / "" and
+// "pending" / "running" / "ok" / "failed" / "".
+type SessionDevice struct {
+	Spec          *DeviceSpec `json:"spec,omitempty"`
+	State         string      `json:"state,omitempty"`
+	DeviceNotes   string      `json:"device_notes,omitempty"`
+	InstallStatus string      `json:"install_status,omitempty"`
+	InstallReason string      `json:"install_reason,omitempty"`
+	AppName       string      `json:"app_name,omitempty"`
+	BuildNumber   string      `json:"build_number,omitempty"`
+	CommitSHA     string      `json:"commit_sha,omitempty"`
+}
+
+// deviceStateFromAPI maps PREVIEW_DEVICE_STATE_* to a short lowercase word
+// ("booting" / "ready" / "failed"; "" for unspecified) the same way
+// statusFromAPI does for sessions: the prefix is stripped and the rest
+// lowercased, so a state added after this code was written still reaches
+// callers as a recognizable word instead of collapsing to "".
+func deviceStateFromAPI(v string) string {
+	return enumFromAPI("PREVIEW_DEVICE_STATE_", v)
+}
+
+// installStatusFromAPI maps PREVIEW_INSTALL_STATUS_* to a short word
+// ("pending" / "running" / "ok" / "failed"; "" for unspecified), forward
+// compatible like deviceStateFromAPI.
+func installStatusFromAPI(v string) string {
+	return enumFromAPI("PREVIEW_INSTALL_STATUS_", v)
+}
+
+// enumFromAPI strips prefix from a proto enum name and lowercases the rest;
+// the empty string and the *_UNSPECIFIED zero value map to "".
+func enumFromAPI(prefix, v string) string {
+	if v == "" {
+		return ""
+	}
+	v = strings.TrimPrefix(v, prefix)
+	if v == "UNSPECIFIED" {
+		return ""
+	}
+	return strings.ToLower(v)
+}
+
+func deviceFromAPI(w *rdeapi.SessionDevice) *SessionDevice {
+	if w == nil {
+		return nil
+	}
+	out := &SessionDevice{
+		State:         deviceStateFromAPI(w.State),
+		DeviceNotes:   w.DeviceNotes,
+		InstallStatus: installStatusFromAPI(w.InstallStatus),
+		InstallReason: w.InstallReason,
+		AppName:       w.AppName,
+		BuildNumber:   w.BuildNumber,
+		CommitSHA:     w.CommitSHA,
+	}
+	out.Spec = deviceSpecFromAPI(w.Spec)
+	return out
+}
+
+func deviceSpecFromAPI(w *rdeapi.DeviceSpec) *DeviceSpec {
+	if w == nil {
+		return nil
+	}
+	return &DeviceSpec{
+		Platform: w.Platform, DeviceModel: w.DeviceModel, OSVersion: w.OSVersion,
+		SystemImage: w.SystemImage, RAMMb: w.RAMMb, Cores: w.Cores, ColdBoot: w.ColdBoot,
+	}
 }
 
 // Resumable reports whether `rde claude` can resume this session: a running
@@ -142,6 +269,14 @@ type CreateSessionRequest struct {
 	AutoTerminateMinutes    *int
 	MapSavedToSessionInputs bool
 	Labels                  map[string]string
+	// DeviceSpec boots a virtual device with the session (optional).
+	DeviceSpec *DeviceSpec
+	// Artifact is an app build to install once the device is ready
+	// (optional; requires DeviceSpec).
+	Artifact *DeviceArtifact
+	// NoDevice creates the session without the device its template
+	// declares (invalid together with DeviceSpec).
+	NoDevice bool
 }
 
 // UpdateSessionRequest carries optional patch fields. Pointer fields
@@ -273,6 +408,9 @@ func (s *Service) CreateSession(ctx context.Context, workspaceID string, req Cre
 		AutoTerminateMinutes:    req.AutoTerminateMinutes,
 		MapSavedToSessionInputs: req.MapSavedToSessionInputs,
 		Labels:                  req.Labels,
+		DeviceSpec:              deviceSpecToAPI(req.DeviceSpec),
+		Artifact:                artifactToAPI(req.Artifact),
+		NoDevice:                req.NoDevice,
 	})
 	if err != nil {
 		return CreateSessionResult{}, err
@@ -346,6 +484,7 @@ type TemplateConfig struct {
 	FeatureFlags      []TemplateConfigFlag     `json:"feature_flags,omitempty"`
 	TemplateVariables []TemplateConfigVariable `json:"template_variables,omitempty"`
 	WorkspaceLinks    []SnapshotLink           `json:"workspace_links,omitempty"`
+	DeviceSpec        *DeviceSpec              `json:"device_spec,omitempty"`
 	UpdatedAt         *time.Time               `json:"updated_at,omitempty"`
 }
 
@@ -410,6 +549,7 @@ func templateConfigFromAPI(w rdeapi.TemplateConfig) TemplateConfig {
 		WorkingDirectory: w.WorkingDirectory,
 		StartupScript:    w.StartupScript,
 		WarmupScript:     w.WarmupScript,
+		DeviceSpec:       deviceSpecFromAPI(w.DeviceSpec),
 		UpdatedAt:        parseTime(w.UpdatedAt),
 	}
 	for _, i := range w.SessionInputs {
@@ -581,6 +721,23 @@ func (s *Service) DeleteTerminatedSessions(ctx context.Context, workspaceID stri
 	return s.client.DeleteTerminatedSessions(ctx, workspaceID)
 }
 
+func deviceSpecToAPI(d *DeviceSpec) *rdeapi.DeviceSpec {
+	if d == nil {
+		return nil
+	}
+	return &rdeapi.DeviceSpec{
+		Platform: d.Platform, DeviceModel: d.DeviceModel, OSVersion: d.OSVersion,
+		SystemImage: d.SystemImage, RAMMb: d.RAMMb, Cores: d.Cores, ColdBoot: d.ColdBoot,
+	}
+}
+
+func artifactToAPI(a *DeviceArtifact) *rdeapi.DeviceArtifact {
+	if a == nil {
+		return nil
+	}
+	return &rdeapi.DeviceArtifact{URL: a.URL, AppName: a.AppName, BuildNumber: a.BuildNumber, CommitSHA: a.CommitSHA}
+}
+
 func sessionFromAPI(w rdeapi.Session) Session {
 	out := Session{
 		ID:                   w.ID,
@@ -605,6 +762,7 @@ func sessionFromAPI(w rdeapi.Session) Session {
 		Labels:               w.Labels,
 		OwnerType:            w.OwnerType,
 		OwnerID:              w.OwnerID,
+		Device:               deviceFromAPI(w.Device),
 	}
 	out.AgentSessionStatusUpdatedAt = parseTime(w.AgentSessionStatusUpdatedAt)
 	out.AutoTerminateAt = parseTime(w.AutoTerminateAt)

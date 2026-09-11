@@ -141,6 +141,42 @@ func renderSessionDetail(w io.Writer, sess internalrde.Session) error {
 	if sess.PersistentDiskStatus != "" {
 		ew.F("%s%s\n", lbl("Persistent disk:"), diskStatusText(s, sess.PersistentDiskStatus))
 	}
+	if d := sess.Device; d != nil {
+		what := "device"
+		if d.Spec != nil {
+			what = d.Spec.Summary()
+		}
+		state := d.State
+		if state == "" {
+			state = "not running"
+		}
+		ew.F("%s%s — %s\n", lbl("Device:"), what, deviceStateStyle(s, d.State).Render(state))
+		guide := "bitrise-cli rde device-guide"
+		if d.Spec != nil && (d.Spec.Platform == "ios" || d.Spec.Platform == "android") {
+			guide += " " + d.Spec.Platform
+		}
+		ew.F("%s%s\n", lbl("Device guide:"), guide)
+		if d.DeviceNotes != "" {
+			ew.F("%s%s\n", lbl("Device notes:"), d.DeviceNotes)
+		}
+		if d.AppName != "" || d.InstallStatus != "" {
+			app := d.AppName
+			if app == "" {
+				app = "app"
+			}
+			if d.BuildNumber != "" {
+				app += " #" + d.BuildNumber
+			}
+			install := d.InstallStatus
+			if install == "" {
+				install = "not started"
+			}
+			if d.InstallStatus == "failed" && d.InstallReason != "" {
+				install += ": " + d.InstallReason
+			}
+			ew.F("%s%s — install %s\n", lbl("Device app:"), app, install)
+		}
+	}
 	if sess.AutoTerminateAt != nil {
 		ew.F("%s%s\n", lbl("Auto-terminates at:"), formatTime(sess.AutoTerminateAt))
 	} else if sess.AutoTerminateMinutes > 0 {
