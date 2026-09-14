@@ -80,12 +80,12 @@ efficiently, letting a human watch, recovery, and what never to do.
 
 Boot a virtual device with the session by passing --device-platform ios (an
 iOS simulator on a macOS stack) or android (an Android emulator on a dockerless
-Android Linux stack such as ubuntu-resolute-26.04-bitrise-2026-android; the
-Docker-based linux-docker-* stacks are rejected). On a template-less session
---stack/--machine-type may then be omitted: the deployment's known-good pair
-for the platform applies; with --template the template's stack and machine
-type are used and must fit the platform. --cluster is never needed with a
-device.
+Android Linux stack). Prefer omitting --stack/--machine-type: the deployment's
+known-good pair for the platform applies (the guide says which stacks fit when
+you must name one); with --template the template's stack and machine type are
+used and must fit the platform. --cluster is never needed with a device.
+--device-model is a screen profile (size, density), not that phone's
+firmware; --device-system-image picks the Android API level.
 
 A template may declare a device of its own ('rde template view' shows it as
 "Device:"). Sessions created from such a template boot that device as
@@ -102,7 +102,9 @@ app with
 inline ends up in your shell history and in the process arguments (readable
 by other users via 'ps'). "running" does not mean the device is usable —
 'session view' shows the device state; wait for "ready" (--wait does so for
-you when a device was requested).
+you when a device was requested) and touch nothing on the VM while it is
+"booting". A "failed" device is not always unusable: 'session view' prints the
+device notes, and the guide says which failures leave the device drivable.
 
 Example values:
   --input key=value
@@ -299,9 +301,9 @@ Example values:
 	c.Flags().IntVar(&autoTerminateMinutes, "auto-terminate-minutes", 0, "minutes until auto-termination; 0 disables; omitted uses the backend default (~5 days)")
 	c.Flags().BoolVar(&mapSavedInputs, "map-saved-inputs", false, "auto-fill template session inputs from the user's saved inputs (matched by key)")
 	c.Flags().StringVar(&devicePlatform, "device-platform", "", "boot a virtual device with the session: ios (simulator, macOS stack) or android (emulator, Linux stack); --stack/--machine-type may then be omitted; read 'rde device-guide' first")
-	c.Flags().StringVar(&deviceModel, "device-model", "", "device to boot: simctl device type (\"iPhone 16\") or emulator device profile (\"pixel_7\"); default: the template's device model, else the platform default")
+	c.Flags().StringVar(&deviceModel, "device-model", "", "device to boot: simctl device type (\"iPhone 16\") or emulator device profile (\"pixel_7\") — a screen profile, not that phone's firmware; default: the template's device model, else the platform default")
 	c.Flags().StringVar(&deviceOSVersion, "device-os-version", "", "iOS only: an iOS version (\"18.2\") or simctl runtime id — anything else is rejected; default: the template's, else newest installed")
-	c.Flags().StringVar(&deviceSystemImage, "device-system-image", "", "Android only: sdkmanager system image package (\"system-images;android-34;google_apis;x86_64\"); default: the template's, else the platform default")
+	c.Flags().StringVar(&deviceSystemImage, "device-system-image", "", "Android only: the API-level knob — sdkmanager system image package (\"system-images;android-34;google_apis;x86_64\"); default: the template's, else the platform default")
 	c.Flags().BoolVar(&noDevice, "no-device", false, "create without the template's device (ignored when the template declares none)")
 	c.Flags().StringVar(&artifactURL, "artifact-url", "", "app build to install once the device is ready: absolute http(s) URL of a zipped simulator .app (iOS) or an .apk (Android); requires --device-platform or a --template that declares a device (a signed URL is visible in shell history and process args — prefer --artifact-url-stdin)")
 	c.Flags().BoolVar(&artifactURLStdin, "artifact-url-stdin", false, "read the --artifact-url value from stdin instead of the command line; keeps signed URLs out of shell history and process args; requires --device-platform")

@@ -38,12 +38,12 @@ efficiently, letting a human watch, recovery, and what never to do.
 
 Boot a virtual device with the session by passing --device-platform ios (an
 iOS simulator on a macOS stack) or android (an Android emulator on a dockerless
-Android Linux stack such as ubuntu-resolute-26.04-bitrise-2026-android; the
-Docker-based linux-docker-* stacks are rejected). On a template-less session
---stack/--machine-type may then be omitted: the deployment's known-good pair
-for the platform applies; with --template the template's stack and machine
-type are used and must fit the platform. --cluster is never needed with a
-device.
+Android Linux stack). Prefer omitting --stack/--machine-type: the deployment's
+known-good pair for the platform applies (the guide says which stacks fit when
+you must name one); with --template the template's stack and machine type are
+used and must fit the platform. --cluster is never needed with a device.
+--device-model is a screen profile (size, density), not that phone's
+firmware; --device-system-image picks the Android API level.
 
 A template may declare a device of its own ('rde template view' shows it as
 "Device:"). Sessions created from such a template boot that device as
@@ -60,7 +60,9 @@ app with
 inline ends up in your shell history and in the process arguments (readable
 by other users via 'ps'). "running" does not mean the device is usable —
 'session view' shows the device state; wait for "ready" (--wait does so for
-you when a device was requested).
+you when a device was requested) and touch nothing on the VM while it is
+"booting". A "failed" device is not always unusable: 'session view' prints the
+device notes, and the guide says which failures leave the device drivable.
 
 Example values:
   --input key=value
@@ -104,10 +106,10 @@ bitrise-cli rde session create NAME [flags]
       --auto-terminate-minutes int   minutes until auto-termination; 0 disables; omitted uses the backend default (~5 days)
       --cluster string               target cluster name (use 'rde machine-type list --stack STACK_ID' to find candidates when the stack + machine type combo is ambiguous)
       --description string           session description
-      --device-model string          device to boot: simctl device type ("iPhone 16") or emulator device profile ("pixel_7"); default: the template's device model, else the platform default
+      --device-model string          device to boot: simctl device type ("iPhone 16") or emulator device profile ("pixel_7") — a screen profile, not that phone's firmware; default: the template's device model, else the platform default
       --device-os-version string     iOS only: an iOS version ("18.2") or simctl runtime id — anything else is rejected; default: the template's, else newest installed
       --device-platform string       boot a virtual device with the session: ios (simulator, macOS stack) or android (emulator, Linux stack); --stack/--machine-type may then be omitted; read 'rde device-guide' first
-      --device-system-image string   Android only: sdkmanager system image package ("system-images;android-34;google_apis;x86_64"); default: the template's, else the platform default
+      --device-system-image string   Android only: the API-level knob — sdkmanager system image package ("system-images;android-34;google_apis;x86_64"); default: the template's, else the platform default
       --feature-flag stringArray     name of a feature flag to enable on the session (repeatable)
   -h, --help                         help for create
       --input stringArray            session input as key=value (repeatable)

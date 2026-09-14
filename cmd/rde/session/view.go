@@ -159,6 +159,15 @@ func renderSessionDetail(w io.Writer, sess internalrde.Session) error {
 		if d.DeviceNotes != "" {
 			ew.F("%s%s\n", lbl("Device notes:"), d.DeviceNotes)
 		}
+		// The two states agents get wrong: a boot in progress invites
+		// "helping" (which breaks it), and a failure reads as "dead" even when
+		// only the stream is (the notes say). Say so where the state is read.
+		switch d.State {
+		case "booting":
+			ew.F("%s%s\n", lbl(""), "booting — do nothing on the VM; the device reports ready or failed on its own (see the guide for the time budget)")
+		case "failed":
+			ew.F("%s%s\n", lbl(""), "failed — read the device notes: a stream-only failure leaves the device drivable over adb / simctl (guide §6)")
+		}
 		if d.AppName != "" || d.InstallStatus != "" {
 			app := d.AppName
 			if app == "" {
