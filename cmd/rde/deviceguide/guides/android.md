@@ -47,6 +47,11 @@ adb shell input text 'hello%sworld'            # %s = space; focus a field first
 adb shell input keyevent KEYCODE_HOME          # KEYCODE_BACK, KEYCODE_APP_SWITCH, KEYCODE_ENTER …
 ```
 
+Other tooling is welcome on this emulator — Espresso / instrumentation
+tests, Appium's UiAutomator2 driver, Maestro, your own `adb` scripts — as
+long as it drives **this** device (it is the only adb device, so the default
+serial is right) and never reboots, wipes or recreates it (see Do not).
+
 Screen size: `adb shell wm size` (e.g. `Physical size: 1080x2400`) — the
 *physical* portrait size; it does not change under rotation, so in landscape
 swap width and height when you compute tap coordinates (or read `bounds` from

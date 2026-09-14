@@ -221,11 +221,24 @@ and when a human needs to see, point them at the device view (§5).
 
 ## 4. Drive the device
 
+**Use any tool you like — on the device you were given.** The recipes below
+are the zero-install baseline: they use only what every device VM already has
+(serve-sim, `xcrun simctl`, `adb`, `uiautomator`). Maestro, Appium, XCUITest,
+idb, Espresso, your own scripts — all fine, and if the session's template
+installs such tooling or its description says how the app is tested, follow
+that. The one rule is the device itself: **drive the simulator / emulator
+that is already booted (`bitrise-preview` / the single adb device) and never
+replace, erase, reboot or duplicate it** (§6). Tools that default to creating
+their own simulator or booting a specific device type (Detox, some Appium
+setups) must be pointed at the existing one (its UDID / serial) — otherwise
+they run happily on a device nobody streams, while the viewer and
+`device.state` keep following the one you abandoned.
+
 Platform specifics live in the iOS and Android guides
 (`bitrise_devenv_device_guide` with `ios` / `android`; CLI `bitrise-cli rde
-device-guide ios|android`). The shape is the same on both:
+device-guide ios|android`). The baseline recipes have the same shape on both:
 
-- **Accessibility tree, not pixels.** iOS: `curl -s
+- **Prefer the accessibility tree over pixels.** iOS: `curl -s
   http://127.0.0.1:3200/helper/<UDID>/ax` (labels, types, frames, ids as
   JSON of the frontmost app — the home screen included). Android: `adb
   exec-out uiautomator dump /dev/tty` (XML with bounds/text/resource-id). One
@@ -271,7 +284,12 @@ its streamer process. **Never**:
   Simulator.app window may be visible on the VM desktop — leave it alone and
   use the device's own API (§4);
 - run the orchestrator (`~/bin/simulator-up.sh` / `~/bin/emulator-up.sh`)
-  while the device is `BOOTING`.
+  while the device is `BOOTING`;
+- let a test tool do any of the above for you: point Detox / Appium /
+  Maestro / your scripts at the existing device (UDID or serial) rather than
+  letting them create, erase, reboot or "reset" one. Controlling the running
+  device with other tooling is fine and supported; changing which device is
+  running is what breaks the stream, the viewer and `device.state`.
 
 `FAILED` is a verdict on **this boot**, and only some verdicts mean the device
 is unusable. Read `device.device_notes`:

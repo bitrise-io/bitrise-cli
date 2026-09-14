@@ -81,9 +81,15 @@ $S gesture -d "$UDID" '{"type":"begin","x":0.5,"y":0.8}'   # then move/end event
 
 Each invocation is a Node process (~0.2–0.8 s); batch several in one
 `execute` call. `$S --help` lists more (rotate, permissions, camera, …). Never
-pass `--host 0.0.0.0` to serve-sim: it exposes a shell-exec route. Alternatives:
-`xcrun simctl` has **no** tap/type; `idb ui tap/text` works if you installed
-idb.
+pass `--host 0.0.0.0` to serve-sim: it exposes a shell-exec route.
+
+Other tooling is welcome on this simulator — `idb` (`pipx install fb-idb` +
+`idb_companion`), XCUITest / `xcodebuild test -destination "id=$UDID"`,
+Appium's XCUITest driver, Maestro — as long as it targets **this UDID**.
+`xcrun simctl` itself has **no** tap/type. Pass the UDID explicitly
+(`--udid`, `appium:udid`, `-destination id=`); tools that pick or create a
+device by name/type will otherwise boot a second simulator that nobody
+streams.
 
 Troubleshooting: `No serve-sim server running` while `lsof -iTCP:3200` shows a
 listener means your shell's `TMPDIR` is wrong (see above), not a dead server.
