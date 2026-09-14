@@ -47,6 +47,7 @@ bitrise-cli rde session [flags]
 * [bitrise-cli rde session notifications](bitrise-cli_rde_session_notifications.md)	 - List notifications emitted by a session
 * [bitrise-cli rde session open-vnc](bitrise-cli_rde_session_open-vnc.md)	 - Open a session's VNC endpoint in the OS-default viewer
 * [bitrise-cli rde session restore](bitrise-cli_rde_session_restore.md)	 - Restore a terminated session (re-provisions its VM from the persistent disk)
+* [bitrise-cli rde session ssh](bitrise-cli_rde_session_ssh.md)	 - Print SSH connection details (command, host, port, user, password) for a session
 * [bitrise-cli rde session terminate](bitrise-cli_rde_session_terminate.md)	 - Terminate a running session but keep it for a later restore
 * [bitrise-cli rde session update](bitrise-cli_rde_session_update.md)	 - Update a session's name, description, auto-terminate duration, or labels
 * [bitrise-cli rde session upload](bitrise-cli_rde_session_upload.md)	 - Upload a local file or directory into a session

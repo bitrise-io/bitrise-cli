@@ -38,6 +38,7 @@ To boot an iOS simulator or Android emulator with a session, read
 		newUploadCmd(),
 		newDownloadCmd(),
 		newVNCCmd(),
+		newSSHCmd(),
 		newOpenVNCCmd(),
 	)
 	return c

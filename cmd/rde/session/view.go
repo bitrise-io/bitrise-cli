@@ -167,6 +167,10 @@ func renderSessionDetail(w io.Writer, sess internalrde.Session) error {
 			ew.F("%s%s\n", lbl(""), "booting — do nothing on the VM; the device reports ready or failed on its own (see the guide for the time budget)")
 		case "failed":
 			ew.F("%s%s\n", lbl(""), "failed — read the device notes: a stream-only failure leaves the device drivable over adb / simctl (guide §6)")
+		case "ready":
+			if d.DeviceNotes != "" {
+				ew.F("%s%s\n", lbl(""), "ready, with notes — what booted differs from the request; the device spec above echoes what you asked for, the notes say what you got")
+			}
 		}
 		if d.AppName != "" || d.InstallStatus != "" {
 			app := d.AppName

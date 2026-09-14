@@ -270,6 +270,13 @@ Example values:
 					}
 				}
 				res.Session = ready
+				// A READY device with notes is a substituted device (an
+				// uninstalled system image or iOS runtime, clamped sizing):
+				// the device spec keeps echoing the request, so say it loudly
+				// where the caller is looking, in both output modes.
+				if ready.Device != nil && ready.Device.State == "ready" && ready.Device.DeviceNotes != "" && !cmdutil.IsQuiet(cmd) {
+					_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "WARNING: the device booted with notes — what you got differs from what you asked for: %s\n", ready.Device.DeviceNotes)
+				}
 				deviceFailed := ready.Device != nil && ready.Device.State == "failed"
 				if ready.Status != "running" || deviceFailed {
 					if renderErr := output.Render(cmd.OutOrStdout(), format, res, renderCreateResult); renderErr != nil {

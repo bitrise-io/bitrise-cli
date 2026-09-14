@@ -21,7 +21,7 @@ known-good pair for the platform.
 MCP (`bitrise_devenv_create`):
 
 ```json
-{ "name": "ios-check", "device_spec": { "platform": "ios", "device_model": "iPhone 16", "os_version": "18.2" } }
+{ "name": "ios-check", "device_spec": { "platform": "ios", "device_model": "iPhone 16" } }
 ```
 
 ```json
@@ -30,7 +30,11 @@ MCP (`bitrise_devenv_create`):
   "artifact": { "url": "https://…signed…/app.apk", "app_name": "Demo" } }
 ```
 
-CLI: `bitrise-cli rde session create ios-check --device-platform ios --device-model "iPhone 16" --device-os-version 18.2`
+CLI: `bitrise-cli rde session create ios-check --device-platform ios --device-model "iPhone 16"`
+
+(The values are illustrative. Pin `os_version` / `system_image` only when you
+need a specific OS, and then check what booted — see §2: a version the stack
+does not have installed is substituted, not rejected.)
 
 REST: `POST /v1/workspaces/{ws}/sessions` with the same fields (`device_spec`,
 `artifact`).
@@ -65,8 +69,12 @@ Rules:
   not Pixel firmware. Do not answer questions about a real device's stock
   behaviour from it. `system_image` is the Android **API-level** knob
   (`"system-images;android-34;google_apis;x86_64"`; empty = the stack's
-  default). If the image you asked for is not installed the VM falls back and
-  says so in `device.device_notes`; a *defaulted* image produces no note.
+  default). **The platform cannot list a stack's installed images or iOS
+  runtimes before boot**, and an explicitly requested `system_image` /
+  `os_version` that is not installed is *substituted*, not rejected: the
+  device boots the stack's newest, `device.device_notes` says so, and
+  `device.spec` keeps echoing what you asked for. A *defaulted* image
+  produces no note. If the exact OS matters, verify on the device (§2).
 - The platform must be enabled for the workspace: Android rides the
   `enable-rde-android-emulator` flag, iOS `enable-rde-ios-simulator`. Without
   it every front door answers `FailedPrecondition` ("The … capability is not
@@ -74,18 +82,21 @@ Rules:
   just cannot boot that device. Ask an admin; retrying will not help.
 - Prefer **omitting** `stack_id` / `machine_type` — the deployment default is
   the known-good pair. If you name them they must fit the platform or the
-  request is rejected with the reason: iOS needs a macOS stack (device
-  sessions are validated on macOS 26 stacks — `os_version` 26 in
-  `bitrise_devenv_list_stacks`, e.g. `osx-xcode-26.4.x` and newer; on the
-  Xcode 16.x / macOS 15 stacks the iOS streamer crashes and the device ends
-  `FAILED`); Android needs a *dockerless* Android stack such as
+  request is rejected with the reason: iOS needs a macOS stack whose
+  **`os_version` field is 26 or newer** in `bitrise_devenv_list_stacks` /
+  `rde stack list` — judge by that field, not by the id: the Xcode 26.0–26.3
+  stacks are macOS 15 despite their names, and on macOS 15 the iOS streamer
+  crashes and the device ends `FAILED` (§6). Android needs a *dockerless*
+  Android stack such as
   `ubuntu-resolute-26.04-bitrise-2026-android` (the Docker-based
   `linux-docker-*` and `ubuntu-noble-24.04-*` stacks keep the SDK inside a
   container and are rejected); 4 vCPU / 6–8 GB minimum. `cluster` is never
   needed with a `device_spec`; the backend picks one.
-- If creation fails with `stack is not available: <id>` **without** you
-  naming a stack, that deployment's device default is stale. Recover once,
-  explicitly: `bitrise_devenv_list_stacks` → pick a stack as above →
+- If a zero-config create fails with *"this deployment's default … device
+  machine (stack …, machine type …) is not available"* (older backends:
+  `stack is not available: <id>` for a stack you never named), that
+  deployment's device default is stale. Recover once, explicitly:
+  `bitrise_devenv_list_stacks` → pick a stack as above →
   `bitrise_devenv_list_machine_types` → a machine type whose `cluster_name`
   is one of that stack's `cluster_names` → pass both. Do not retry the
   zero-config create; it will fail the same way.
@@ -105,13 +116,13 @@ Rules:
 ## 2. Wait for the device — "running" is not "ready"
 
 The session turns `running` when its startup script begins; the device boots
-in the background. Measured: an Android cold boot reaches READY ~2.5 minutes
-after `running`; an iOS simulator ~1 minute after `running`. The VM
-itself is the slow part on macOS — a macOS session can take 5–10 minutes to
-reach `running` at all — so budget per platform: Android ~10 minutes and iOS
-~15 minutes from `create` to READY, of which at most ~8 minutes may be spent
-`BOOTING`. The VM reports `FAILED` on its own when a boot gives up (Android
-stops waiting after 10 minutes); wait for that verdict.
+in the background. **Typical** (measured): Android READY 70–150 s after
+`running`; iOS READY 45–80 s after `running`, 76 s – 2 m 20 s from `create`.
+**Ceilings** (treat as stuck only beyond these): a macOS VM can take 5–10
+minutes to reach `running` at all; budget Android ~10 minutes and iOS ~15
+minutes from `create` to READY, of which at most ~8 minutes `BOOTING`. The
+VM reports `FAILED` on its own when a boot gives up (Android stops waiting
+after 10 minutes); wait for that verdict rather than acting on a budget.
 
 **While `device.state` is `BOOTING`, do nothing.** Do not run the
 orchestrator, do not restart anything on the VM, do not delete and recreate.
@@ -139,15 +150,26 @@ values `PREVIEW_INSTALL_STATUS_UNSPECIFIED` (not fired yet) →
 `PREVIEW_INSTALL_STATUS_FAILED` (`device.install_reason` says why); the CLI
 shows `pending` / `running` / `ok` / `failed`. A failed install is final for
 this boot and leaves the device usable — install the app yourself (§4), or
-restore the session to re-run it. A healthy install is not quick — a single
-attempt may hold the VM's exec channel for up to 10 minutes, and the
-installer retries — so give it ~12 minutes past READY before treating it as
+restore the session to re-run it. **The installer also launches the app**
+(Android: the package's launcher activity; iOS: the bundle id), so expect it
+in the foreground when `install_status` turns OK — relaunch it yourself if
+you need a clean start. Typical: OK ~15 s after READY. Ceiling: a single
+attempt may hold the VM's exec channel for up to 10 minutes and the
+installer retries, so give it ~12 minutes past READY before treating it as
 lost; keep polling the session while you wait, the poll itself is what
 re-fires an install whose runner was lost.
 
-`device.device_notes` may also carry *degradations* (e.g. "requested system
-image X not installed; using Y") on a READY device — read them, they tell you
-what you actually got.
+**`device.spec` is the request, not the result.** On a READY device
+`device.device_notes` carries the *degradations* — "requested system image X
+is not installed on this stack; using Y", "requested iOS runtime X is not
+installed; using the newest available", RAM/core clamps — and that prose is
+the only structured-API signal that what booted differs from what you asked
+for; the spec keeps echoing the request. Diff the notes against your request
+before trusting the OS version, and when it matters ground-truth on the
+device: `adb shell getprop ro.build.version.release` /
+`xcrun simctl list devices booted` (the runtime is in the device's
+section header). The CLI's `session view` / `create --wait` flag a READY
+device with notes explicitly.
 
 ## 3. Connect
 
@@ -159,12 +181,17 @@ Two ways:
    guides works this way. Right after `running`, `execute` may answer "SSH is
    not ready" for a few minutes even though the session read already shows
    credentials — poll `bitrise_devenv_get` until `ssh_connection_open` is
-   true instead of retrying blind.
+   true instead of retrying blind. If your own tool calls have a time cap,
+   poll in a loop rather than one long blocking wait (`rde session create
+   --wait --wait-timeout 20m` can outlive the cap that kills your call).
 2. **SSH tunnel to the device ports** from your machine (richest; needs `ssh`
    locally). `ssh_address` is a ready-made command (`ssh <user>@<host> -p
-   <port>`) and `ssh_password` the password; both are on `bitrise_devenv_get`
-   / `rde session view` — the list call does **not** carry them or the port
-   map. `template_snapshot.service_ports` names the ports, the same on both
+   <port>`) and `ssh_password` the password. MCP: both are on
+   `bitrise_devenv_get` (the list call carries neither, nor the port map).
+   CLI: `rde session view` deliberately hides the password — use
+   `bitrise-cli rde session ssh SESSION_ID` (command + password;
+   `--password-only` for scripts; `--output json` for host/port/user/password).
+   `template_snapshot.service_ports` names the ports, the same on both
    platforms: `device-web-view` is the browser view of the device, forwarded
    to **local 3200** (the VM side differs: serve-sim on 3200 for iOS,
    ws-scrcpy on 8000 for Android); Android adds `adb`.
@@ -184,6 +211,7 @@ the password through `SSH_ASKPASS`:
 printf '#!/bin/sh\nprintf %%s "$RDE_SSH_PASSWORD"\n' > /tmp/rde-askpass && chmod +x /tmp/rde-askpass
 RDE_SSH_PASSWORD='<ssh_password>' SSH_ASKPASS=/tmp/rde-askpass SSH_ASKPASS_REQUIRE=force \
   scp -o StrictHostKeyChecking=no -P <port> <user>@<host>:/tmp/shot.png .
+# CLI: RDE_SSH_PASSWORD="$(bitrise-cli rde session ssh SESSION_ID --password-only)"
 ```
 
 Do **not** base64 binaries through `execute` output: it has corrupted files
