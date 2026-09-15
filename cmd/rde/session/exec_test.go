@@ -207,3 +207,94 @@ func TestExecCmd_QuietSuppressesNoticeNotWarning(t *testing.T) {
 		t.Errorf("-q must not suppress the skip warning:\n%s", stderr)
 	}
 }
+
+// newRenderTestCmd returns a command with captured stdout/stderr so the
+// render helpers can be exercised without a network.
+func newRenderTestCmd() (*cobra.Command, *strings.Builder, *strings.Builder) {
+	var out, errOut strings.Builder
+	c := &cobra.Command{Use: "exec"}
+	c.SetOut(&out)
+	c.SetErr(&errOut)
+	return c, &out, &errOut
+}
+
+// TestRenderExecResult_JSONPropagatesExitCode pins the bug where --output json
+// returned nil for a failed remote command: the JSON envelope must still be the
+// only thing on stdout, and the call must return an error (→ exit 1) with the
+// explanation on stderr.
+func TestRenderExecResult_JSONPropagatesExitCode(t *testing.T) {
+	c, out, errOut := newRenderTestCmd()
+	res := internalrde.ExecResult{ExitCode: 3, Stdout: "partial", Stderr: "boom"}
+
+	err := renderExecResult(c, output.JSON, res, "")
+	if err == nil {
+		t.Fatal("expected an error for a non-zero remote exit in JSON mode")
+	}
+	if !strings.Contains(err.Error(), "exited with status 3") {
+		t.Errorf("error = %q, want it to name status 3", err)
+	}
+	if !strings.Contains(out.String(), `"exit_code": 3`) || strings.Contains(out.String(), "remote command exited") {
+		t.Errorf("stdout must carry only the JSON envelope, got %q", out.String())
+	}
+	if !strings.Contains(errOut.String(), "remote command exited with status 3") {
+		t.Errorf("stderr = %q, want the exit explanation", errOut.String())
+	}
+	if !c.SilenceErrors {
+		t.Error("cobra error echo must be silenced so the message is not printed twice")
+	}
+}
+
+func TestRenderExecResult_JSONZeroExitIsNil(t *testing.T) {
+	c, out, errOut := newRenderTestCmd()
+	if err := renderExecResult(c, output.JSON, internalrde.ExecResult{Stdout: "ok"}, ""); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(out.String(), `"exit_code": 0`) {
+		t.Errorf("stdout = %q, want JSON envelope", out.String())
+	}
+	if errOut.String() != "" {
+		t.Errorf("stderr = %q, want empty", errOut.String())
+	}
+}
+
+func TestRenderExecResult_HumanAppendsHint(t *testing.T) {
+	c, out, errOut := newRenderTestCmd()
+	res := internalrde.ExecResult{ExitCode: 127, Stderr: "bash: cd x && ls: command not found\n"}
+	err := renderExecResult(c, output.Human, res, shellHintText)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if out.String() != "" {
+		t.Errorf("stdout = %q, want empty", out.String())
+	}
+	if !strings.Contains(errOut.String(), "command not found") || !strings.Contains(errOut.String(), "pass --shell before '--'") {
+		t.Errorf("stderr = %q, want remote stderr followed by the --shell hint", errOut.String())
+	}
+}
+
+func TestShellHint(t *testing.T) {
+	cases := []struct {
+		name string
+		args []string
+		sh   bool
+		code int
+		want bool
+	}{
+		{"single multi-word token, 127, no --shell → hint", []string{"cd x && ls"}, false, 127, true},
+		{"single token with pipe, 127 → hint", []string{"ls|head"}, false, 127, true},
+		{"single token with $(), 127 → hint", []string{"echo $(id)"}, false, 127, true},
+		{"--shell set → no hint", []string{"cd x && ls"}, true, 127, false},
+		{"exit 1 → no hint", []string{"cd x && ls"}, false, 1, false},
+		{"exit 0 → no hint", []string{"cd x && ls"}, false, 0, false},
+		{"several tokens → no hint", []string{"cd", "x", "&&", "ls"}, false, 127, false},
+		{"plain missing binary → no hint", []string{"nosuchtool"}, false, 127, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := shellHint(tc.args, tc.sh, tc.code) != ""
+			if got != tc.want {
+				t.Errorf("shellHint(%q, shell=%v, %d) hint=%v, want %v", tc.args, tc.sh, tc.code, got, tc.want)
+			}
+		})
+	}
+}
