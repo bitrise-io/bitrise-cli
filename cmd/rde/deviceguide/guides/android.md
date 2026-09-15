@@ -83,7 +83,7 @@ adb shell monkey -p com.example.app -c android.intent.category.LAUNCHER 1
 adb shell am start -n com.example.app/.MainActivity   # or an explicit activity
 adb shell am force-stop com.example.app
 adb exec-out screencap -p > /tmp/shot.png
-adb logcat -d -s MyApp:V                              # -d dumps and exits (MCP execute caps a call at 2 min; CLI exec at 10 min by default)
+adb logcat -d -s MyApp:V                              # -d dumps and exits (execute caps: hosted MCP ~90 s, local MCP 2 min, CLI exec 10 min by default)
 adb shell settings put system accelerometer_rotation 0; adb shell settings put system user_rotation 1   # rotate: 0 portrait, 1 landscape (90°), 2 upside-down, 3 landscape (270°)
 adb shell cmd uimode night yes                        # dark mode
 ```
@@ -110,7 +110,8 @@ localisation result from that readback.
 Two ways that work:
 
 - **Per app** (usually what you need; API 33+, which every image here is):
-  `adb shell cmd locale set-app-locales com.example.app --locale-tags ar-SA`
+  `adb shell cmd locale set-app-locales com.example.app --locales ar-SA`
+  (comma-separate several tags; the flag is `--locales`, not `--locale-tags`)
   then `am force-stop` and relaunch; `cmd locale get-app-locales
   com.example.app` reads it back. Confirm from a fresh `uiautomator dump`
   that the strings changed — that, not the readback, is the evidence.

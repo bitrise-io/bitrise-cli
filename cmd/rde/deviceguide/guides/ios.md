@@ -37,11 +37,13 @@ alone.
 - **XcodeGen** (`xcodegen`) is installed — the way from loose Swift sources
   to a buildable project: write `project.yml`, `xcodegen generate`, then
   `xcodebuild -scheme App -destination "id=$UDID" build` (or `test`). A
-  single-file SwiftUI app also builds with no project at all: `xcrun swiftc
-  -sdk "$(xcrun --sdk iphonesimulator --show-sdk-path)" -target
-  arm64-apple-ios17.0-simulator -parse-as-library -emit-executable -o
-  App.app/App main.swift`, add an `Info.plist` (CFBundleIdentifier,
-  CFBundleExecutable), then `xcrun simctl install "$UDID" App.app`.
+  single-file SwiftUI app also builds with no project at all: `mkdir -p
+  App.app && xcrun swiftc -sdk "$(xcrun --sdk iphonesimulator
+  --show-sdk-path)" -target arm64-apple-ios17.0-simulator -parse-as-library
+  -emit-executable -o App.app/App main.swift` (swiftc does not create the
+  bundle directory), add `App.app/Info.plist` (CFBundleIdentifier,
+  CFBundleExecutable, MinimumOSVersion), then `xcrun simctl install
+  "$UDID" App.app`.
 - Python 3.13 (asdf) — `pipx install fb-idb` works if you want the `idb`
   client; `idb_companion` is not pre-installed (Homebrew 6 requires
   `brew tap facebook/fb && brew trust facebook/fb && brew install
