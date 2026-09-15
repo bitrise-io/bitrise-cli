@@ -4,8 +4,14 @@
 An RDE **device session** is an ordinary RDE session that boots a virtual
 device: an **Android emulator** (Linux stack) or an **iOS simulator** (macOS
 stack). You get a full development VM *plus* a booted device you drive over
-`adb` / `xcrun simctl` / serve-sim, and a human can watch it in the browser.
-This guide is the know-how: create, know when it is ready, connect, drive it
+`adb` / `xcrun simctl` / serve-sim, and a human *can* watch it in the browser
+— but nobody has to: a device session is equally the right tool for
+unattended, batch and CI-style work (screenshot matrices, UI test runs,
+version sweeps). **Never boot your own simulator or emulator on a bare
+session instead** — you would rebuild the device lifecycle, readiness signal
+and viewer this session already gives you, and nobody else could inspect the
+result. Ask for the device with `device_spec` / `--device-platform` and drive
+it as below. This guide is the know-how: create, know when it is ready, connect, drive it
 efficiently, and what never to do. The platform recipes are in the iOS and
 Android guides — MCP: `bitrise_devenv_device_guide` with `guide: "ios"` /
 `"android"` (or the resources `bitrise-devenv://guides/device-sessions/ios` /
@@ -16,7 +22,10 @@ device-guide ios|android`.
 
 Create a session with a `device_spec` (and optionally an `artifact`). Nothing
 else is required — stack, machine type and cluster default to the deployment's
-known-good pair for the platform.
+known-good pair for the platform. Omit stack **and** machine type together:
+with a device, naming exactly one of them is rejected (a default under a
+caller's choice is a pairing nobody chose); name both only when you must pin
+them, and then they must fit the platform (iOS: a macOS 26+ stack).
 
 MCP (`bitrise_devenv_create`):
 
@@ -125,7 +134,9 @@ way `stack_id` / `machine_type` do:
 
 The session turns `running` when its startup script begins; the device boots
 in the background. **Typical** (measured): Android READY 60–150 s after
-`running`; iOS READY 40–80 s after `running`, ~60 s – 2 m 20 s from `create`.
+`running` — but under load single boots of ~8 minutes have been observed, so
+budget by the ceiling, not the typical; iOS READY 40–80 s after `running`,
+~60 s – 2 m 20 s from `create`.
 **Ceilings** (treat as stuck only beyond these): a macOS VM can take 5–10
 minutes to reach `running` at all; budget Android ~10 minutes and iOS ~15
 minutes from `create` to READY, of which at most ~8 minutes `BOOTING`. The
@@ -186,9 +197,15 @@ Two ways:
 1. **In-band through `execute`** (`bitrise_devenv_execute` / `bitrise-cli rde
    session exec`) — the agent default. It runs a login shell on the VM and
    returns text. **The time cap differs per surface**: `bitrise_devenv_execute`
-   has a hard 2-minute limit per call (past it the call fails with a deadline
-   error and the command is cancelled); `rde session exec` defaults to 10
-   minutes, `--timeout 20m` raises it and `--timeout 0` removes it. Chunk
+   on the hosted MCP server is cut at ~90 s per call (the proxy in front of
+   it answers **504 Gateway Timeout** at ~100 s, so the server stops first
+   and tells you); a locally-run MCP server allows 2 minutes; `rde session
+   exec` defaults to 10 minutes, `--timeout 20m` raises it and `--timeout 0`
+   removes it. **A 504 or deadline error does not mean the command did not
+   run** — it may have completed or still be running on the VM. Before
+   retrying anything that mutates state (creating a simulator, installing,
+   writing files) check with a read-only command what already happened;
+   agents that retried blind ended up with duplicate simulators. Chunk
    work to the cap you actually have — on MCP, background anything longer
    (`nohup … > /tmp/x.log 2>&1 &`) and poll the log. Every recipe in the
    platform guides works this way. Right after `running`, `execute` may answer "SSH is
@@ -214,10 +231,14 @@ Two ways:
    - iOS: `-L 3200:127.0.0.1:3200` gives you serve-sim's HTTP/WS API (stream,
      `/ax`, gestures) and the web view.
 
-**Getting a file off the VM** (a screenshot, a log): `bitrise_devenv_download`
-/ `bitrise-cli rde session download` when the deployment has a file store; if
-it answers "File download is not available", use `scp` with the session's
-credentials. Auth is password-based and `sshpass` is not installed, so feed
+**Getting a file off the VM** (a screenshot, a log): `bitrise-cli rde session
+download` works everywhere. The MCP's `bitrise_devenv_download` /
+`bitrise_devenv_upload` exist only on a **locally-run** MCP server (they read
+and write the filesystem of the machine the server runs on); the hosted
+server does not list them at all, so if you do not see them in your tool
+list that is why — use the CLI or `scp`. If either surface answers "File
+download is not available" (no file store on this deployment), use `scp`
+with the session's credentials. Auth is password-based and `sshpass` is not installed, so feed
 the password through `SSH_ASKPASS`:
 
 ```bash
@@ -228,10 +249,13 @@ RDE_SSH_PASSWORD='<ssh_password>' SSH_ASKPASS=/tmp/rde-askpass SSH_ASKPASS_REQUI
 ```
 
 **Getting a file onto the VM** (an app build, a fixture) is the mirror image:
-`bitrise_devenv_upload` / `bitrise-cli rde session upload`, and when the
-deployment has no file store ("File upload is not available") the same
-recipe with the `scp` arguments reversed — `scp -o StrictHostKeyChecking=no
--P <port> ./app.apk <user>@<host>:/tmp/`.
+`bitrise-cli rde session upload` (or `bitrise_devenv_upload` on a local MCP
+server), and when the deployment has no file store ("File upload is not
+available") the same recipe with the `scp` arguments reversed — `scp -o
+StrictHostKeyChecking=no -P <port> ./app.apk <user>@<host>:/tmp/`. **The
+upload destination is a directory**, created if missing; to replace one
+remote file, upload it into its parent directory — uploading to the file's
+own path is rejected. Files land owned by the session user.
 
 Do **not** base64 binaries through `execute` output: it has corrupted files
 in testing and a native screenshot is hundreds of thousands of characters.

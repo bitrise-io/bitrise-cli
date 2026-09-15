@@ -17,7 +17,17 @@ headless (`-no-window`); there is nothing to see on the VM's desktop.
   `ro.product.model` is `sdk_gphone…`, not the phone the profile is named
   after.
 - **ws-scrcpy** on `127.0.0.1:8000` — the viewer's video source. Leave it.
-- The Android SDK (`$ANDROID_HOME`, platform-tools, emulator, build-tools).
+- The Android SDK (`$ANDROID_HOME`, platform-tools, emulator, build-tools)
+  and a JDK. **No system-wide `gradle`**: a project builds with its own
+  `./gradlew` (downloads on first run; the VM has network). To produce an APK
+  without a Gradle project use the build-tools directly — `aapt2 compile` /
+  `aapt2 link`, `javac`, `d8`, `zipalign`, `apksigner` (under
+  `$ANDROID_HOME/build-tools/<version>/`); give the manifest a `<uses-sdk>`
+  or `adb install` fails with `INSTALL_FAILED_DEPRECATED_SDK_VERSION`.
+- System images: only a few recent API levels are installed (API 35–37 at
+  the time of writing — `ls $ANDROID_HOME/system-images` is the truth); an
+  older Android cannot be booted here, and a requested `system_image` the
+  stack lacks is substituted, not rejected.
 - Service ports on the session: `adb` (VM 5555 → local 15555) and
   `device-web-view` (VM 8000 → local 3200, the same name and local port an
   iOS session uses). From your machine:
@@ -74,7 +84,7 @@ adb shell am start -n com.example.app/.MainActivity   # or an explicit activity
 adb shell am force-stop com.example.app
 adb exec-out screencap -p > /tmp/shot.png
 adb logcat -d -s MyApp:V                              # -d dumps and exits (MCP execute caps a call at 2 min; CLI exec at 10 min by default)
-adb shell settings put system accelerometer_rotation 0; adb shell settings put system user_rotation 1   # rotate
+adb shell settings put system accelerometer_rotation 0; adb shell settings put system user_rotation 1   # rotate: 0 portrait, 1 landscape (90°), 2 upside-down, 3 landscape (270°)
 adb shell cmd uimode night yes                        # dark mode
 ```
 
@@ -88,6 +98,32 @@ broken screen; the tree is the ground truth. Do not base64 it into
 bring the file out with `download` / `scp` as in the main guide §3. `adb shell screencap -p /sdcard/s.png && adb pull /sdcard/s.png`
 is the form to use when the file must live on the device first (the redirect
 form above writes to the VM's filesystem).
+
+## Changing the device language
+
+**The obvious shortcut lies on this image.** `adb shell settings put system
+system_locales ar-SA` exits 0 and `settings get` echoes the new value back,
+but the running system never changes: your app still renders English and the
+real Settings screen still shows "English (United States)". Do not report a
+localisation result from that readback.
+
+Two ways that work:
+
+- **Per app** (usually what you need; API 33+, which every image here is):
+  `adb shell cmd locale set-app-locales com.example.app --locale-tags ar-SA`
+  then `am force-stop` and relaunch; `cmd locale get-app-locales
+  com.example.app` reads it back. Confirm from a fresh `uiautomator dump`
+  that the strings changed — that, not the readback, is the evidence.
+- **System-wide, through the real Settings UI** (verified): `adb shell am
+  start -a android.settings.LOCALE_SETTINGS`, then drive it with
+  `uiautomator dump` + `input tap`/`input text`: "Add a language" → search
+  the language → pick the region → (some languages) pick the numeral system
+  → the new entry appears as #2 in "Preferred language order" → drag its
+  handle above #1 (`input swipe x y1 x y2 1200` on the handle) → confirm the
+  "Change system language…" dialog. Re-dump the tree afterwards; the whole
+  UI relabels when it worked.
+
+There is no locale option on `device_spec`.
 
 ## Do not
 

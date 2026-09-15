@@ -31,6 +31,17 @@ alone.
   `ssh -N -L 3200:127.0.0.1:3200 …` then `http://127.0.0.1:3200`.
 - Xcode with the stack's iOS runtimes; `xcrun simctl` for everything device
   lifecycle-ish (install, launch, screenshot, logs, appearance, location…).
+  `xcrun simctl list runtimes` shows which iOS versions this stack can boot;
+  a requested `os_version` it lacks is substituted with the newest, not
+  rejected.
+- **XcodeGen** (`xcodegen`) is installed — the way from loose Swift sources
+  to a buildable project: write `project.yml`, `xcodegen generate`, then
+  `xcodebuild -scheme App -destination "id=$UDID" build` (or `test`). A
+  single-file SwiftUI app also builds with no project at all: `xcrun swiftc
+  -sdk "$(xcrun --sdk iphonesimulator --show-sdk-path)" -target
+  arm64-apple-ios17.0-simulator -parse-as-library -emit-executable -o
+  App.app/App main.swift`, add an `Info.plist` (CFBundleIdentifier,
+  CFBundleExecutable), then `xcrun simctl install "$UDID" App.app`.
 - Python 3.13 (asdf) — `pipx install fb-idb` works if you want the `idb`
   client; `idb_companion` is not pre-installed (Homebrew 6 requires
   `brew tap facebook/fb && brew trust facebook/fb && brew install
@@ -79,7 +90,14 @@ $S tap    -d "$UDID" 0.5 0.47            # normalized 0..1 coordinates
 $S type   -d "$UDID" "hello world"       # US keyboard; focus a text field first
 $S button -d "$UDID" home                # hardware button
 $S gesture -d "$UDID" '{"type":"begin","x":0.5,"y":0.8}'   # then move/end events for swipes
+$S rotate -d "$UDID" landscape_left      # portrait | portrait_upside_down | landscape_left | landscape_right
 ```
+
+After `rotate`, wait ~3 s and re-read the AX tree before you tap or shoot:
+the screen's width and height swap, so every normalized coordinate you
+computed in the other orientation is stale. A control whose frame lies past
+the new screen width is genuinely unreachable — that is a layout bug, not a
+tap failure (verify by rotating back and tapping it there).
 
 `-l` obeys the same `TMPDIR` rule as every other subcommand but degrades
 *silently*: with a wrong `TMPDIR` it prints `{"running":false}` — the same
@@ -89,8 +107,13 @@ server running` error. Treat a false `-l` as the `TMPDIR` mistake first
 down.
 
 Each invocation is a Node process (~0.2–0.8 s); batch several in one
-`execute` call. `$S --help` lists more (rotate, permissions, camera, …). Never
+`execute` call. `$S --help` lists more (permissions, camera, …). Never
 pass `--host 0.0.0.0` to serve-sim: it exposes a shell-exec route.
+
+Language: test an app in another locale by launching it with Apple's launch
+arguments — `xcrun simctl launch "$UDID" com.example.app -AppleLanguages
+"(ar)" -AppleLocale ar_AE` — no system-wide change needed. There is no
+locale option on `device_spec`.
 
 Other tooling is welcome on this simulator — `idb` (`pipx install fb-idb` +
 `idb_companion`), XCUITest / `xcodebuild test -destination "id=$UDID"`,
