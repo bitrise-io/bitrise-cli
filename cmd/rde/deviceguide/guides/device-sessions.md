@@ -76,11 +76,6 @@ Rules:
   device boots the stack's newest, `device.device_notes` says so, and
   `device.spec` keeps echoing what you asked for. A *defaulted* image
   produces no note. If the exact OS matters, verify on the device (§2).
-- The platform must be enabled for the workspace: Android rides the
-  `enable-rde-android-emulator` flag, iOS `enable-rde-ios-simulator`. Without
-  it every front door answers `FailedPrecondition` ("The … capability is not
-  enabled for this workspace.") — the request is well-formed, the workspace
-  just cannot boot that device. Ask an admin; retrying will not help.
 - Prefer **omitting** `stack_id` / `machine_type` — the deployment default is
   the known-good pair. If you name them they must fit the platform or the
   request is rejected with the reason: iOS needs a macOS stack whose
