@@ -83,7 +83,7 @@ adb shell monkey -p com.example.app -c android.intent.category.LAUNCHER 1
 adb shell am start -n com.example.app/.MainActivity   # or an explicit activity
 adb shell am force-stop com.example.app
 adb exec-out screencap -p > /tmp/shot.png
-adb logcat -d -s MyApp:V                              # -d dumps and exits (execute caps: hosted MCP ~90 s, local MCP 2 min, CLI exec 10 min by default)
+adb logcat -d -s MyApp:V                              # -d dumps and exits (execute caps: hosted MCP ~30 s, local MCP 2 min, CLI exec 10 min by default)
 adb shell settings put system accelerometer_rotation 0; adb shell settings put system user_rotation 1   # rotate: 0 portrait, 1 landscape (90°), 2 upside-down, 3 landscape (270°)
 adb shell cmd uimode night yes                        # dark mode
 ```

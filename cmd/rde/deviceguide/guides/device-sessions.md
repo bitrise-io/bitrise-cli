@@ -197,8 +197,8 @@ Two ways:
 1. **In-band through `execute`** (`bitrise_devenv_execute` / `bitrise-cli rde
    session exec`) — the agent default. It runs a login shell on the VM and
    returns text. **The time cap differs per surface**: `bitrise_devenv_execute`
-   on the hosted MCP server is cut at ~90 s per call (the proxy in front of
-   it answers **504 Gateway Timeout** at ~100 s, so the server stops first
+   on the hosted MCP server is cut at ~30 s per call (the proxy in front of
+   it answers **504 Gateway Timeout** at ~40 s, so the server stops first
    and tells you); a locally-run MCP server allows 2 minutes; `rde session
    exec` defaults to 10 minutes, `--timeout 20m` raises it and `--timeout 0`
    removes it. **A 504 or deadline error does not mean the command did not
