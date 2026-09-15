@@ -162,3 +162,35 @@ func TestListCmd_MissingWorkspace(t *testing.T) {
 		t.Errorf("error = %v, want it to mention workspace", err)
 	}
 }
+
+// TestViewCmd_ShowsDeclaredDevice: a template with a device_spec renders a
+// "Device:" line in the same platform · model · version form 'session view'
+// uses, and carries device_spec in JSON output for the round-trip workflow.
+func TestViewCmd_ShowsDeclaredDevice(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, `{"template":{"id":"t-1","name":"iOS Dev","stackId":"osx-xcode-16.0.x-edge","machineType":"g2.mac",
+			"deviceSpec":{"platform":"ios","deviceModel":"iPhone 16","osVersion":"18.2"}}}`)
+	}))
+	defer srv.Close()
+
+	stdout, _, err := run(t, newViewCmd(), srv.URL, "ws-1", []string{uuidTemplateID}, output.Human)
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if !strings.Contains(stdout, "Device:") || !strings.Contains(stdout, "iOS simulator · iPhone 16 · 18.2") {
+		t.Errorf("stdout missing the declared device:\n%s", stdout)
+	}
+
+	stdout, _, err = run(t, newViewCmd(), srv.URL, "ws-1", []string{uuidTemplateID}, output.JSON)
+	if err != nil {
+		t.Fatalf("Execute (json): %v", err)
+	}
+	var got map[string]any
+	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
+		t.Fatalf("unmarshal JSON output: %v\n%s", err, stdout)
+	}
+	spec, _ := got["device_spec"].(map[string]any)
+	if spec["platform"] != "ios" || spec["device_model"] != "iPhone 16" {
+		t.Errorf("unexpected device_spec in JSON: %v", got["device_spec"])
+	}
+}

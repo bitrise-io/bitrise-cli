@@ -10,6 +10,9 @@ Commands that take a SESSION_ID also accept a session name — it's resolved to
 an ID for you. Names aren't unique, so if more than one session shares the name
 the command errors and lists the candidate IDs to pick from.
 
+To boot an iOS simulator or Android emulator with a session, read
+'rde device-guide' first, then 'rde session create --device-platform ios|android'.
+
 ```
 bitrise-cli rde session [flags]
 ```
@@ -35,7 +38,7 @@ bitrise-cli rde session [flags]
 * [bitrise-cli rde](bitrise-cli_rde.md)	 - Manage Bitrise Remote Dev Environments (sessions, templates, …)
 * [bitrise-cli rde session create](bitrise-cli_rde_session_create.md)	 - Create a new RDE session
 * [bitrise-cli rde session delete](bitrise-cli_rde_session_delete.md)	 - Permanently delete a session in any state (running sessions are stopped and discarded)
-* [bitrise-cli rde session delete-terminated](bitrise-cli_rde_session_delete-terminated.md)	 - Permanently delete every terminated session in the workspace
+* [bitrise-cli rde session delete-terminated](bitrise-cli_rde_session_delete-terminated.md)	 - Permanently delete your terminated sessions in this workspace
 * [bitrise-cli rde session diff](bitrise-cli_rde_session_diff.md)	 - Compare a session's template snapshot with the current template
 * [bitrise-cli rde session download](bitrise-cli_rde_session_download.md)	 - Download a file or directory from a session
 * [bitrise-cli rde session exec](bitrise-cli_rde_session_exec.md)	 - Run a command on a session over SSH
@@ -44,6 +47,7 @@ bitrise-cli rde session [flags]
 * [bitrise-cli rde session notifications](bitrise-cli_rde_session_notifications.md)	 - List notifications emitted by a session
 * [bitrise-cli rde session open-vnc](bitrise-cli_rde_session_open-vnc.md)	 - Open a session's VNC endpoint in the OS-default viewer
 * [bitrise-cli rde session restore](bitrise-cli_rde_session_restore.md)	 - Restore a terminated session (re-provisions its VM from the persistent disk)
+* [bitrise-cli rde session ssh](bitrise-cli_rde_session_ssh.md)	 - Print SSH connection details (command, host, port, user, password) for a session
 * [bitrise-cli rde session terminate](bitrise-cli_rde_session_terminate.md)	 - Terminate a running session but keep it for a later restore
 * [bitrise-cli rde session update](bitrise-cli_rde_session_update.md)	 - Update a session's name, description, auto-terminate duration, or labels
 * [bitrise-cli rde session upload](bitrise-cli_rde_session_upload.md)	 - Upload a local file or directory into a session
