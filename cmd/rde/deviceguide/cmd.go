@@ -9,6 +9,7 @@ package deviceguide
 import (
 	_ "embed"
 	"fmt"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -17,13 +18,37 @@ import (
 )
 
 //go:embed guides/device-sessions.md
-var guideDeviceSessions string
+var guideDeviceSessionsRaw string
 
 //go:embed guides/ios.md
-var guideIOS string
+var guideIOSRaw string
 
 //go:embed guides/android.md
-var guideAndroid string
+var guideAndroidRaw string
+
+// The mirror files open with a one-line HTML comment addressed to whoever
+// edits them ("Mirror of the RDE device-session guide … do not edit here").
+// That note is for the maintainer, not the reader: printed verbatim it was
+// the first line every agent read. Strip it here so the file keeps its
+// warning and the guide starts at its title.
+var (
+	guideDeviceSessions = stripMirrorHeader(guideDeviceSessionsRaw)
+	guideIOS            = stripMirrorHeader(guideIOSRaw)
+	guideAndroid        = stripMirrorHeader(guideAndroidRaw)
+)
+
+// stripMirrorHeader drops a leading HTML comment line (and the blank lines
+// after it) from a mirrored guide; any other text is returned unchanged.
+func stripMirrorHeader(s string) string {
+	if !strings.HasPrefix(s, "<!--") {
+		return s
+	}
+	end := strings.Index(s, "-->")
+	if end < 0 {
+		return s
+	}
+	return strings.TrimLeft(s[end+len("-->"):], "\r\n")
+}
 
 // NewCmd returns the `rde device-guide` command. A leaf command: it prints
 // the guide (or a platform's specifics) to stdout, for humans and for agents

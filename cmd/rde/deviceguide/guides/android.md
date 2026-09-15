@@ -3,8 +3,8 @@
 
 Read the main device sessions guide first (create, wait for READY, connect,
 do-nots): `bitrise_devenv_device_guide` with `guide: "device-sessions"` (or the
-resource `bitrise-devenv://guides/device-sessions`), `bitrise-cli rde
-device-guide`, or `README.md` next to this file. This page is the Android
+resource `bitrise-devenv://guides/device-sessions`) or `bitrise-cli rde
+device-guide` with no platform argument. This page is the Android
 specifics. Everything here runs on the session VM (in-band via `execute`, or
 over SSH) or through the adb tunnel from your machine — the emulator is
 headless (`-no-window`); there is nothing to see on the VM's desktop.
@@ -34,9 +34,13 @@ XML of the current window: every `<node>` carries `text`, `content-desc`,
 in **pixels**. Tap the center of a node's bounds. Every node has a `text`
 attribute (usually empty), so filter for non-empty ones — `grep -oE
 '<node[^>]*text="[^"]+"[^>]*>'` — or use a short python for big screens.
+The output ends `…</hierarchy>UI hierchary dumped to: /dev/tty` — uiautomator's
+own status line, glued to the XML with no newline — so strip it before
+handing the text to an XML parser: `| sed 's#UI hierchary dumped to:.*##'`.
 (`uiautomator dump` fails while an animation runs — retry once after 500 ms.
-Through `execute` it adds a harmless third stderr line, `tcsetattr:
-Inappropriate ioctl for device`, to the two the shell always prints.)
+Through `execute`, some system images (android-37) add a harmless stderr line,
+`tcsetattr: Inappropriate ioctl for device`, to the two the shell always
+prints; android-36 does not. Ignore it either way.)
 
 ## Input
 
@@ -69,16 +73,19 @@ adb shell monkey -p com.example.app -c android.intent.category.LAUNCHER 1
 adb shell am start -n com.example.app/.MainActivity   # or an explicit activity
 adb shell am force-stop com.example.app
 adb exec-out screencap -p > /tmp/shot.png
-adb logcat -d -s MyApp:V                              # -d dumps and exits (execute has a 2-minute limit)
+adb logcat -d -s MyApp:V                              # -d dumps and exits (MCP execute caps a call at 2 min; CLI exec at 10 min by default)
 adb shell settings put system accelerometer_rotation 0; adb shell settings put system user_rotation 1   # rotate
 adb shell cmd uimode night yes                        # dark mode
 ```
 
-`adb exec-out screencap -p` yields a ~100–200 KB PNG at native resolution
-(content-dependent; a `screencap` written *on the device* is larger). Do not
-base64 it into `execute` output — point the human at the session page's
-device view, or bring the file out with `download` / `scp` as in the main
-guide §3. `adb shell screencap -p /sdcard/s.png && adb pull /sdcard/s.png`
+`adb exec-out screencap -p` yields a ~0.4–1.5 MB PNG at native resolution
+(content-dependent; a `screencap` written *on the device* is larger). **Let
+the screen settle before you shoot**: within ~1–2 s of a rotation or a
+launch the frame can be blank below the status bar while `uiautomator dump`
+already shows the new layout — wait ~2 s and re-shoot before reporting a
+broken screen; the tree is the ground truth. Do not base64 it into
+`execute` output — point the human at the session page's device view, or
+bring the file out with `download` / `scp` as in the main guide §3. `adb shell screencap -p /sdcard/s.png && adb pull /sdcard/s.png`
 is the form to use when the file must live on the device first (the redirect
 form above writes to the VM's filesystem).
 

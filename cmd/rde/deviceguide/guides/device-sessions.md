@@ -39,22 +39,6 @@ does not have installed is substituted, not rejected.)
 REST: `POST /v1/workspaces/{ws}/sessions` with the same fields (`device_spec`,
 `artifact`).
 
-**From a template.** A template can declare the device every session created
-from it boots (`Template.device_spec`, the same message; set it with
-`bitrise_devenv_create_template` / `bitrise_devenv_update_template`,
-`bitrise-cli rde template create|update --device-platform …`, or the template
-form in the web UI). The template is the base and the request overrides it the
-way `stack_id` / `machine_type` do:
-
-- no `device_spec` on the request → the template's device boots as declared;
-- a `device_spec` **without** a `platform` → a per-field tweak: fields you
-  leave empty inherit the template's (`{"device_model": "iPhone 15"}` changes
-  only the model; CLI `--template T --device-model "iPhone 15"`);
-- a `device_spec` **with** a `platform` → the complete device to boot: the
-  template's is ignored and empty fields are the platform defaults (this is
-  what the web form sends, so what it shows is what boots);
-- `no_device: true` (CLI `--no-device`) → the session boots no device.
-
 Rules:
 
 - `platform` is `ios` or `android`. Everything else in `device_spec` is
@@ -62,12 +46,20 @@ Rules:
   `os_version` (iOS only: an iOS version such as "18.2", or a simctl runtime
   id; anything else — and any value on Android — is rejected with a 400;
   empty = newest installed), `system_image` / `ram_mb` / `cores` /
-  `cold_boot` (Android only).
+  `cold_boot` (Android only). `ram_mb`, `cores` and `cold_boot` are
+  MCP/REST-only: the CLI has no flags for them, on a session or a template.
 - **`device_model` is a screen profile, not a phone.** On Android
   `"pixel_7"` gives you a 1080×2400 / 420 dpi emulator running the generic
   system image (`ro.product.model` is `sdk_gphone…`, `dev-keys` firmware) —
   not Pixel firmware. Do not answer questions about a real device's stock
-  behaviour from it. `system_image` is the Android **API-level** knob
+  behaviour from it. Valid values are the stack's `xcrun simctl list
+  devicetypes` names or identifiers (`"iPhone 16"`, `"iPad Pro 13-inch
+  (M4)"`) and its `avdmanager list device -c` ids (`"pixel_7"`,
+  `"pixel_tablet"`, `"pixel_fold"`); the platform cannot list them before
+  boot. An unrecognised `device_model` is **substituted, not rejected**: the
+  device boots the platform default (`iPhone 15` / `pixel_7`),
+  `device.device_notes` says so, and on the VM those two commands print the
+  ids that would have worked. `system_image` is the Android **API-level** knob
   (`"system-images;android-34;google_apis;x86_64"`; empty = the stack's
   default). **The platform cannot list a stack's installed images or iOS
   runtimes before boot**, and an explicitly requested `system_image` /
@@ -113,11 +105,27 @@ Rules:
   you are done** — and delete only session IDs from your own `create`
   responses; a listing can show other people's sessions.
 
+**From a template.** A template can declare the device every session created
+from it boots (`Template.device_spec`, the same message; set it with
+`bitrise_devenv_create_template` / `bitrise_devenv_update_template`,
+`bitrise-cli rde template create|update --device-platform …`, or the template
+form in the web UI). The template is the base and the request overrides it the
+way `stack_id` / `machine_type` do:
+
+- no `device_spec` on the request → the template's device boots as declared;
+- a `device_spec` **without** a `platform` → a per-field tweak: fields you
+  leave empty inherit the template's (`{"device_model": "iPhone 15"}` changes
+  only the model; CLI `--template T --device-model "iPhone 15"`);
+- a `device_spec` **with** a `platform` → the complete device to boot: the
+  template's is ignored and empty fields are the platform defaults (this is
+  what the web form sends, so what it shows is what boots);
+- `no_device: true` (CLI `--no-device`) → the session boots no device.
+
 ## 2. Wait for the device — "running" is not "ready"
 
 The session turns `running` when its startup script begins; the device boots
-in the background. **Typical** (measured): Android READY 70–150 s after
-`running`; iOS READY 45–80 s after `running`, 76 s – 2 m 20 s from `create`.
+in the background. **Typical** (measured): Android READY 60–150 s after
+`running`; iOS READY 40–80 s after `running`, ~60 s – 2 m 20 s from `create`.
 **Ceilings** (treat as stuck only beyond these): a macOS VM can take 5–10
 minutes to reach `running` at all; budget Android ~10 minutes and iOS ~15
 minutes from `create` to READY, of which at most ~8 minutes `BOOTING`. The
@@ -176,9 +184,14 @@ device with notes explicitly.
 Two ways:
 
 1. **In-band through `execute`** (`bitrise_devenv_execute` / `bitrise-cli rde
-   session exec`) — the agent default. It runs a login shell on the VM, has a
-   2-minute limit per call and returns text. Every recipe in the platform
-   guides works this way. Right after `running`, `execute` may answer "SSH is
+   session exec`) — the agent default. It runs a login shell on the VM and
+   returns text. **The time cap differs per surface**: `bitrise_devenv_execute`
+   has a hard 2-minute limit per call (past it the call fails with a deadline
+   error and the command is cancelled); `rde session exec` defaults to 10
+   minutes, `--timeout 20m` raises it and `--timeout 0` removes it. Chunk
+   work to the cap you actually have — on MCP, background anything longer
+   (`nohup … > /tmp/x.log 2>&1 &`) and poll the log. Every recipe in the
+   platform guides works this way. Right after `running`, `execute` may answer "SSH is
    not ready" for a few minutes even though the session read already shows
    credentials — poll `bitrise_devenv_get` until `ssh_connection_open` is
    true instead of retrying blind. If your own tool calls have a time cap,
@@ -214,6 +227,12 @@ RDE_SSH_PASSWORD='<ssh_password>' SSH_ASKPASS=/tmp/rde-askpass SSH_ASKPASS_REQUI
 # CLI: RDE_SSH_PASSWORD="$(bitrise-cli rde session ssh SESSION_ID --password-only)"
 ```
 
+**Getting a file onto the VM** (an app build, a fixture) is the mirror image:
+`bitrise_devenv_upload` / `bitrise-cli rde session upload`, and when the
+deployment has no file store ("File upload is not available") the same
+recipe with the `scp` arguments reversed — `scp -o StrictHostKeyChecking=no
+-P <port> ./app.apk <user>@<host>:/tmp/`.
+
 Do **not** base64 binaries through `execute` output: it has corrupted files
 in testing and a native screenshot is hundreds of thousands of characters.
 Pixels rarely pay for themselves anyway — read the accessibility tree (§4),
@@ -241,8 +260,9 @@ device-guide ios|android`). The baseline recipes have the same shape on both:
 - **Prefer the accessibility tree over pixels.** iOS: `curl -s
   http://127.0.0.1:3200/helper/<UDID>/ax` (labels, types, frames, ids as
   JSON of the frontmost app — the home screen included). Android: `adb
-  exec-out uiautomator dump /dev/tty` (XML with bounds/text/resource-id). One
-  call tells you what is on screen and where to tap.
+  exec-out uiautomator dump /dev/tty` (XML with bounds/text/resource-id;
+  strip the trailing `UI hierchary dumped to: /dev/tty` status line before
+  parsing). One call tells you what is on screen and where to tap.
 - **Input.** iOS: serve-sim's CLI (`tap`, `type`, `button`, `gesture`,
   normalized 0..1 coordinates) — run it with `TMPDIR=/tmp`, see the iOS
   guide. Android: `adb shell input tap/text/keyevent`.
@@ -254,7 +274,12 @@ device-guide ios|android`). The baseline recipes have the same shape on both:
   + `adb shell monkey -p <package> 1` (or `am start`).
 - **Screenshot.** iOS: `xcrun simctl io <UDID> screenshot /tmp/s.png`.
   Android: `adb exec-out screencap -p > /tmp/s.png`. Bring the file out as in
-  §3, or point a human at the device view (§5) instead.
+  §3, or point a human at the device view (§5) instead. **Let the screen
+  settle first:** within ~2 s of a `launch`, `openurl`, rotation or
+  tap-triggered transition the frame can still be solid black (iOS) or blank
+  below the status bar (Android) while the accessibility tree already shows
+  the new screen. Wait ~3 s and re-shoot before reporting a blank or broken
+  layout; when the tree and the pixels disagree, the tree is right.
 - **Logs.** iOS: `xcrun simctl spawn <UDID> log stream --predicate '…'`.
   Android: `adb logcat -d …`.
 

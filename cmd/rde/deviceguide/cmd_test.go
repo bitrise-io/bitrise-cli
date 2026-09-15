@@ -40,6 +40,37 @@ func TestDeviceGuide(t *testing.T) {
 	}
 }
 
+// TestDeviceGuide_NoMirrorHeader: the mirror files carry a maintainer-only
+// HTML comment on line 1; what the command prints must start at the guide's
+// title, not at a note about syncing.
+func TestDeviceGuide_NoMirrorHeader(t *testing.T) {
+	for _, arg := range [][]string{{}, {"ios"}, {"android"}} {
+		c := NewCmd()
+		var out bytes.Buffer
+		c.SetOut(&out)
+		c.SetArgs(arg)
+		if err := c.Execute(); err != nil {
+			t.Fatalf("args %v: %v", arg, err)
+		}
+		got := out.String()
+		if strings.HasPrefix(got, "<!--") || strings.Contains(got, "do not edit here") {
+			t.Errorf("args %v: output still carries the mirror header:\n%.120s", arg, got)
+		}
+		if !strings.HasPrefix(got, "# ") {
+			t.Errorf("args %v: output must start at the guide title, got %.80q", arg, got)
+		}
+	}
+	for _, tc := range []struct{ in, want string }{
+		{"<!-- note -->\n\n# Title\n", "# Title\n"},
+		{"# Title\n", "# Title\n"},
+		{"<!-- unterminated\n# Title\n", "<!-- unterminated\n# Title\n"},
+	} {
+		if got := stripMirrorHeader(tc.in); got != tc.want {
+			t.Errorf("stripMirrorHeader(%q) = %q, want %q", tc.in, got, tc.want)
+		}
+	}
+}
+
 // TestDeviceGuide_RejectsJSON: the inherited --output json has no shape for
 // a Markdown guide, so the command must refuse it instead of printing raw
 // Markdown where a caller expects a JSON object.

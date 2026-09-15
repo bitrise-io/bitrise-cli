@@ -3,10 +3,9 @@
 
 Read the main device sessions guide first (create, wait for READY, connect,
 do-nots): `bitrise_devenv_device_guide` with `guide: "device-sessions"` (or the
-resource `bitrise-devenv://guides/device-sessions`), `bitrise-cli rde
-device-guide`, or `README.md` next to this file. This page is the iOS
-specifics. Everything here runs on the session VM (in-band via `execute`, or
-over SSH). Drive the simulator only through the recipes below — never through
+resource `bitrise-devenv://guides/device-sessions`) or `bitrise-cli rde
+device-guide` with no platform argument. This page is the iOS specifics.
+Everything here runs on the session VM (in-band via `execute`, or over SSH). Drive the simulator only through the recipes below — never through
 the VM's desktop screenshot/click tools: a Simulator.app window may be visible
 on the VM's desktop, it is not how you look at or drive the device; leave it
 alone.
@@ -46,11 +45,14 @@ curl -s "http://127.0.0.1:3200/helper/$UDID/ax"
 
 Returns a JSON array of element trees for the **frontmost app** — on the home
 screen that is SpringBoard, so you get the home screen's icons, not an error.
+For a second or two right after READY, and again right after a `launch`, it
+can answer `noFrontmostApplication` instead while the foreground app is
+still settling — retry after ~2 s; it is transient, not a broken device.
 Each node has `type` (Button, Heading, StaticText, TextField, Cell, …),
 `AXLabel`, `AXValue`, `AXUniqueId` (accessibility identifier when the app
 sets one), `enabled`, `frame` (`x`,`y`,`width`,`height` in **points**,
 portrait-up), and `children`. Filter it (jq / python) rather than reading it
-raw; a Settings screen is ~30 nodes, a busy app can be hundreds.
+raw; a Settings screen is ~20–30 nodes, a busy app can be hundreds.
 
 Screen size in points = the **root node's `frame`** of that JSON (e.g.
 393×852 for an iPhone 16). Point → normalized tap coordinate: `x/width`,
@@ -72,12 +74,19 @@ says what to do).
 
 ```bash
 cd ~/serve-sim && export TMPDIR=/tmp && S="node node_modules/.bin/serve-sim"
-$S -l                                    # {"running":true,…,"port":3200,…} — sanity check
+$S -l                                    # {"running":true,…,"port":3200,…} — sanity check (see below)
 $S tap    -d "$UDID" 0.5 0.47            # normalized 0..1 coordinates
 $S type   -d "$UDID" "hello world"       # US keyboard; focus a text field first
 $S button -d "$UDID" home                # hardware button
 $S gesture -d "$UDID" '{"type":"begin","x":0.5,"y":0.8}'   # then move/end events for swipes
 ```
+
+`-l` obeys the same `TMPDIR` rule as every other subcommand but degrades
+*silently*: with a wrong `TMPDIR` it prints `{"running":false}` — the same
+output as a dead server — where `tap` would have printed the `No serve-sim
+server running` error. Treat a false `-l` as the `TMPDIR` mistake first
+(`lsof -iTCP:3200` shows the listener alive) before concluding serve-sim is
+down.
 
 Each invocation is a Node process (~0.2–0.8 s); batch several in one
 `execute` call. `$S --help` lists more (rotate, permissions, camera, …). Never
@@ -112,6 +121,12 @@ screen is the worst case); `sips -Z 800 in.png --out small.png` gets it to
 thousands of characters and has corrupted files. Point the human at the
 session page's device view, or copy the file out with `download` / `scp` as in
 the main guide §3.
+
+**Let the screen settle before you shoot.** A screenshot taken within ~2 s of
+`launch`, `openurl` or a rotation can be a solid black frame while
+`/helper/<UDID>/ax` already shows the new screen; at ~3 s it is correct. Wait
+~3 s and re-shoot before reporting a blank screen or a broken layout — the
+tree is the ground truth, the pixels lag it.
 
 The simulator has no Date & Time settings pane (it takes the host's clock) —
 automation of that screen has nothing to find.
