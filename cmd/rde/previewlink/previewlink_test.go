@@ -157,6 +157,7 @@ func TestCreateCmd_RejectsBadFlags(t *testing.T) {
 		{"negative ttl", []string{"--device-platform", "ios", "--artifact-url", "https://x/a.zip", "--ttl", "-1h"}, "--ttl must not be negative"},
 		{"idle window under the floor", []string{"--device-platform", "ios", "--artifact-url", "https://x/a.zip", "--auto-terminate-minutes", "5"}, "--auto-terminate-minutes must be at least 10"},
 		{"negative idle window", []string{"--device-platform", "ios", "--artifact-url", "https://x/a.zip", "--auto-terminate-minutes", "-1"}, "--auto-terminate-minutes must not be negative"},
+		{"idle window over the cap", []string{"--device-platform", "ios", "--artifact-url", "https://x/a.zip", "--auto-terminate-minutes", "600"}, "--auto-terminate-minutes must be at most 480"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

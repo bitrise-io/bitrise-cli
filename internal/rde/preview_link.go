@@ -15,8 +15,7 @@ import (
 // will ever exist — it cannot be listed, read back, or revoked, only left to
 // expire. Treat URL and Token as bearer credentials.
 type PreviewLink struct {
-	// URL is the shareable link. Empty when the deployment configures no
-	// viewer base URL, in which case Token is all there is.
+	// URL is the shareable link.
 	URL string `json:"url,omitempty"`
 	// Token is the signed link on its own.
 	Token string `json:"token"`
@@ -34,13 +33,13 @@ type PreviewLink struct {
 type CreatePreviewLinkRequest struct {
 	DeviceSpec *DeviceSpec
 	Artifact   *DeviceArtifact
-	// TTL is the link's lifetime; zero uses the backend default (24 hours).
+	// TTL is the link's lifetime; zero uses the default of 24 hours.
 	TTL time.Duration
 	// StackID and MachineType override the platform defaults; empty uses them.
 	StackID     string
 	MachineType string
 	// SessionAutoTerminateMinutes is the idle window of the sessions the link
-	// spawns; zero uses the backend default.
+	// spawns; zero uses the default of 60 minutes.
 	SessionAutoTerminateMinutes int
 }
 

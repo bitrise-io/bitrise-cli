@@ -18,10 +18,15 @@ import (
 // for anything this misses.
 const maxTTL = 72 * time.Hour
 
-// minAutoTerminateMinutes mirrors the backend's floor on an explicit idle
-// window. 0 still means "deployment default", not "off": auto-terminate is
-// the cost backstop on a link anyone can open, and cannot be disabled.
-const minAutoTerminateMinutes = 10
+// minAutoTerminateMinutes and maxAutoTerminateMinutes mirror the backend's
+// bounds on an explicit idle window; the ceiling is the 8-hour session max
+// lifetime, which bounds a device's total runtime either way. 0 still means
+// "the default", not "off": auto-terminate is the cost backstop on a link
+// anyone can open, and cannot be disabled.
+const (
+	minAutoTerminateMinutes = 10
+	maxAutoTerminateMinutes = 480
+)
 
 func newCreateCmd() *cobra.Command {
 	var (
@@ -70,9 +75,7 @@ default 60).
 In CI, authenticate with a Workspace API Token rather than a personal one:
 minting preview links is one of the few RDE operations a workspace token may
 perform, and the sessions it opens belong to the workspace instead of a person.
-
-Device preview is enabled per workspace and per platform. A permission error
-means the workspace does not have it yet — ask Bitrise support.`,
+`,
 		Example: `  bitrise-cli rde preview-link create --device-platform android --artifact-url https://…/app.apk
   bitrise-cli rde preview-link create --device-platform ios --artifact-url https://…/App.zip --device-model "iPhone 16"
   bitrise-cli rde preview-link create --device-platform ios --artifact-url-stdin < artifact-url.txt
@@ -107,6 +110,9 @@ means the workspace does not have it yet — ask Bitrise support.`,
 			}
 			if autoTerminateMins > 0 && autoTerminateMins < minAutoTerminateMinutes {
 				return fmt.Errorf("--auto-terminate-minutes must be at least %d when set — a shorter window would end devices before they finish booting", minAutoTerminateMinutes)
+			}
+			if autoTerminateMins > maxAutoTerminateMinutes {
+				return fmt.Errorf("--auto-terminate-minutes must be at most %d — a device never outlives the 8-hour session cap anyway", maxAutoTerminateMinutes)
 			}
 			if ttl < 0 {
 				return fmt.Errorf("--ttl must not be negative")
@@ -160,8 +166,8 @@ means the workspace does not have it yet — ask Bitrise support.`,
 	c.Flags().StringVar(&artifactName, "artifact-name", "", "app display name shown on the viewer page")
 	c.Flags().StringVar(&artifactBuild, "artifact-build-number", "", "build number shown on the viewer page")
 	c.Flags().StringVar(&artifactCommit, "artifact-commit", "", "commit SHA shown on the viewer page")
-	c.Flags().DurationVar(&ttl, "ttl", 0, "how long the link stays openable (Go duration syntax: 4h, 30m); 0 uses the backend default of 24h, maximum 72h")
-	c.Flags().IntVar(&autoTerminateMins, "auto-terminate-minutes", 0, "minutes a device stays alive after its last viewer disconnects; 0 uses the backend default (60); minimum 10")
+	c.Flags().DurationVar(&ttl, "ttl", 0, "how long the link stays openable (Go duration syntax: 4h, 30m); 0 uses the default of 24h, maximum 72h")
+	c.Flags().IntVar(&autoTerminateMins, "auto-terminate-minutes", 0, "minutes a device stays alive after its last viewer disconnects; 0 uses the default of 60; minimum 10, maximum 480")
 	c.Flags().StringVar(&stack, "stack", "", "stack the link's devices run on; omit for the platform default (see 'rde stack list')")
 	c.Flags().StringVar(&machineType, "machine-type", "", "machine type the link's devices run on; omit for the platform default (see 'rde machine-type list --stack STACK_ID')")
 	c.MarkFlagsMutuallyExclusive("artifact-url", "artifact-url-stdin")
@@ -177,8 +183,8 @@ func renderLink(w io.Writer, link internalrde.PreviewLink) error {
 	if link.URL != "" {
 		ew.F("%s%s\n", lbl("Link:"), link.URL)
 	} else {
-		// No viewer base URL configured on this deployment: the token is all
-		// the caller gets, and they compose their own URL from it.
+		// No viewer URL came back: the token is all the caller gets, and
+		// they compose their own URL from it.
 		ew.F("%s%s\n", lbl("Token:"), link.Token)
 	}
 	if link.ExpiresAt != nil {

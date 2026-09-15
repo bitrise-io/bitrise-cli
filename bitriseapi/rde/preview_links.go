@@ -14,14 +14,14 @@ import (
 type CreatePreviewLinkRequest struct {
 	DeviceSpec *DeviceSpec     `json:"deviceSpec,omitempty"`
 	Artifact   *DeviceArtifact `json:"artifact,omitempty"`
-	// TTLSeconds is the link's lifetime. 0 uses the deployment default.
+	// TTLSeconds is the link's lifetime. 0 uses the default of 24 hours.
 	TTLSeconds int64 `json:"ttlSeconds,omitempty"`
 	// StackID and MachineType override the platform defaults the link's
 	// sessions would otherwise run on. Empty = the default.
 	StackID     string `json:"stackId,omitempty"`
 	MachineType string `json:"machineType,omitempty"`
 	// SessionAutoTerminateMinutes is the idle window of the sessions the link
-	// spawns. 0 uses the deployment default.
+	// spawns. 0 uses the default of 60 minutes.
 	SessionAutoTerminateMinutes int `json:"sessionAutoTerminateMinutes,omitempty"`
 }
 
@@ -31,8 +31,7 @@ type CreatePreviewLinkRequest struct {
 type PreviewLink struct {
 	// Token is the signed link, and on its own a bearer credential.
 	Token string `json:"token"`
-	// URL is the shareable viewer link. Empty when the deployment configures
-	// no viewer base URL.
+	// URL is the shareable viewer link.
 	URL string `json:"url"`
 	// JTI is the link's id, recorded on every session it spawns.
 	JTI string `json:"jti"`
