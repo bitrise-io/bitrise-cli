@@ -75,12 +75,20 @@ default 60).
 In CI, authenticate with a Workspace API Token rather than a personal one:
 minting preview links is one of the few RDE operations a workspace token may
 perform, and the sessions it opens belong to the workspace instead of a person.
+Pass it as BITRISE_TOKEN, which is used verbatim, and name the workspace with
+--workspace or BITRISE_WORKSPACE_ID — a workspace token belongs to one
+workspace and cannot look up which workspaces an account has, so leaving it to
+be auto-detected fails.
 `,
 		Example: `  bitrise-cli rde preview-link create --device-platform android --artifact-url https://…/app.apk
   bitrise-cli rde preview-link create --device-platform ios --artifact-url https://…/App.zip --device-model "iPhone 16"
   bitrise-cli rde preview-link create --device-platform ios --artifact-url-stdin < artifact-url.txt
   bitrise-cli rde preview-link create --device-platform android --artifact-url https://…/app.apk --ttl 4h
-  bitrise-cli rde preview-link create --device-platform android --artifact-url https://…/app.apk --output json | jq -r .url`,
+  bitrise-cli rde preview-link create --device-platform android --artifact-url https://…/app.apk --output json | jq -r .url
+
+  # From CI, with a Workspace API Token (--workspace is required with one):
+  BITRISE_TOKEN=bitwat_… bitrise-cli rde preview-link create --workspace WORKSPACE_ID \
+    --device-platform ios --artifact-url https://…/App.zip`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if devicePlatform != "ios" && devicePlatform != "android" {
