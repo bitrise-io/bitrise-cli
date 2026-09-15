@@ -37,10 +37,10 @@ func readTarHeaders(t *testing.T, archive []byte) []*tar.Header {
 // recreate the caller's numeric uid there (seen as files owned by 501:root).
 func TestCreateTarGz_StripsLocalOwnership(t *testing.T) {
 	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "a.txt"), []byte("hello"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "a.txt"), []byte("hello"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.MkdirAll(filepath.Join(dir, "sub"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(dir, "sub"), 0o750); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(dir, "sub", "b.txt"), []byte("x"), 0o600); err != nil {
@@ -75,7 +75,7 @@ func TestCreateTarGz_StripsLocalOwnership(t *testing.T) {
 func TestCreateTarGz_SingleFileUsesBasename(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "manifest.xml")
-	if err := os.WriteFile(path, []byte("<m/>"), 0o644); err != nil {
+	if err := os.WriteFile(path, []byte("<m/>"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	archive, err := createTarGz(path)
