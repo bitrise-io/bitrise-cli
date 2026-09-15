@@ -71,6 +71,17 @@ func statusStyle(s style.Styles, status string) lipgloss.Style {
 	return s.Dim
 }
 
+// isTerminalStatus reports whether a session status (lowercased,
+// prefix-stripped, as internal/rde delivers it) means the VM is gone, so
+// connection details must not be shown.
+func isTerminalStatus(status string) bool {
+	switch status {
+	case "terminated", "stopped", "failed", "drained":
+		return true
+	}
+	return false
+}
+
 // diskStatusText renders a terminated session's persistent-disk status with
 // a hint about whether the session can still be restored. Callers guard on a
 // non-empty status, so the default branch only fires for a value added to

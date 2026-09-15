@@ -132,11 +132,15 @@ func renderSessionDetail(w io.Writer, sess internalrde.Session) error {
 	} else if sess.TemplateOutdated {
 		ew.F("%s%s\n", lbl("Template state:"), s.Dim.Render("outdated (template changed since session creation)"))
 	}
-	if sess.SSHAddress != "" {
-		ew.F("%s%s\n", lbl("SSH:"), sess.SSHAddress)
-	}
-	if sess.VNCAddress != "" {
-		ew.F("%s%s\n", lbl("VNC:"), sess.VNCAddress)
+	// A dead session has nothing to connect to; the API may still echo the
+	// last known addresses, so don't invite a connection that cannot succeed.
+	if !isTerminalStatus(sess.Status) {
+		if sess.SSHAddress != "" {
+			ew.F("%s%s\n", lbl("SSH:"), sess.SSHAddress)
+		}
+		if sess.VNCAddress != "" {
+			ew.F("%s%s\n", lbl("VNC:"), sess.VNCAddress)
+		}
 	}
 	if sess.PersistentDiskStatus != "" {
 		ew.F("%s%s\n", lbl("Persistent disk:"), diskStatusText(s, sess.PersistentDiskStatus))
