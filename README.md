@@ -142,6 +142,7 @@ details) under [docs/cli](docs/cli/bitrise-cli.md).
 | [`rde claude`](docs/cli/bitrise-cli_rde_claude.md) | Create an RDE session and attach to Claude Code |
 | [`rde device-guide`](docs/cli/bitrise-cli_rde_device-guide.md) | Print the guide for driving a session's iOS simulator / Android emulator |
 | [`rde machine-type list`](docs/cli/bitrise-cli_rde_machine-type_list.md) | List machine types compatible with a given stack |
+| [`rde preview-link create`](docs/cli/bitrise-cli_rde_preview-link_create.md) | Mint a shareable device preview link for an app build |
 | [`rde saved-input create`](docs/cli/bitrise-cli_rde_saved-input_create.md) | Create a new saved input |
 | [`rde saved-input delete`](docs/cli/bitrise-cli_rde_saved-input_delete.md) | Delete a saved input |
 | [`rde saved-input list`](docs/cli/bitrise-cli_rde_saved-input_list.md) | List saved inputs for the authenticated user |
