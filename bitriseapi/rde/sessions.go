@@ -438,8 +438,10 @@ func (c *Client) DeleteSession(ctx context.Context, workspaceID, sessionID strin
 	return c.del(ctx, wsPath(workspaceID, "/sessions/"+url.PathEscape(sessionID)))
 }
 
-// DeleteTerminatedSessions removes every terminated (stopped) session in
-// the workspace for the caller and returns the count of deleted sessions.
+// DeleteTerminatedSessions removes the CALLER'S terminated (stopped)
+// sessions in the workspace and returns the count of deleted sessions. The
+// server scopes it to sessions the caller owns; other members' sessions are
+// never affected.
 // Endpoint: POST /v1/workspaces/{workspaceId}/sessions:delete-terminated.
 func (c *Client) DeleteTerminatedSessions(ctx context.Context, workspaceID string) (int, error) {
 	if workspaceID == "" {

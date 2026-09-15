@@ -712,8 +712,9 @@ func (s *Service) DeleteSession(ctx context.Context, workspaceID, sessionID stri
 	return s.client.DeleteSession(ctx, workspaceID, sessionID)
 }
 
-// DeleteTerminatedSessions removes every terminated session and returns
-// the count of sessions actually deleted.
+// DeleteTerminatedSessions removes the caller's own terminated sessions in
+// the workspace (never other members') and returns the count actually
+// deleted.
 func (s *Service) DeleteTerminatedSessions(ctx context.Context, workspaceID string) (int, error) {
 	if s.client == nil {
 		return 0, errClient()
