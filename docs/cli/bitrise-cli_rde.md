@@ -21,6 +21,10 @@ read 'rde device-guide' (then 'rde device-guide ios' or 'android'): it is the
 know-how for waiting until the device is ready, connecting, driving it, and
 what never to do.
 
+Preview links: to let someone WITHOUT a Bitrise login try an app build in
+their browser, mint a link with 'rde preview-link create' instead — typically
+from CI, authenticated with a Workspace API Token.
+
 ### Examples
 
 ```
@@ -28,6 +32,7 @@ what never to do.
   bitrise-cli rde session list --output json
   bitrise-cli rde template list
   bitrise-cli rde device-guide          # read before creating a session with a device
+  bitrise-cli rde preview-link create --device-platform ios --artifact-url https://…/App.zip
 ```
 
 ### Options
@@ -52,6 +57,7 @@ what never to do.
 * [bitrise-cli rde claude](bitrise-cli_rde_claude.md)	 - Create an RDE session and attach to Claude Code
 * [bitrise-cli rde device-guide](bitrise-cli_rde_device-guide.md)	 - Print the guide for driving a session's iOS simulator / Android emulator
 * [bitrise-cli rde machine-type](bitrise-cli_rde_machine-type.md)	 - List machine types compatible with a given stack
+* [bitrise-cli rde preview-link](bitrise-cli_rde_preview-link.md)	 - Create shareable device preview links for app builds
 * [bitrise-cli rde saved-input](bitrise-cli_rde_saved-input.md)	 - Manage saved inputs (reusable credentials/values)
 * [bitrise-cli rde session](bitrise-cli_rde_session.md)	 - Create, list, inspect, and manage RDE sessions
 * [bitrise-cli rde stack](bitrise-cli_rde_stack.md)	 - List machine stacks available to the workspace

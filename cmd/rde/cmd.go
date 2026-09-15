@@ -9,6 +9,7 @@ import (
 	rdeclaude "github.com/bitrise-io/bitrise-cli/cmd/rde/claude"
 	rdedeviceguide "github.com/bitrise-io/bitrise-cli/cmd/rde/deviceguide"
 	rdemachinetype "github.com/bitrise-io/bitrise-cli/cmd/rde/machinetype"
+	rdepreviewlink "github.com/bitrise-io/bitrise-cli/cmd/rde/previewlink"
 	rdesavedinput "github.com/bitrise-io/bitrise-cli/cmd/rde/savedinput"
 	rdesession "github.com/bitrise-io/bitrise-cli/cmd/rde/session"
 	rdestack "github.com/bitrise-io/bitrise-cli/cmd/rde/stack"
@@ -36,11 +37,16 @@ Device sessions: a session can boot an iOS simulator or Android emulator
 ('rde session create --device-platform ios|android'). Before creating one,
 read 'rde device-guide' (then 'rde device-guide ios' or 'android'): it is the
 know-how for waiting until the device is ready, connecting, driving it, and
-what never to do.`,
+what never to do.
+
+Preview links: to let someone WITHOUT a Bitrise login try an app build in
+their browser, mint a link with 'rde preview-link create' instead — typically
+from CI, authenticated with a Workspace API Token.`,
 		Example: `  bitrise-cli rde session list --workspace WORKSPACE_ID
   bitrise-cli rde session list --output json
   bitrise-cli rde template list
-  bitrise-cli rde device-guide          # read before creating a session with a device`,
+  bitrise-cli rde device-guide          # read before creating a session with a device
+  bitrise-cli rde preview-link create --device-platform ios --artifact-url https://…/App.zip`,
 	}
 	c.PersistentFlags().String(cmdutil.FlagWorkspace, "", "workspace ID (or set BITRISE_WORKSPACE_ID or default_workspace_id; auto-detected if you have exactly one workspace)")
 
@@ -52,6 +58,7 @@ what never to do.`,
 		rdestack.NewCmd(),
 		rdemachinetype.NewCmd(),
 		rdeusage.NewCmd(),
+		rdepreviewlink.NewCmd(),
 		rdedeviceguide.NewCmd(),
 	)
 	return c
