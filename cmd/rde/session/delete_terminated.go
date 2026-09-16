@@ -23,8 +23,9 @@ func newDeleteTerminatedCmd() *cobra.Command {
 	)
 	c := &cobra.Command{
 		Use:   "delete-terminated",
-		Short: "Permanently delete terminated sessions in this workspace",
-		Long: `Permanently delete terminated sessions in this workspace.
+		Short: "Permanently delete your terminated sessions, or the workspace's with --scope workspace",
+		Long: `Permanently delete your terminated sessions in this workspace, or the
+workspace-owned ones with --scope workspace.
 
 By default only sessions YOU created are affected: the server scopes the
 call to the caller's own sessions, so other members' sessions and

@@ -1,10 +1,11 @@
 ## bitrise-cli rde session delete-terminated
 
-Permanently delete terminated sessions in this workspace
+Permanently delete your terminated sessions, or the workspace's with --scope workspace
 
 ### Synopsis
 
-Permanently delete terminated sessions in this workspace.
+Permanently delete your terminated sessions in this workspace, or the
+workspace-owned ones with --scope workspace.
 
 By default only sessions YOU created are affected: the server scopes the
 call to the caller's own sessions, so other members' sessions and
