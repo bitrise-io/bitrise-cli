@@ -150,7 +150,7 @@ details) under [docs/cli](docs/cli/bitrise-cli.md).
 | [`rde saved-input view`](docs/cli/bitrise-cli_rde_saved-input_view.md) | Show details of a single saved input |
 | [`rde session create`](docs/cli/bitrise-cli_rde_session_create.md) | Create a new RDE session |
 | [`rde session delete`](docs/cli/bitrise-cli_rde_session_delete.md) | Permanently delete a session in any state (running sessions are stopped and discarded) |
-| [`rde session delete-terminated`](docs/cli/bitrise-cli_rde_session_delete-terminated.md) | Permanently delete your terminated sessions in this workspace |
+| [`rde session delete-terminated`](docs/cli/bitrise-cli_rde_session_delete-terminated.md) | Permanently delete terminated sessions in this workspace |
 | [`rde session diff`](docs/cli/bitrise-cli_rde_session_diff.md) | Compare a session's template snapshot with the current template |
 | [`rde session download`](docs/cli/bitrise-cli_rde_session_download.md) | Download a file or directory from a session |
 | [`rde session exec`](docs/cli/bitrise-cli_rde_session_exec.md) | Run a command on a session over SSH |

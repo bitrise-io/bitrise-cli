@@ -619,6 +619,25 @@ func TestDeleteTerminatedCmd_YesSkipsPrompt(t *testing.T) {
 	}
 }
 
+func TestDeleteTerminatedCmd_WorkspaceScopeSent(t *testing.T) {
+	var gotBody map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		_, _ = io.WriteString(w, `{"deletedCount":2}`)
+	}))
+	defer srv.Close()
+
+	if _, _, err := run(t, newDeleteTerminatedCmd(), srv.URL, "ws-1", []string{"--yes", "--scope", "workspace"}, output.Human); err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if gotBody["scope"] != "SESSION_LIST_SCOPE_WORKSPACE" {
+		t.Errorf("workspace scope not sent: %v", gotBody)
+	}
+	if _, _, err := run(t, newDeleteTerminatedCmd(), srv.URL, "ws-1", []string{"--yes", "--scope", "agent"}, output.Human); err == nil {
+		t.Fatal("expected an error for an unknown scope")
+	}
+}
+
 func TestDeleteTerminatedCmd_JSONOutput(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = io.WriteString(w, `{"deletedCount":3}`)

@@ -728,11 +728,14 @@ func (s *Service) DeleteSession(ctx context.Context, workspaceID, sessionID stri
 // DeleteTerminatedSessions removes the caller's own terminated sessions in
 // the workspace (never other members') and returns the count actually
 // deleted.
-func (s *Service) DeleteTerminatedSessions(ctx context.Context, workspaceID string) (int, error) {
+// DeleteTerminatedSessions hard-deletes the terminated sessions in one
+// ownership scope: SessionScopeMine (the caller's own; also the backend
+// default when empty) or SessionScopeWorkspace (the workspace-owned ones).
+func (s *Service) DeleteTerminatedSessions(ctx context.Context, workspaceID, scope string) (int, error) {
 	if s.client == nil {
 		return 0, errClient()
 	}
-	return s.client.DeleteTerminatedSessions(ctx, workspaceID)
+	return s.client.DeleteTerminatedSessions(ctx, workspaceID, scope)
 }
 
 func deviceSpecToAPI(d *DeviceSpec) *rdeapi.DeviceSpec {
