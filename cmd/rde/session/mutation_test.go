@@ -45,6 +45,63 @@ func TestCreateCmd_HappyPath(t *testing.T) {
 	}
 }
 
+func TestCreateCmd_OwnerWorkspaceSent(t *testing.T) {
+	var gotBody map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		_, _ = io.WriteString(w, `{"session":{"id":"s-new","name":"ci","status":"SESSION_STATUS_PENDING","ownerType":"workspace"}}`)
+	}))
+	defer srv.Close()
+
+	_, _, err := run(t, newCreateCmd(), srv.URL, "ws-1",
+		[]string{"ci", "--template", uuidTemplate, "--owner", "workspace", "--secret-input", "GITHUB_TOKEN=ghp_x"}, output.Human)
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if gotBody["ownerType"] != "workspace" {
+		t.Errorf("ownerType not sent as workspace: %v", gotBody)
+	}
+}
+
+func TestCreateCmd_OwnerOmittedWhenFlagUnset(t *testing.T) {
+	var gotBody map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		_, _ = io.WriteString(w, `{"session":{"id":"s-new","name":"dev","status":"SESSION_STATUS_PENDING"}}`)
+	}))
+	defer srv.Close()
+
+	if _, _, err := run(t, newCreateCmd(), srv.URL, "ws-1", []string{"dev", "--template", uuidTemplate}, output.Human); err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	// The backend default (personal for a PAT, workspace-owned for a WAT)
+	// must apply, so the field is absent, not "user".
+	if _, present := gotBody["ownerType"]; present {
+		t.Errorf("ownerType must be omitted when --owner is unset: %v", gotBody)
+	}
+}
+
+func TestCreateCmd_OwnerWorkspaceRejectsPersonalState(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
+		t.Error("no request must reach the backend")
+	}))
+	defer srv.Close()
+
+	cases := map[string][]string{
+		"saved input":      {"ci", "--template", uuidTemplate, "--owner", "workspace", "--saved-input", "GITHUB_TOKEN=" + uuidSession},
+		"map saved inputs": {"ci", "--template", uuidTemplate, "--owner", "workspace", "--map-saved-inputs"},
+		"ai prompt":        {"ci", "--template", uuidTemplate, "--owner", "workspace", "--ai-prompt", "hi"},
+		"unknown owner":    {"ci", "--template", uuidTemplate, "--owner", "agent"},
+	}
+	for name, args := range cases {
+		t.Run(name, func(t *testing.T) {
+			if _, _, err := run(t, newCreateCmd(), srv.URL, "ws-1", args, output.Human); err == nil {
+				t.Fatal("expected a validation error")
+			}
+		})
+	}
+}
+
 func TestCreateCmd_JSONOutput(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = io.WriteString(w, `{"session":{"id":"s-new","name":"dev","status":"SESSION_STATUS_PENDING"},
@@ -559,6 +616,25 @@ func TestDeleteTerminatedCmd_YesSkipsPrompt(t *testing.T) {
 	}
 	if !strings.Contains(stdout, "Deleted 3 terminated session(s)") {
 		t.Errorf("unexpected stdout: %q", stdout)
+	}
+}
+
+func TestDeleteTerminatedCmd_WorkspaceScopeSent(t *testing.T) {
+	var gotBody map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		_, _ = io.WriteString(w, `{"deletedCount":2}`)
+	}))
+	defer srv.Close()
+
+	if _, _, err := run(t, newDeleteTerminatedCmd(), srv.URL, "ws-1", []string{"--yes", "--scope", "workspace"}, output.Human); err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if gotBody["scope"] != "SESSION_LIST_SCOPE_WORKSPACE" {
+		t.Errorf("workspace scope not sent: %v", gotBody)
+	}
+	if _, _, err := run(t, newDeleteTerminatedCmd(), srv.URL, "ws-1", []string{"--yes", "--scope", "agent"}, output.Human); err == nil {
+		t.Fatal("expected an error for an unknown scope")
 	}
 }
 

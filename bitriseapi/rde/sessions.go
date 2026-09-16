@@ -149,6 +149,12 @@ type CreateSessionRequest struct {
 	// Invalid together with DeviceSpec; ignored when the template declares
 	// no device.
 	NoDevice bool `json:"noDevice,omitempty"`
+	// OwnerType is who owns the session: "user" (the backend default for a
+	// PAT — a personal session) or "workspace" (owned by the workspace
+	// itself, visible to every member). A Workspace API Token always creates
+	// workspace-owned sessions; sent only when set so the backend default
+	// applies otherwise.
+	OwnerType string `json:"ownerType,omitempty"`
 }
 
 // DeviceSpec describes a virtual device in the preview-link vocabulary.
@@ -443,13 +449,20 @@ func (c *Client) DeleteSession(ctx context.Context, workspaceID, sessionID strin
 // server scopes it to sessions the caller owns; other members' sessions are
 // never affected.
 // Endpoint: POST /v1/workspaces/{workspaceId}/sessions:delete-terminated.
-func (c *Client) DeleteTerminatedSessions(ctx context.Context, workspaceID string) (int, error) {
+func (c *Client) DeleteTerminatedSessions(ctx context.Context, workspaceID, scope string) (int, error) {
 	if workspaceID == "" {
 		return 0, fmt.Errorf("workspace ID is required")
 	}
+	// The scope rides in the body by enum name, like ListSessions' query
+	// parameter; an empty scope leaves the backend default (the caller's own
+	// sessions for a PAT, the workspace's for a Workspace API Token).
+	body := map[string]string{}
+	if scope == "workspace" {
+		body["scope"] = "SESSION_LIST_SCOPE_WORKSPACE"
+	}
 	var resp deleteTerminatedResp
 	p := wsPath(workspaceID, "/sessions:delete-terminated")
-	if err := c.sendJSON(ctx, http.MethodPost, p, struct{}{}, &resp); err != nil {
+	if err := c.sendJSON(ctx, http.MethodPost, p, body, &resp); err != nil {
 		return 0, err
 	}
 	return resp.DeletedCount, nil

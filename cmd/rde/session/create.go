@@ -41,6 +41,7 @@ func newCreateCmd() *cobra.Command {
 		artifactURL          string
 		artifactURLStdin     bool
 		artifactName         string
+		owner                string
 	)
 
 	c := &cobra.Command{
@@ -72,6 +73,15 @@ governs how the backend stores the value, not how it reaches the CLI.
 Attach arbitrary key=value metadata with --label (repeatable); labels come
 back on 'session view' and in 'session list --output json', and sessions
 can be filtered by them with 'rde session list --label-selector key=value'.
+
+By default the session is yours (a personal session). Pass --owner workspace
+to create a session owned by the workspace itself: every member can see and
+manage it, and it is listed by 'rde session list --scope workspace'. A
+workspace session carries no personal state — give every template session
+input as a value (--input / --secret-input; --saved-input and
+--map-saved-inputs are rejected) and leave --ai-prompt unset. With a
+Workspace API Token (bitwat_…, e.g. in CI) every session is workspace-owned:
+--owner may be omitted or "workspace", never "user".
 
 Want a device on the session? READ THE GUIDE FIRST: 'bitrise-cli rde
 device-guide' (then 'rde device-guide ios' or 'android' for the platform you
@@ -118,6 +128,8 @@ Example values:
   echo -n "ghp_xxx" | bitrise-cli rde saved-input create --key gh-token --value-stdin --secret
   bitrise-cli rde session create dev --template TEMPLATE_ID --saved-input gh-token=SAVED_INPUT_ID
   bitrise-cli rde session create dev --template TEMPLATE_ID --map-saved-inputs
+  # A session owned by the workspace (shared with every member); inputs as plain values.
+  bitrise-cli rde session create ci-smoke --template TEMPLATE_ID --owner workspace --secret-input GITHUB_TOKEN=ghp_xxx
   # Boot an iOS simulator with the session (stack/machine type default to the platform's).
   bitrise-cli rde device-guide ios     # read first: readiness, connecting, driving, do-nots
   bitrise-cli rde session create ios-check --device-platform ios --device-model "iPhone 16" --device-os-version 18.2
@@ -146,6 +158,22 @@ Example values:
 			case "", "ios", "android":
 			default:
 				return fmt.Errorf("--device-platform must be ios or android")
+			}
+			switch owner {
+			case "", internalrde.SessionOwnerUser, internalrde.SessionOwnerWorkspace:
+			default:
+				return fmt.Errorf("--owner must be %s or %s", internalrde.SessionOwnerUser, internalrde.SessionOwnerWorkspace)
+			}
+			// Fail fast on what the backend is certain to reject: personal
+			// state (saved inputs, an AI prompt) has no place on a session the
+			// whole workspace shares.
+			if owner == internalrde.SessionOwnerWorkspace {
+				if len(savedInputs) > 0 || mapSavedInputs {
+					return fmt.Errorf("--owner workspace: saved inputs are personal and cannot be used on a workspace session — pass the values with --input or --secret-input instead of --saved-input / --map-saved-inputs")
+				}
+				if aiPrompt != "" {
+					return fmt.Errorf("--owner workspace: --ai-prompt is not available on a workspace session (it has no personal Claude credentials)")
+				}
 			}
 			// The per-device fields need a platform to attach to — unless a
 			// template supplies it: then they tweak the template's declared
@@ -203,6 +231,7 @@ Example values:
 				AIPrompt:                aiPrompt,
 				MapSavedToSessionInputs: mapSavedInputs,
 				Labels:                  labelMap,
+				OwnerType:               owner,
 			}
 			if setAutoTerminate {
 				m := autoTerminateMinutes
@@ -307,6 +336,10 @@ Example values:
 	c.Flags().StringVar(&aiPrompt, "ai-prompt", "", "initial AI prompt passed to Claude Code on session start")
 	c.Flags().IntVar(&autoTerminateMinutes, "auto-terminate-minutes", 0, "minutes until auto-termination; 0 disables; omitted uses the backend default (~5 days)")
 	c.Flags().BoolVar(&mapSavedInputs, "map-saved-inputs", false, "auto-fill template session inputs from the user's saved inputs (matched by key)")
+	c.Flags().StringVar(&owner, "owner", "", "who owns the session: user (default; a personal session) or workspace (owned by the workspace itself, visible to every member; session inputs as plain values only). A Workspace API Token always creates workspace sessions")
+	_ = c.RegisterFlagCompletionFunc("owner", func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
+		return []string{internalrde.SessionOwnerUser, internalrde.SessionOwnerWorkspace}, cobra.ShellCompDirectiveNoFileComp
+	})
 	c.Flags().StringVar(&devicePlatform, "device-platform", "", "boot a virtual device with the session: ios (simulator, macOS stack) or android (emulator, Linux stack); --stack/--machine-type may then be omitted; read 'rde device-guide' first")
 	c.Flags().StringVar(&deviceModel, "device-model", "", "device to boot: simctl device type (\"iPhone 16\") or emulator device profile (\"pixel_7\") — a screen profile, not that phone's firmware; default: the template's device model, else the platform default")
 	c.Flags().StringVar(&deviceOSVersion, "device-os-version", "", "iOS only: an iOS version (\"18.2\") or simctl runtime id — anything else is rejected; default: the template's, else newest installed")

@@ -277,7 +277,19 @@ type CreateSessionRequest struct {
 	// NoDevice creates the session without the device its template
 	// declares (invalid together with DeviceSpec).
 	NoDevice bool
+	// OwnerType is SessionOwnerUser (personal; the backend default when
+	// empty) or SessionOwnerWorkspace (owned by the workspace itself).
+	OwnerType string
 }
+
+// Session owner kinds accepted by CreateSessionRequest.OwnerType (and the
+// `session create --owner` flag). Empty means the backend default: a
+// personal session for a PAT, a workspace-owned one for a Workspace API
+// Token (which cannot create personal sessions at all).
+const (
+	SessionOwnerUser      = "user"
+	SessionOwnerWorkspace = "workspace"
+)
 
 // UpdateSessionRequest carries optional patch fields. Pointer fields
 // preserve unset semantics. Labels upserts into the session's existing
@@ -411,6 +423,7 @@ func (s *Service) CreateSession(ctx context.Context, workspaceID string, req Cre
 		DeviceSpec:              deviceSpecToAPI(req.DeviceSpec),
 		Artifact:                artifactToAPI(req.Artifact),
 		NoDevice:                req.NoDevice,
+		OwnerType:               req.OwnerType,
 	})
 	if err != nil {
 		return CreateSessionResult{}, err
@@ -715,11 +728,14 @@ func (s *Service) DeleteSession(ctx context.Context, workspaceID, sessionID stri
 // DeleteTerminatedSessions removes the caller's own terminated sessions in
 // the workspace (never other members') and returns the count actually
 // deleted.
-func (s *Service) DeleteTerminatedSessions(ctx context.Context, workspaceID string) (int, error) {
+// DeleteTerminatedSessions hard-deletes the terminated sessions in one
+// ownership scope: SessionScopeMine (the caller's own; also the backend
+// default when empty) or SessionScopeWorkspace (the workspace-owned ones).
+func (s *Service) DeleteTerminatedSessions(ctx context.Context, workspaceID, scope string) (int, error) {
 	if s.client == nil {
 		return 0, errClient()
 	}
-	return s.client.DeleteTerminatedSessions(ctx, workspaceID)
+	return s.client.DeleteTerminatedSessions(ctx, workspaceID, scope)
 }
 
 func deviceSpecToAPI(d *DeviceSpec) *rdeapi.DeviceSpec {
