@@ -303,7 +303,7 @@ func TestDeleteSession_Path(t *testing.T) {
 func TestDeleteTerminatedSessions_PathAndCount(t *testing.T) {
 	rs := newRecordingServer(t, `{"deletedCount":3}`)
 
-	n, err := rs.client().DeleteTerminatedSessions(context.Background(), "ws-1")
+	n, err := rs.client().DeleteTerminatedSessions(context.Background(), "ws-1", "")
 	if err != nil {
 		t.Fatalf("DeleteTerminatedSessions: %v", err)
 	}
@@ -360,7 +360,7 @@ func TestSessions_ValidationGuards(t *testing.T) {
 		"RestoreSession/no-session":    func() error { _, err := c.RestoreSession(ctx, "ws", ""); return err },
 		"TerminateSession/no-session":  func() error { _, err := c.TerminateSession(ctx, "ws", ""); return err },
 		"DeleteSession/no-session":     func() error { return c.DeleteSession(ctx, "ws", "") },
-		"DeleteTerminated/no-ws":       func() error { _, err := c.DeleteTerminatedSessions(ctx, ""); return err },
+		"DeleteTerminated/no-ws":       func() error { _, err := c.DeleteTerminatedSessions(ctx, "", ""); return err },
 		"CompareTemplate/no-session":   func() error { _, err := c.CompareSessionTemplate(ctx, "ws", ""); return err },
 		"CompareTemplate/no-workspace": func() error { _, err := c.CompareSessionTemplate(ctx, "", "s1"); return err },
 	}
