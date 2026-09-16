@@ -31,6 +31,15 @@ Attach arbitrary key=value metadata with --label (repeatable); labels come
 back on 'session view' and in 'session list --output json', and sessions
 can be filtered by them with 'rde session list --label-selector key=value'.
 
+By default the session is yours (a personal session). Pass --owner workspace
+to create a session owned by the workspace itself: every member can see and
+manage it, and it is listed by 'rde session list --scope workspace'. A
+workspace session carries no personal state — give every template session
+input as a value (--input / --secret-input; --saved-input and
+--map-saved-inputs are rejected) and leave --ai-prompt unset. With a
+Workspace API Token (bitwat_…, e.g. in CI) every session is workspace-owned:
+--owner may be omitted or "workspace", never "user".
+
 Want a device on the session? READ THE GUIDE FIRST: 'bitrise-cli rde
 device-guide' (then 'rde device-guide ios' or 'android' for the platform you
 boot). It covers the readiness contract, connecting, driving the device
@@ -84,6 +93,8 @@ bitrise-cli rde session create NAME [flags]
   echo -n "ghp_xxx" | bitrise-cli rde saved-input create --key gh-token --value-stdin --secret
   bitrise-cli rde session create dev --template TEMPLATE_ID --saved-input gh-token=SAVED_INPUT_ID
   bitrise-cli rde session create dev --template TEMPLATE_ID --map-saved-inputs
+  # A session owned by the workspace (shared with every member); inputs as plain values.
+  bitrise-cli rde session create ci-smoke --template TEMPLATE_ID --owner workspace --secret-input GITHUB_TOKEN=ghp_xxx
   # Boot an iOS simulator with the session (stack/machine type default to the platform's).
   bitrise-cli rde device-guide ios     # read first: readiness, connecting, driving, do-nots
   bitrise-cli rde session create ios-check --device-platform ios --device-model "iPhone 16" --device-os-version 18.2
@@ -117,6 +128,7 @@ bitrise-cli rde session create NAME [flags]
       --machine-type string          machine type name for a template-less session, or to override the template's machine type (see 'rde machine-type list --stack STACK_ID')
       --map-saved-inputs             auto-fill template session inputs from the user's saved inputs (matched by key)
       --no-device                    create without the template's device (ignored when the template declares none)
+      --owner string                 who owns the session: user (default; a personal session) or workspace (owned by the workspace itself, visible to every member; session inputs as plain values only). A Workspace API Token always creates workspace sessions
       --saved-input stringArray      session input as key=savedInputID — uses a stored saved-input value (repeatable)
       --secret-input stringArray     session input as key=value, stored as a secret at rest (repeatable; the value is visible in shell history and process args — prefer --saved-input)
       --stack string                 stack ID for a template-less session, or to override the template's stack (see 'rde stack list')

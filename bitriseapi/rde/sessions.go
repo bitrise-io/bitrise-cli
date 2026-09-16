@@ -149,6 +149,12 @@ type CreateSessionRequest struct {
 	// Invalid together with DeviceSpec; ignored when the template declares
 	// no device.
 	NoDevice bool `json:"noDevice,omitempty"`
+	// OwnerType is who owns the session: "user" (the backend default for a
+	// PAT — a personal session) or "workspace" (owned by the workspace
+	// itself, visible to every member). A Workspace API Token always creates
+	// workspace-owned sessions; sent only when set so the backend default
+	// applies otherwise.
+	OwnerType string `json:"ownerType,omitempty"`
 }
 
 // DeviceSpec describes a virtual device in the preview-link vocabulary.
