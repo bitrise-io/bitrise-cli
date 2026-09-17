@@ -73,6 +73,17 @@ you when a device was requested) and touch nothing on the VM while it is
 "booting". A "failed" device is not always unusable: 'session view' prints the
 device notes, and the guide says which failures leave the device drivable.
 
+Warm pools: pass --warm-pool to claim a session from a warm pool ('rde
+warm-pool list') instead of describing one. A booted, idle warm session is
+handed out instantly (the session's warm state is "claimed"); when none is
+available one is created from the pool's stored configuration ("cold"). The
+pool fixes the configuration, so --template, --stack, --machine-type, the
+input flags, --feature-flag, --cluster, --ai-prompt, --map-saved-inputs and
+the device flags are rejected with it — change the pool instead. NAME,
+--description, --label, --auto-terminate-minutes and (on a device pool) the
+artifact flags apply to the claimed session; --owner may be omitted or the
+pool's owner.
+
 Example values:
   --input key=value
   --saved-input session-key=SAVED_INPUT_ID   # secret stored ahead of time
@@ -105,6 +116,8 @@ bitrise-cli rde session create NAME [flags]
   bitrise-cli rde session create no-sim --template TEMPLATE_ID --no-device
   # Keep a signed artifact URL out of shell history and process args: read it from a file.
   bitrise-cli rde session create android-check --device-platform android --artifact-url-stdin < artifact-url.txt
+  # Claim a pre-booted session from a warm pool (see 'rde warm-pool list').
+  bitrise-cli rde session create dev --warm-pool WARM_POOL_ID
 ```
 
 ### Options
@@ -135,6 +148,7 @@ bitrise-cli rde session create NAME [flags]
       --template string              template ID or name to create the session from (omit to create a template-less session with --stack and --machine-type)
       --wait                         wait until the session leaves provisioning (running, failed, …) — and, with --device-platform, until the device is ready or failed — before returning; exits 1 if the final status isn't running
       --wait-timeout duration        max time to wait when --wait is set (uses Go duration syntax: 30s, 5m, 1h) (default 10m0s)
+      --warm-pool string             warm pool ID or name to claim the session from: a pre-booted warm session is handed out instantly, or one is created from the pool's configuration when none is available; the pool fixes the configuration, so --template, --stack, --machine-type, input, feature-flag, --cluster, --ai-prompt and device flags are rejected with it (see 'rde warm-pool list')
 ```
 
 ### Options inherited from parent commands

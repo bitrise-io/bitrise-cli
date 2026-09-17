@@ -60,6 +60,14 @@ type Session struct {
 	// Status "running" does NOT mean the device is usable — read
 	// Device.State.
 	Device *SessionDevice `json:"device,omitempty"`
+	// WarmPoolID is the warm pool this session belongs to; empty when
+	// none. WarmState is its relation to that pool — WarmStateClaimed or
+	// WarmStateCold for a session created with `--warm-pool`, "warming" /
+	// "ready" for pool inventory. Passed through verbatim so future states
+	// reach callers without a CLI change. Empty when the session has no
+	// pool.
+	WarmPoolID string `json:"warm_pool_id,omitempty"`
+	WarmState  string `json:"warm_state,omitempty"`
 }
 
 // DeviceSpec describes a virtual device in the preview-link vocabulary:
@@ -280,6 +288,14 @@ type CreateSessionRequest struct {
 	// OwnerType is SessionOwnerUser (personal; the backend default when
 	// empty) or SessionOwnerWorkspace (owned by the workspace itself).
 	OwnerType string
+	// WarmPoolID claims a session from a warm pool instead of building one
+	// from this request. The pool fixes the configuration: TemplateID,
+	// StackID, MachineType, SessionInputs, EnabledFeatureFlagNames,
+	// Cluster, AIPrompt, MapSavedToSessionInputs, DeviceSpec and NoDevice
+	// must be empty (the backend rejects them); OwnerType must be empty or
+	// the pool's. Name, Description, Labels, AutoTerminateMinutes and
+	// Artifact apply to the claimed session.
+	WarmPoolID string
 }
 
 // Session owner kinds accepted by CreateSessionRequest.OwnerType (and the
@@ -424,6 +440,7 @@ func (s *Service) CreateSession(ctx context.Context, workspaceID string, req Cre
 		Artifact:                artifactToAPI(req.Artifact),
 		NoDevice:                req.NoDevice,
 		OwnerType:               req.OwnerType,
+		WarmPoolID:              req.WarmPoolID,
 	})
 	if err != nil {
 		return CreateSessionResult{}, err
@@ -780,6 +797,8 @@ func sessionFromAPI(w rdeapi.Session) Session {
 		OwnerType:            w.OwnerType,
 		OwnerID:              w.OwnerID,
 		Device:               deviceFromAPI(w.Device),
+		WarmPoolID:           w.WarmPoolID,
+		WarmState:            w.WarmState,
 	}
 	out.AgentSessionStatusUpdatedAt = parseTime(w.AgentSessionStatusUpdatedAt)
 	out.AutoTerminateAt = parseTime(w.AutoTerminateAt)

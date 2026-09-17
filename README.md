@@ -172,6 +172,12 @@ details) under [docs/cli](docs/cli/bitrise-cli.md).
 | [`rde template update`](docs/cli/bitrise-cli_rde_template_update.md) | Update an existing RDE template from a JSON spec file |
 | [`rde template view`](docs/cli/bitrise-cli_rde_template_view.md) | Show details of a single template |
 | [`rde usage`](docs/cli/bitrise-cli_rde_usage.md) | Show the workspace's active session and resource usage |
+| [`rde warm-pool create`](docs/cli/bitrise-cli_rde_warm-pool_create.md) | Create a warm pool |
+| [`rde warm-pool delete`](docs/cli/bitrise-cli_rde_warm-pool_delete.md) | Delete a warm pool and terminate its warm sessions |
+| [`rde warm-pool list`](docs/cli/bitrise-cli_rde_warm-pool_list.md) | List warm pools in the workspace |
+| [`rde warm-pool set-count`](docs/cli/bitrise-cli_rde_warm-pool_set-count.md) | Set how many warm sessions a pool keeps booted |
+| [`rde warm-pool update`](docs/cli/bitrise-cli_rde_warm-pool_update.md) | Update a warm pool's name, count or configuration |
+| [`rde warm-pool view`](docs/cli/bitrise-cli_rde_warm-pool_view.md) | Show a warm pool's status, configuration and warm sessions |
 
 ### [`stack`](docs/cli/bitrise-cli_stack.md) — List available stacks
 

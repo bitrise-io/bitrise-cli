@@ -15,6 +15,7 @@ import (
 	rdestack "github.com/bitrise-io/bitrise-cli/cmd/rde/stack"
 	rdetemplate "github.com/bitrise-io/bitrise-cli/cmd/rde/template"
 	rdeusage "github.com/bitrise-io/bitrise-cli/cmd/rde/usage"
+	rdewarmpool "github.com/bitrise-io/bitrise-cli/cmd/rde/warmpool"
 )
 
 // NewCmd returns the `bitrise-cli rde` parent command.
@@ -41,12 +42,17 @@ what never to do.
 
 Preview links: to let someone WITHOUT a Bitrise login try an app build in
 their browser, mint a link with 'rde preview-link create' instead — typically
-from CI, authenticated with a Workspace API Token.`,
+from CI, authenticated with a Workspace API Token.
+
+Warm pools: 'rde warm-pool' keeps a number of sessions of one configuration
+booted and idle so 'rde session create --warm-pool' (or a preview link minted
+with --warm-pool) hands one out instantly instead of booting a VM.`,
 		Example: `  bitrise-cli rde session list --workspace WORKSPACE_ID
   bitrise-cli rde session list --output json
   bitrise-cli rde template list
   bitrise-cli rde device-guide          # read before creating a session with a device
-  bitrise-cli rde preview-link create --device-platform ios --artifact-url https://…/App.zip`,
+  bitrise-cli rde preview-link create --device-platform ios --artifact-url https://…/App.zip
+  bitrise-cli rde warm-pool list`,
 	}
 	c.PersistentFlags().String(cmdutil.FlagWorkspace, "", "workspace ID (or set BITRISE_WORKSPACE_ID or default_workspace_id; auto-detected if you have exactly one workspace)")
 
@@ -59,6 +65,7 @@ from CI, authenticated with a Workspace API Token.`,
 		rdemachinetype.NewCmd(),
 		rdeusage.NewCmd(),
 		rdepreviewlink.NewCmd(),
+		rdewarmpool.NewCmd(),
 		rdedeviceguide.NewCmd(),
 	)
 	return c
