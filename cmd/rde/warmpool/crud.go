@@ -38,15 +38,20 @@ func (f *inputFlags) parse() ([]internalrde.SessionInputValue, error) {
 
 func newCreateCmd() *cobra.Command {
 	var (
-		template       string
-		count          int
-		owner          string
-		inputs         inputFlags
-		mapSavedInputs bool
-		featureFlags   []string
-		stack          string
-		machineType    string
-		cluster        string
+		template          string
+		count             int
+		owner             string
+		inputs            inputFlags
+		mapSavedInputs    bool
+		featureFlags      []string
+		stack             string
+		machineType       string
+		cluster           string
+		devicePlatform    string
+		deviceModel       string
+		deviceOSVersion   string
+		deviceSystemImage string
+		noDevice          bool
 	)
 	c := &cobra.Command{
 		Use:   "create NAME",
@@ -80,14 +85,24 @@ your shell history and process arguments; for a user pool, prefer storing it
 once with 'rde saved-input create --value-stdin --secret' and referencing it.
 
 --stack, --machine-type and --cluster override the template's defaults for
-the warm sessions; omit them to use the template's.`,
+the warm sessions; omit them to use the template's.
+
+The device the warm sessions boot follows 'rde session create': omit the
+device flags to boot the template's declared device as is; --device-model,
+--device-os-version and --device-system-image without --device-platform tweak
+that device per field; with --device-platform the flags are the complete
+device to boot; --no-device boots none. A claimed session's app artifact is
+still given at claim time.`,
 		Example: `  bitrise-cli rde warm-pool create ios-devs --template TEMPLATE_ID --count 2
   # Shared with the workspace; inputs as plain values (no saved inputs).
   bitrise-cli rde warm-pool create ci-devices --template TEMPLATE_ID --owner workspace --count 3 --secret-input GITHUB_TOKEN=ghp_xxx
   # A private pool that reuses a saved input and a feature flag.
   bitrise-cli rde warm-pool create mine --template TEMPLATE_ID --saved-input gh-token=SAVED_INPUT_ID --feature-flag enable_beta_simulator
   # A configuration preset: nothing booted until 'set-count' raises the count.
-  bitrise-cli rde warm-pool create preset --template TEMPLATE_ID --machine-type g2.mac.m2pro.6c-14g`,
+  bitrise-cli rde warm-pool create preset --template TEMPLATE_ID --machine-type g2.mac.m2pro.6c-14g
+  # The template's simulator, but an iPhone 15 on iOS 17.5; or no device at all.
+  bitrise-cli rde warm-pool create ios-17 --template TEMPLATE_ID --device-model "iPhone 15" --device-os-version 17.5
+  bitrise-cli rde warm-pool create headless --template TEMPLATE_ID --no-device`,
 		Args: cmdutil.RequireArgs("NAME"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
@@ -111,6 +126,10 @@ the warm sessions; omit them to use the template's.`,
 				return fmt.Errorf("--owner workspace: saved inputs are personal and cannot be used on a workspace pool — pass the values with --input or --secret-input instead of --saved-input / --map-saved-inputs")
 			}
 			sessionInputs, err := inputs.parse()
+			if err != nil {
+				return err
+			}
+			deviceSpec, err := deviceSpecFromFlags(devicePlatform, deviceModel, deviceOSVersion, deviceSystemImage)
 			if err != nil {
 				return err
 			}
@@ -139,6 +158,8 @@ the warm sessions; omit them to use the template's.`,
 				StackID:                 stack,
 				MachineType:             machineType,
 				Cluster:                 cluster,
+				DeviceSpec:              deviceSpec,
+				NoDevice:                noDevice,
 			})
 			if err != nil {
 				return err
@@ -158,7 +179,47 @@ the warm sessions; omit them to use the template's.`,
 	c.Flags().StringVar(&stack, "stack", "", "stack ID to override the template's (see 'rde stack list')")
 	c.Flags().StringVar(&machineType, "machine-type", "", "machine type name to override the template's (see 'rde machine-type list --stack STACK_ID')")
 	c.Flags().StringVar(&cluster, "cluster", "", "target cluster name to override the one resolved from stack + machine type")
+	bindDeviceFlags(c, &devicePlatform, &deviceModel, &deviceOSVersion, &deviceSystemImage)
+	c.Flags().BoolVar(&noDevice, "no-device", false, "boot the warm sessions without the template's device (ignored when the template declares none)")
+	for _, f := range deviceFlagNames {
+		c.MarkFlagsMutuallyExclusive("no-device", f)
+	}
 	return c
+}
+
+// deviceFlagNames are the flags that describe a device; --no-device excludes
+// them all.
+var deviceFlagNames = []string{"device-platform", "device-model", "device-os-version", "device-system-image"}
+
+// bindDeviceFlags adds the device flags 'rde session create' has, with the
+// pool's wording.
+func bindDeviceFlags(c *cobra.Command, platform, model, osVersion, systemImage *string) {
+	c.Flags().StringVar(platform, "device-platform", "", "device the warm sessions boot: ios (simulator, macOS stack) or android (emulator, Linux stack); omit with --template to tweak the template's device per field")
+	c.Flags().StringVar(model, "device-model", "", "device to boot: simctl device type (\"iPhone 16\") or emulator device profile (\"pixel_7\") — a screen profile, not that phone's firmware; default: the template's, else the platform default")
+	c.Flags().StringVar(osVersion, "device-os-version", "", "iOS only: an iOS version (\"18.2\") or simctl runtime id — anything else is rejected; default: the template's, else newest installed")
+	c.Flags().StringVar(systemImage, "device-system-image", "", "Android only: the API-level knob — sdkmanager system image package (\"system-images;android-34;google_apis;x86_64\"); default: the template's, else the platform default")
+}
+
+// deviceSpecFromFlags turns the device flags into a request spec, or nil when
+// none was given. An empty platform is deliberate: the backend merges the spec
+// over the template's declared device and fills the platform (and any other
+// unset field) from it — the same contract as 'rde session create --template'.
+func deviceSpecFromFlags(platform, model, osVersion, systemImage string) (*internalrde.DeviceSpec, error) {
+	switch platform {
+	case "", "ios", "android":
+	default:
+		return nil, fmt.Errorf("--device-platform must be ios or android")
+	}
+	if platform == "ios" && systemImage != "" {
+		return nil, fmt.Errorf("--device-system-image applies to Android only")
+	}
+	if platform == "android" && osVersion != "" {
+		return nil, fmt.Errorf("--device-os-version applies to iOS only")
+	}
+	if platform == "" && model == "" && osVersion == "" && systemImage == "" {
+		return nil, nil
+	}
+	return &internalrde.DeviceSpec{Platform: platform, DeviceModel: model, OSVersion: osVersion, SystemImage: systemImage}, nil
 }
 
 func newUpdateCmd() *cobra.Command {
@@ -172,6 +233,12 @@ func newUpdateCmd() *cobra.Command {
 		stack             string
 		machineType       string
 		cluster           string
+		devicePlatform    string
+		deviceModel       string
+		deviceOSVersion   string
+		deviceSystemImage string
+		clearDevice       bool
+		noDevice          bool
 	)
 	c := &cobra.Command{
 		Use:   "update WARM_POOL_ID",
@@ -184,7 +251,12 @@ Session inputs and feature flags are replaced as a whole: passing any
 input list with the ones given, and any --feature-flag replaces the enabled
 flags. Use --clear-inputs / --clear-feature-flags to empty a list.
 --stack, --machine-type and --cluster set an override; pass an empty value
-("") to remove one and fall back to the template's.
+("") to remove one and fall back to the template's. The device flags set the
+pool's device override (without --device-platform they tweak the template's
+declared device per field; with it they are the complete device);
+--clear-device removes the override so the template's device applies as
+declared; --no-device / --no-device=false skip or restore the template's
+device.
 
 Changing the configuration invalidates the pool's current inventory: the
 backend terminates the existing warm sessions and boots new ones from the
@@ -195,7 +267,10 @@ count alone, 'rde warm-pool set-count' is the shorter spelling.`,
   bitrise-cli rde warm-pool update ios-devs --secret-input GITHUB_TOKEN=ghp_yyy --machine-type g2.mac.m2pro.12c-32g
   # Drop the stack override so the template's stack applies again.
   bitrise-cli rde warm-pool update ios-devs --stack ""
-  bitrise-cli rde warm-pool update ios-devs --clear-feature-flags`,
+  bitrise-cli rde warm-pool update ios-devs --clear-feature-flags
+  # Boot an iPhone 15 instead of the template's device; then go back to the template's.
+  bitrise-cli rde warm-pool update ios-devs --device-model "iPhone 15"
+  bitrise-cli rde warm-pool update ios-devs --clear-device`,
 		Args: cmdutil.RequireArgs("WARM_POOL_ID"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if inputs.set() && clearInputs {
@@ -250,8 +325,30 @@ count alone, 'rde warm-pool set-count' is the shorter spelling.`,
 				req.Cluster = &cluster
 				changed = true
 			}
+			deviceSpec, err := deviceSpecFromFlags(devicePlatform, deviceModel, deviceOSVersion, deviceSystemImage)
+			if err != nil {
+				return err
+			}
+			if deviceSpec != nil && clearDevice {
+				return fmt.Errorf("--clear-device cannot be combined with the --device-* flags")
+			}
+			if deviceSpec != nil {
+				req.DeviceSpec = deviceSpec
+				changed = true
+			}
+			if clearDevice {
+				// The update switch alone: the backend drops the pool's
+				// device override.
+				req.ClearDeviceSpec = true
+				changed = true
+			}
+			if flags.Changed("no-device") {
+				v := noDevice
+				req.NoDevice = &v
+				changed = true
+			}
 			if !changed {
-				return fmt.Errorf("nothing to update: pass at least one of --name, --count, --input, --secret-input, --saved-input, --clear-inputs, --feature-flag, --clear-feature-flags, --stack, --machine-type or --cluster")
+				return fmt.Errorf("nothing to update: pass at least one of --name, --count, --input, --secret-input, --saved-input, --clear-inputs, --feature-flag, --clear-feature-flags, --stack, --machine-type, --cluster, the --device-* flags, --clear-device or --no-device")
 			}
 			workspaceID, err := cmdutil.ResolveWorkspaceID(cmd)
 			if err != nil {
@@ -283,6 +380,12 @@ count alone, 'rde warm-pool set-count' is the shorter spelling.`,
 	c.Flags().StringVar(&stack, "stack", "", "stack ID override; \"\" removes the override")
 	c.Flags().StringVar(&machineType, "machine-type", "", "machine type override; \"\" removes the override")
 	c.Flags().StringVar(&cluster, "cluster", "", "cluster override; \"\" removes the override")
+	bindDeviceFlags(c, &devicePlatform, &deviceModel, &deviceOSVersion, &deviceSystemImage)
+	c.Flags().BoolVar(&clearDevice, "clear-device", false, "remove the pool's device override; the template's device applies as declared")
+	c.Flags().BoolVar(&noDevice, "no-device", false, "true: the warm sessions boot without the template's device; --no-device=false boots it again")
+	for _, f := range deviceFlagNames {
+		c.MarkFlagsMutuallyExclusive("no-device", f)
+	}
 	return c
 }
 

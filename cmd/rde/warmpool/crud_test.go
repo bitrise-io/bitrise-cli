@@ -63,6 +63,36 @@ func TestCreateCmd_HappyPath(t *testing.T) {
 	}
 }
 
+// The device flags travel like a session create's; --no-device alone.
+func TestCreateCmd_Device(t *testing.T) {
+	var gotBody map[string]any
+	srv := mutationServer(t, http.MethodPost, "/v1/workspaces/ws-1/warm-pools", `{"warmPool":{"id":"p-new","name":"ios","status":{}}}`, &gotBody)
+	if _, _, err := run(t, newCreateCmd(), srv.URL, "ws-1", []string{"ios", "--template", uuidTemplate, "--device-platform", "ios", "--device-model", "iPhone 16"}, output.Human); err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	srv.Close()
+	spec, _ := gotBody["deviceSpec"].(map[string]any)
+	if spec["platform"] != "ios" || spec["deviceModel"] != "iPhone 16" {
+		t.Errorf("deviceSpec = %v", gotBody["deviceSpec"])
+	}
+	if _, ok := gotBody["noDevice"]; ok {
+		t.Errorf("noDevice must be omitted when unset, body=%v", gotBody)
+	}
+
+	gotBody = nil
+	srv = mutationServer(t, http.MethodPost, "/v1/workspaces/ws-1/warm-pools", `{"warmPool":{"id":"p-new","name":"headless","status":{}}}`, &gotBody)
+	if _, _, err := run(t, newCreateCmd(), srv.URL, "ws-1", []string{"headless", "--template", uuidTemplate, "--no-device"}, output.Human); err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	srv.Close()
+	if gotBody["noDevice"] != true {
+		t.Errorf("noDevice = %v, want true", gotBody["noDevice"])
+	}
+	if _, ok := gotBody["deviceSpec"]; ok {
+		t.Errorf("deviceSpec must be omitted with --no-device, body=%v", gotBody)
+	}
+}
+
 // The default is an inert preset: nothing booted, no owner sent (the backend
 // picks the token's default), no saved-input mapping.
 func TestCreateCmd_DefaultsAreMinimal(t *testing.T) {
@@ -194,6 +224,52 @@ func TestUpdateCmd_SendsOnlyWhatChanged(t *testing.T) {
 		if _, ok := gotBody[k]; ok {
 			t.Errorf("%s should be absent, body=%v", k, gotBody)
 		}
+	}
+}
+
+// The device flags become a spec with the update switch; --clear-device is
+// the switch alone; --no-device is sent as given, false included.
+func TestUpdateCmd_Device(t *testing.T) {
+	path := "/v1/workspaces/ws-1/warm-pools/" + uuidPool
+	resp := `{"warmPool":{"id":"p-1","name":"ios-devs"}}`
+
+	var gotBody map[string]any
+	srv := mutationServer(t, http.MethodPatch, path, resp, &gotBody)
+	if _, _, err := run(t, newUpdateCmd(), srv.URL, "ws-1", []string{uuidPool, "--device-model", "iPhone 15", "--device-os-version", "17.5"}, output.Human); err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	srv.Close()
+	spec, _ := gotBody["deviceSpec"].(map[string]any)
+	if gotBody["updateDeviceSpec"] != true || spec["deviceModel"] != "iPhone 15" || spec["osVersion"] != "17.5" {
+		t.Errorf("device tweak not forwarded, body=%v", gotBody)
+	}
+	// An empty platform is the per-field tweak: the backend fills it from the
+	// template's declared device (the same wire shape 'session create' sends).
+	if spec["platform"] != "" {
+		t.Errorf("platform = %v, want empty for a per-field tweak", spec["platform"])
+	}
+
+	gotBody = nil
+	srv = mutationServer(t, http.MethodPatch, path, resp, &gotBody)
+	if _, _, err := run(t, newUpdateCmd(), srv.URL, "ws-1", []string{uuidPool, "--clear-device"}, output.Human); err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	srv.Close()
+	if gotBody["updateDeviceSpec"] != true {
+		t.Errorf("--clear-device must send the switch, body=%v", gotBody)
+	}
+	if _, ok := gotBody["deviceSpec"]; ok {
+		t.Errorf("--clear-device must not send a spec, body=%v", gotBody)
+	}
+
+	gotBody = nil
+	srv = mutationServer(t, http.MethodPatch, path, resp, &gotBody)
+	if _, _, err := run(t, newUpdateCmd(), srv.URL, "ws-1", []string{uuidPool, "--no-device=false"}, output.Human); err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	srv.Close()
+	if v, ok := gotBody["noDevice"]; !ok || v != false {
+		t.Errorf("noDevice = %v (present=%v), want false present", v, ok)
 	}
 }
 
