@@ -143,10 +143,15 @@ of the template:
 available it is handed to you already running (`warm_state: "claimed"`);
 otherwise one is created from the pool's configuration (`"cold"`) — same
 result, just slower. The pool fixes the configuration: do not pass
-`template_id`, `session_inputs`, feature flags, stack/machine/cluster,
-`device_spec` or `no_device` alongside `warm_pool_id` (they are rejected);
-`name`, `labels`, `auto_terminate_minutes` and `artifact` still apply. The
-pool refills after each claim. Read the pool (`bitrise_devenv_get_warm_pool`,
+`template_id`, `image`, `session_inputs`, `map_saved_to_session_inputs`,
+feature flags, stack/machine/cluster, `device_spec`, `no_device` or
+`ai_prompt` alongside `warm_pool_id` (they are rejected, not ignored);
+`name`, `description`, `labels`, `auto_terminate_minutes` and `artifact`
+still apply. `owner_type`, if given, must be the pool's own: a claimed session
+belongs to the pool's owner (you for a personal pool, the workspace for a
+workspace pool). A pool you cannot see — another member's personal pool —
+reads as not found, exactly like a pool that does not exist. The pool refills
+after each claim. Read the pool (`bitrise_devenv_get_warm_pool`,
 `rde warm-pool view`) for `status.ready` / `status.warming` before a burst of
 creates, and scale it with `pool_size` (`rde warm-pool set-size <id> N`;
 0 drains it and keeps it as a preset).
