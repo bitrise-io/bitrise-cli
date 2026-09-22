@@ -1,10 +1,10 @@
-## bitrise-cli rde warm-pool set-count
+## bitrise-cli rde warm-pool set-size
 
-Set how many warm sessions a pool keeps booted
+Set a pool's size: how many warm sessions it keeps booted
 
 ### Synopsis
 
-Set a warm pool's desired count — how many sessions of its configuration
+Set a warm pool's pool size — how many sessions of its configuration
 the RDE backend keeps booted and idle. Raising it boots sessions; lowering it
 terminates surplus warm sessions (claimed sessions are untouched). 0 drains
 the pool but keeps it usable as a configuration preset: 'rde session create
@@ -15,22 +15,22 @@ in the morning and again with 0 in the evening. A Workspace API Token works
 for workspace pools, so the job does not need a personal token.
 
 ```
-bitrise-cli rde warm-pool set-count WARM_POOL_ID COUNT [flags]
+bitrise-cli rde warm-pool set-size WARM_POOL_ID SIZE [flags]
 ```
 
 ### Examples
 
 ```
-  bitrise-cli rde warm-pool set-count ios-devs 3
+  bitrise-cli rde warm-pool set-size ios-devs 3
   # Cron: warm up at 08:00 on weekdays, drain at 19:00.
-  0 8  * * 1-5  BITRISE_TOKEN=bitwat_… bitrise-cli rde warm-pool set-count WARM_POOL_ID 3 --workspace WORKSPACE_ID -q
-  0 19 * * 1-5  BITRISE_TOKEN=bitwat_… bitrise-cli rde warm-pool set-count WARM_POOL_ID 0 --workspace WORKSPACE_ID -q
+  0 8  * * 1-5  BITRISE_TOKEN=bitwat_… bitrise-cli rde warm-pool set-size WARM_POOL_ID 3 --workspace WORKSPACE_ID -q
+  0 19 * * 1-5  BITRISE_TOKEN=bitwat_… bitrise-cli rde warm-pool set-size WARM_POOL_ID 0 --workspace WORKSPACE_ID -q
 ```
 
 ### Options
 
 ```
-  -h, --help   help for set-count
+  -h, --help   help for set-size
 ```
 
 ### Options inherited from parent commands

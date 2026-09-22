@@ -8,12 +8,12 @@ Keep pre-booted sessions ready to claim.
 
 A warm pool is a stored session configuration — a template, its session
 input values and feature flags, and optional stack / machine type / cluster
-overrides — plus an owner and a desired count. The RDE backend keeps that
+overrides — plus an owner and a pool size. The RDE backend keeps that
 many sessions of the configuration booted and idle ("warm sessions"), so
 'rde session create --warm-pool POOL' hands one out instantly (the session's
 warm state is "claimed") instead of booting a VM. When none is available the
 session is created from the pool's configuration ("cold"), so a pool with a
-desired count of 0 still works as a configuration preset.
+pool size of 0 still works as a configuration preset.
 
 Owner: a "user" pool is private to its creator and may reference the
 creator's saved inputs; a "workspace" pool is shared with every member,
@@ -21,10 +21,10 @@ reachable by Workspace API Tokens, and stores every input as a plain value.
 Only workspace pools can back preview links ('rde preview-link create
 --warm-pool').
 
-Warm sessions cost machine time while idle. Set the desired count to what
-demand needs and scale it with 'rde warm-pool set-count POOL N' — the
+Warm sessions cost machine time while idle. Set the pool size to what
+demand needs and scale it with 'rde warm-pool set-size POOL N' — the
 intended way to warm a pool for business hours is a cron job that sets the
-count in the morning and back to 0 in the evening (a Workspace API Token
+size in the morning and back to 0 in the evening (a Workspace API Token
 works for workspace pools). Secret input values are never shown; 'view'
 reports each secret key as (hidden).
 
@@ -40,8 +40,8 @@ bitrise-cli rde warm-pool [flags]
 
 ```
   bitrise-cli rde warm-pool list
-  bitrise-cli rde warm-pool create ios-devs --template TEMPLATE_ID --count 2 --owner workspace --secret-input GITHUB_TOKEN=ghp_xxx
-  bitrise-cli rde warm-pool set-count ios-devs 0     # drain for the night
+  bitrise-cli rde warm-pool create ios-devs --template TEMPLATE_ID --size 2 --owner workspace --secret-input GITHUB_TOKEN=ghp_xxx
+  bitrise-cli rde warm-pool set-size ios-devs 0     # drain for the night
   bitrise-cli rde session create dev --warm-pool ios-devs
 ```
 
@@ -67,7 +67,7 @@ bitrise-cli rde warm-pool [flags]
 * [bitrise-cli rde warm-pool create](bitrise-cli_rde_warm-pool_create.md)	 - Create a warm pool
 * [bitrise-cli rde warm-pool delete](bitrise-cli_rde_warm-pool_delete.md)	 - Delete a warm pool and terminate its warm sessions
 * [bitrise-cli rde warm-pool list](bitrise-cli_rde_warm-pool_list.md)	 - List warm pools in the workspace
-* [bitrise-cli rde warm-pool set-count](bitrise-cli_rde_warm-pool_set-count.md)	 - Set how many warm sessions a pool keeps booted
+* [bitrise-cli rde warm-pool set-size](bitrise-cli_rde_warm-pool_set-size.md)	 - Set a pool's size: how many warm sessions it keeps booted
 * [bitrise-cli rde warm-pool update](bitrise-cli_rde_warm-pool_update.md)	 - Update a warm pool's name, count or configuration
 * [bitrise-cli rde warm-pool view](bitrise-cli_rde_warm-pool_view.md)	 - Show a warm pool's status, configuration and warm sessions
 

@@ -130,9 +130,9 @@ way `stack_id` / `machine_type` do:
 sessions of one configuration booted and idle so a create is instant: it is a
 stored session configuration (template + input values + flags + optional
 machine/device overrides) plus an owner (`user` = private to its creator,
-`workspace` = shared with every member) and a `desired_count`. Create one
+`workspace` = shared with every member) and a `pool_size`. Create one
 with `bitrise_devenv_create_warm_pool` / `bitrise-cli rde warm-pool create
-NAME --template T --count N`, then create sessions **from the pool** instead
+NAME --template T --size N`, then create sessions **from the pool** instead
 of the template:
 
 ```json
@@ -148,7 +148,7 @@ result, just slower. The pool fixes the configuration: do not pass
 `name`, `labels`, `auto_terminate_minutes` and `artifact` still apply. The
 pool refills after each claim. Read the pool (`bitrise_devenv_get_warm_pool`,
 `rde warm-pool view`) for `status.ready` / `status.warming` before a burst of
-creates, and scale it with `desired_count` (`rde warm-pool set-count <id> N`;
+creates, and scale it with `pool_size` (`rde warm-pool set-size <id> N`;
 0 drains it and keeps it as a preset).
 
 ## 2. Wait for the device — "running" is not "ready"

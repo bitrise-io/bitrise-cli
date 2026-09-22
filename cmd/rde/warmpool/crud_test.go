@@ -28,18 +28,18 @@ func mutationServer(t *testing.T, method, path, body string, got *map[string]any
 func TestCreateCmd_HappyPath(t *testing.T) {
 	var gotBody map[string]any
 	srv := mutationServer(t, http.MethodPost, "/v1/workspaces/ws-1/warm-pools",
-		`{"warmPool":{"id":"p-new","name":"ios-devs","templateName":"iOS Dev","ownerType":"workspace","desiredCount":2,"status":{}}}`, &gotBody)
+		`{"warmPool":{"id":"p-new","name":"ios-devs","templateName":"iOS Dev","ownerType":"workspace","poolSize":2,"status":{}}}`, &gotBody)
 	defer srv.Close()
 
 	stdout, _, err := run(t, newCreateCmd(), srv.URL, "ws-1", []string{
-		"ios-devs", "--template", uuidTemplate, "--count", "2", "--owner", "workspace",
+		"ios-devs", "--template", uuidTemplate, "--size", "2", "--owner", "workspace",
 		"--input", "REPO=my-app", "--secret-input", "GITHUB_TOKEN=ghp_x",
 		"--feature-flag", "beta", "--machine-type", "g2.mac", "--cluster", "c1",
 	}, output.Human)
 	if err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
-	if gotBody["name"] != "ios-devs" || gotBody["templateId"] != uuidTemplate || gotBody["ownerType"] != "workspace" || gotBody["desiredCount"] != float64(2) {
+	if gotBody["name"] != "ios-devs" || gotBody["templateId"] != uuidTemplate || gotBody["ownerType"] != "workspace" || gotBody["poolSize"] != float64(2) {
 		t.Errorf("unexpected create body: %v", gotBody)
 	}
 	if gotBody["machineType"] != "g2.mac" || gotBody["cluster"] != "c1" {
@@ -58,7 +58,7 @@ func TestCreateCmd_HappyPath(t *testing.T) {
 	if flags, _ := gotBody["enabledFeatureFlagNames"].([]any); len(flags) != 1 || flags[0] != "beta" {
 		t.Errorf("feature flags wrong: %v", gotBody["enabledFeatureFlagNames"])
 	}
-	if !strings.Contains(stdout, "p-new") || !strings.Contains(stdout, "Desired count:") {
+	if !strings.Contains(stdout, "p-new") || !strings.Contains(stdout, "Pool size:") {
 		t.Errorf("stdout missing the created pool:\n%s", stdout)
 	}
 }
@@ -103,7 +103,7 @@ func TestCreateCmd_DefaultsAreMinimal(t *testing.T) {
 	if _, _, err := run(t, newCreateCmd(), srv.URL, "ws-1", []string{"preset", "--template", uuidTemplate}, output.Human); err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
-	for _, k := range []string{"desiredCount", "ownerType", "sessionInputs", "mapSavedToSessionInputs", "enabledFeatureFlagNames"} {
+	for _, k := range []string{"poolSize", "ownerType", "sessionInputs", "mapSavedToSessionInputs", "enabledFeatureFlagNames"} {
 		if _, ok := gotBody[k]; ok {
 			t.Errorf("%s should be omitted by default, body = %v", k, gotBody)
 		}
@@ -166,7 +166,7 @@ func TestCreateCmd_RejectsBadFlags(t *testing.T) {
 	}{
 		{"no template", []string{"ios-devs"}, "--template is required"},
 		{"no name", nil, "NAME"},
-		{"negative count", []string{"ios-devs", "--template", uuidTemplate, "--count", "-1"}, "--count must not be negative"},
+		{"negative count", []string{"ios-devs", "--template", uuidTemplate, "--size", "-1"}, "--size must not be negative"},
 		{"unknown owner", []string{"ios-devs", "--template", uuidTemplate, "--owner", "agent"}, "--owner must be"},
 		{"saved input on workspace pool", []string{"ios-devs", "--template", uuidTemplate, "--owner", "workspace", "--saved-input", "k=si-1"}, "saved inputs are personal"},
 		{"map saved on workspace pool", []string{"ios-devs", "--template", uuidTemplate, "--owner", "workspace", "--map-saved-inputs"}, "saved inputs are personal"},
@@ -199,15 +199,15 @@ func TestUpdateCmd_SendsOnlyWhatChanged(t *testing.T) {
 	defer srv.Close()
 
 	if _, _, err := run(t, newUpdateCmd(), srv.URL, "ws-1",
-		[]string{uuidPool, "--name", "renamed", "--count", "0", "--secret-input", "GITHUB_TOKEN=ghp_y", "--stack", ""}, output.Human); err != nil {
+		[]string{uuidPool, "--name", "renamed", "--size", "0", "--secret-input", "GITHUB_TOKEN=ghp_y", "--stack", ""}, output.Human); err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
 	if gotBody["name"] != "renamed" {
 		t.Errorf("name = %v, want renamed", gotBody["name"])
 	}
-	// --count 0 is a real request (drain the pool) and must be sent.
-	if v, ok := gotBody["desiredCount"]; !ok || v != float64(0) {
-		t.Errorf("desiredCount = %v (present=%v), want 0 present", v, ok)
+	// --size 0 is a real request (drain the pool) and must be sent.
+	if v, ok := gotBody["poolSize"]; !ok || v != float64(0) {
+		t.Errorf("poolSize = %v (present=%v), want 0 present", v, ok)
 	}
 	// --stack "" clears the override and must be sent as an empty string.
 	if v, ok := gotBody["stackId"]; !ok || v != "" {
@@ -285,7 +285,7 @@ func TestUpdateCmd_ClearLists(t *testing.T) {
 	if gotBody["updateSessionInputs"] != true || gotBody["updateEnabledFeatureFlagNames"] != true {
 		t.Errorf("switches missing, body=%v", gotBody)
 	}
-	for _, k := range []string{"sessionInputs", "enabledFeatureFlagNames", "name", "desiredCount"} {
+	for _, k := range []string{"sessionInputs", "enabledFeatureFlagNames", "name", "poolSize"} {
 		if _, ok := gotBody[k]; ok {
 			t.Errorf("%s should be absent, body=%v", k, gotBody)
 		}
@@ -301,7 +301,7 @@ func TestUpdateCmd_RejectsBadFlags(t *testing.T) {
 		{"nothing to update", []string{uuidPool}, "nothing to update"},
 		{"clear and set inputs", []string{uuidPool, "--clear-inputs", "--input", "k=v"}, "--clear-inputs cannot be combined"},
 		{"clear and set flags", []string{uuidPool, "--clear-feature-flags", "--feature-flag", "beta"}, "--clear-feature-flags cannot be combined"},
-		{"negative count", []string{uuidPool, "--count", "-2"}, "--count must not be negative"},
+		{"negative count", []string{uuidPool, "--size", "-2"}, "--size must not be negative"},
 		{"empty name", []string{uuidPool, "--name", ""}, "--name must not be empty"},
 	}
 	for _, tc := range cases {
@@ -324,25 +324,25 @@ func TestUpdateCmd_RejectsBadFlags(t *testing.T) {
 }
 
 func TestUpdateCmd_RequiresArg(t *testing.T) {
-	_, _, err := run(t, newUpdateCmd(), "http://unused", "ws-1", []string{"--count", "1"}, output.Human)
+	_, _, err := run(t, newUpdateCmd(), "http://unused", "ws-1", []string{"--size", "1"}, output.Human)
 	if err == nil {
 		t.Fatal("expected error when WARM_POOL_ID is missing")
 	}
 }
 
-// set-count is a PATCH of the count alone; the confirmation goes to stderr
+// set-size is a PATCH of the size alone; the confirmation goes to stderr
 // and, with --output json, the pool goes to stdout.
-func TestSetCountCmd_HappyPath(t *testing.T) {
+func TestSetSizeCmd_HappyPath(t *testing.T) {
 	var gotBody map[string]any
-	srv := mutationServer(t, http.MethodPatch, "/v1/workspaces/ws-1/warm-pools/"+uuidPool, `{"warmPool":{"id":"p-1","name":"ios-devs","desiredCount":3}}`, &gotBody)
+	srv := mutationServer(t, http.MethodPatch, "/v1/workspaces/ws-1/warm-pools/"+uuidPool, `{"warmPool":{"id":"p-1","name":"ios-devs","poolSize":3}}`, &gotBody)
 	defer srv.Close()
 
-	stdout, stderr, err := run(t, newSetCountCmd(), srv.URL, "ws-1", []string{uuidPool, "3"}, output.Human)
+	stdout, stderr, err := run(t, newSetSizeCmd(), srv.URL, "ws-1", []string{uuidPool, "3"}, output.Human)
 	if err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
-	if gotBody["desiredCount"] != float64(3) || len(gotBody) != 1 {
-		t.Errorf("body = %v, want only desiredCount 3", gotBody)
+	if gotBody["poolSize"] != float64(3) || len(gotBody) != 1 {
+		t.Errorf("body = %v, want only poolSize 3", gotBody)
 	}
 	if stdout != "" {
 		t.Errorf("stdout should be empty in human mode, got: %q", stdout)
@@ -352,14 +352,14 @@ func TestSetCountCmd_HappyPath(t *testing.T) {
 	}
 
 	// 0 drains the pool and is a legal count.
-	if _, _, err := run(t, newSetCountCmd(), srv.URL, "ws-1", []string{uuidPool, "0"}, output.Human); err != nil {
+	if _, _, err := run(t, newSetSizeCmd(), srv.URL, "ws-1", []string{uuidPool, "0"}, output.Human); err != nil {
 		t.Fatalf("Execute (0): %v", err)
 	}
-	if v, ok := gotBody["desiredCount"]; !ok || v != float64(0) {
-		t.Errorf("desiredCount = %v (present=%v), want 0 present", v, ok)
+	if v, ok := gotBody["poolSize"]; !ok || v != float64(0) {
+		t.Errorf("poolSize = %v (present=%v), want 0 present", v, ok)
 	}
 
-	stdout, _, err = run(t, newSetCountCmd(), srv.URL, "ws-1", []string{uuidPool, "3"}, output.JSON)
+	stdout, _, err = run(t, newSetSizeCmd(), srv.URL, "ws-1", []string{uuidPool, "3"}, output.JSON)
 	if err != nil {
 		t.Fatalf("Execute (json): %v", err)
 	}
@@ -367,14 +367,14 @@ func TestSetCountCmd_HappyPath(t *testing.T) {
 	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
 		t.Fatalf("unmarshal JSON output: %v\n%s", err, stdout)
 	}
-	if got["desired_count"] != float64(3) {
+	if got["pool_size"] != float64(3) {
 		t.Errorf("unexpected JSON: %v", got)
 	}
 }
 
-func TestSetCountCmd_RejectsBadCount(t *testing.T) {
+func TestSetSizeCmd_RejectsBadSize(t *testing.T) {
 	for _, count := range []string{"-1", "two", ""} {
-		c := newSetCountCmd()
+		c := newSetSizeCmd()
 		c.SilenceUsage, c.SilenceErrors = true, true
 		// "--" keeps a negative number from being read as a flag.
 		_, _, err := run(t, c, "http://unused", "ws-1", []string{uuidPool, "--", count}, output.Human)
@@ -382,7 +382,7 @@ func TestSetCountCmd_RejectsBadCount(t *testing.T) {
 			t.Errorf("count %q: error = %v, want a COUNT error", count, err)
 		}
 	}
-	if _, _, err := run(t, newSetCountCmd(), "http://unused", "ws-1", []string{uuidPool}, output.Human); err == nil {
+	if _, _, err := run(t, newSetSizeCmd(), "http://unused", "ws-1", []string{uuidPool}, output.Human); err == nil {
 		t.Error("expected error when COUNT is missing")
 	}
 }

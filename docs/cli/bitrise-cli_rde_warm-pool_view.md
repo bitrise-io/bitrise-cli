@@ -9,7 +9,7 @@ claimed and cold counters, errors), the stored configuration with secret
 input values hidden, and the warm sessions currently in the pool.
 
 A growing cold count means sessions had to be created on demand because no
-warm session was available — the desired count is too low for the demand.
+warm session was available — the pool size is too low for the demand.
 
 ```
 bitrise-cli rde warm-pool view WARM_POOL_ID [flags]

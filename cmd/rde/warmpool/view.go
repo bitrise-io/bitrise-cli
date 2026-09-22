@@ -22,7 +22,7 @@ claimed and cold counters, errors), the stored configuration with secret
 input values hidden, and the warm sessions currently in the pool.
 
 A growing cold count means sessions had to be created on demand because no
-warm session was available — the desired count is too low for the demand.`,
+warm session was available — the pool size is too low for the demand.`,
 		Example: `  bitrise-cli rde warm-pool view WARM_POOL_ID
   bitrise-cli rde warm-pool view ios-devs --output json | jq .status`,
 		Args: cmdutil.RequireArgs("WARM_POOL_ID"),
@@ -74,7 +74,7 @@ func renderDetail(w io.Writer, p internalrde.WarmPool) error {
 		}
 		ew.F("%s%s\n", lbl("Owner:"), owner)
 	}
-	ew.F("%s%d\n", lbl("Desired count:"), p.DesiredCount)
+	ew.F("%s%d\n", lbl("Pool size:"), p.PoolSize)
 	if st := p.Status; st != nil {
 		ew.F("%s%d ready, %d warming\n", lbl("Inventory:"), st.Ready, st.Warming)
 		ew.F("%s%d claimed, %d cold%s\n", lbl("Lifetime:"), st.ClaimedTotal, st.ColdTotal,

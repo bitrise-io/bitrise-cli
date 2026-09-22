@@ -12,7 +12,7 @@ import (
 func TestGetWarmPool_MappingMasksSecretsAndParsesStatus(t *testing.T) {
 	rs := newRecordingServer(t, `{"warmPool":{
 		"id":"p1","name":"ios-devs","workspaceId":"ws-1","templateId":"t1","templateName":"iOS Dev",
-		"ownerType":"workspace","ownerId":"my-ws","createdByEmail":"a@b.io","desiredCount":2,
+		"ownerType":"workspace","ownerId":"my-ws","createdByEmail":"a@b.io","poolSize":2,
 		"sessionInputs":[
 			{"key":"GITHUB_TOKEN","value":"leaked","isSecret":true},
 			{"key":"REPO","value":"app"},
@@ -34,7 +34,7 @@ func TestGetWarmPool_MappingMasksSecretsAndParsesStatus(t *testing.T) {
 	if want := "/v1/workspaces/ws-1/warm-pools/p1"; rs.lastPath != want {
 		t.Errorf("path = %s, want %s", rs.lastPath, want)
 	}
-	if p.ID != "p1" || p.TemplateName != "iOS Dev" || p.OwnerType != SessionOwnerWorkspace || p.DesiredCount != 2 || p.MachineType != "g2.mac" {
+	if p.ID != "p1" || p.TemplateName != "iOS Dev" || p.OwnerType != SessionOwnerWorkspace || p.PoolSize != 2 || p.MachineType != "g2.mac" {
 		t.Errorf("pool = %+v", p)
 	}
 	if len(p.SessionInputs) != 3 {
@@ -76,7 +76,7 @@ func TestGetWarmPool_MappingMasksSecretsAndParsesStatus(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
 	}
-	for _, want := range []string{`"desired_count":2`, `"template_name":"iOS Dev"`, `"owner_type":"workspace"`, `"claimed_total":12`, `"cold_total":3`, `"session_id":"s-1"`, `"saved_input_id":"si-1"`, `"paused_until"`} {
+	for _, want := range []string{`"pool_size":2`, `"template_name":"iOS Dev"`, `"owner_type":"workspace"`, `"claimed_total":12`, `"cold_total":3`, `"session_id":"s-1"`, `"saved_input_id":"si-1"`, `"paused_until"`} {
 		if !strings.Contains(string(out), want) {
 			t.Errorf("JSON missing %s:\n%s", want, out)
 		}
@@ -99,7 +99,7 @@ func TestWarmPool_ZeroCountsStayInJSON(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
 	}
-	for _, want := range []string{`"desired_count":0`, `"ready":0`, `"warming":0`} {
+	for _, want := range []string{`"pool_size":0`, `"ready":0`, `"warming":0`} {
 		if !strings.Contains(string(out), want) {
 			t.Errorf("JSON missing %s:\n%s", want, out)
 		}
@@ -121,14 +121,14 @@ func TestListWarmPools_ForwardsFilterAndScope(t *testing.T) {
 }
 
 func TestCreateWarmPool_MapsRequestAndValidates(t *testing.T) {
-	rs := newRecordingServer(t, `{"warmPool":{"id":"p-new","name":"ios-devs","desiredCount":2}}`)
+	rs := newRecordingServer(t, `{"warmPool":{"id":"p-new","name":"ios-devs","poolSize":2}}`)
 	svc := rs.service()
 
 	p, err := svc.CreateWarmPool(context.Background(), "ws-1", CreateWarmPoolRequest{
 		Name:                    "ios-devs",
 		TemplateID:              "t1",
 		OwnerType:               SessionOwnerWorkspace,
-		DesiredCount:            2,
+		PoolSize:                2,
 		SessionInputs:           []SessionInputValue{{Key: "GITHUB_TOKEN", Value: "ghp_x", IsSecret: true}, {Key: "SSH", SavedInputID: "si-1"}},
 		EnabledFeatureFlagNames: []string{"beta"},
 		StackID:                 "osx-27-edge",
@@ -144,7 +144,7 @@ func TestCreateWarmPool_MapsRequestAndValidates(t *testing.T) {
 	if err := json.Unmarshal(rs.lastBody, &sent); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
-	if sent["templateId"] != "t1" || sent["ownerType"] != "workspace" || sent["desiredCount"] != float64(2) || sent["stackId"] != "osx-27-edge" || sent["cluster"] != "c1" {
+	if sent["templateId"] != "t1" || sent["ownerType"] != "workspace" || sent["poolSize"] != float64(2) || sent["stackId"] != "osx-27-edge" || sent["cluster"] != "c1" {
 		t.Errorf("body = %s", rs.lastBody)
 	}
 	inputs, _ := sent["sessionInputs"].([]any)
@@ -163,7 +163,7 @@ func TestCreateWarmPool_MapsRequestAndValidates(t *testing.T) {
 	for name, req := range map[string]CreateWarmPoolRequest{
 		"no name":        {TemplateID: "t1"},
 		"no template":    {Name: "x"},
-		"negative count": {Name: "x", TemplateID: "t1", DesiredCount: -1},
+		"negative count": {Name: "x", TemplateID: "t1", PoolSize: -1},
 	} {
 		if _, err := svc.CreateWarmPool(context.Background(), "ws-1", req); err == nil {
 			t.Errorf("%s: expected a validation error", name)
@@ -181,7 +181,7 @@ func TestUpdateWarmPool_SwitchesFollowTheLists(t *testing.T) {
 	// Name + count only: no list, no switch.
 	name := "renamed"
 	zero := 0
-	if _, err := svc.UpdateWarmPool(context.Background(), "ws-1", "p1", UpdateWarmPoolRequest{Name: &name, DesiredCount: &zero}); err != nil {
+	if _, err := svc.UpdateWarmPool(context.Background(), "ws-1", "p1", UpdateWarmPoolRequest{Name: &name, PoolSize: &zero}); err != nil {
 		t.Fatalf("UpdateWarmPool: %v", err)
 	}
 	if rs.lastMethod != http.MethodPatch || rs.lastPath != "/v1/workspaces/ws-1/warm-pools/p1" {
@@ -191,7 +191,7 @@ func TestUpdateWarmPool_SwitchesFollowTheLists(t *testing.T) {
 	if err := json.Unmarshal(rs.lastBody, &sent); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
-	if sent["name"] != "renamed" || sent["desiredCount"] != float64(0) {
+	if sent["name"] != "renamed" || sent["poolSize"] != float64(0) {
 		t.Errorf("body = %s", rs.lastBody)
 	}
 	for _, k := range []string{"updateSessionInputs", "updateEnabledFeatureFlagNames", "updateDeviceSpec", "stackId"} {
@@ -235,7 +235,7 @@ func TestUpdateWarmPool_SwitchesFollowTheLists(t *testing.T) {
 	}
 
 	neg := -1
-	if _, err := svc.UpdateWarmPool(context.Background(), "ws-1", "p1", UpdateWarmPoolRequest{DesiredCount: &neg}); err == nil {
+	if _, err := svc.UpdateWarmPool(context.Background(), "ws-1", "p1", UpdateWarmPoolRequest{PoolSize: &neg}); err == nil {
 		t.Error("expected a validation error for a negative count")
 	}
 }

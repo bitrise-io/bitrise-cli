@@ -9,7 +9,7 @@ import (
 
 func TestListWarmPools_PathQueryAndParse(t *testing.T) {
 	rs := newRecordingServer(t, `{"warmPools":[
-		{"id":"p1","name":"ios-devs","templateId":"t1","templateName":"iOS Dev","ownerType":"workspace","ownerId":"my-ws","desiredCount":2,
+		{"id":"p1","name":"ios-devs","templateId":"t1","templateName":"iOS Dev","ownerType":"workspace","ownerId":"my-ws","poolSize":2,
 		 "status":{"ready":1,"warming":1,"claimedTotal":12,"coldTotal":3}},
 		{"id":"p2","name":"mine","templateId":"t1","ownerType":"user","createdByEmail":"a@b.io"}
 	]}`)
@@ -24,7 +24,7 @@ func TestListWarmPools_PathQueryAndParse(t *testing.T) {
 	if rs.lastQuery != "" {
 		t.Errorf("query = %q, want none for the default scope", rs.lastQuery)
 	}
-	if len(pools) != 2 || pools[0].DesiredCount != 2 || pools[0].Status == nil || pools[0].Status.ClaimedTotal != 12 {
+	if len(pools) != 2 || pools[0].PoolSize != 2 || pools[0].Status == nil || pools[0].Status.ClaimedTotal != 12 {
 		t.Errorf("pools = %+v", pools)
 	}
 	if pools[1].CreatedByEmail != "a@b.io" || pools[1].Status != nil {
@@ -63,13 +63,13 @@ func TestGetWarmPool_PathAndInventory(t *testing.T) {
 }
 
 func TestCreateWarmPool_BodyAndPath(t *testing.T) {
-	rs := newRecordingServer(t, `{"warmPool":{"id":"p-new","name":"ios-devs","desiredCount":2}}`)
+	rs := newRecordingServer(t, `{"warmPool":{"id":"p-new","name":"ios-devs","poolSize":2}}`)
 
 	p, err := rs.client().CreateWarmPool(context.Background(), "ws-1", CreateWarmPoolRequest{
 		Name:                    "ios-devs",
 		TemplateID:              "t1",
 		OwnerType:               "workspace",
-		DesiredCount:            2,
+		PoolSize:                2,
 		SessionInputs:           []SessionInputValue{{Key: "GITHUB_TOKEN", Value: "ghp_x", IsSecret: true}},
 		EnabledFeatureFlagNames: []string{"beta"},
 		MachineType:             "g2.mac",
@@ -87,7 +87,7 @@ func TestCreateWarmPool_BodyAndPath(t *testing.T) {
 	if err := json.Unmarshal(rs.lastBody, &sent); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
-	if sent["name"] != "ios-devs" || sent["templateId"] != "t1" || sent["ownerType"] != "workspace" || sent["desiredCount"] != float64(2) {
+	if sent["name"] != "ios-devs" || sent["templateId"] != "t1" || sent["ownerType"] != "workspace" || sent["poolSize"] != float64(2) {
 		t.Errorf("sent = %v", sent)
 	}
 	inputs, _ := sent["sessionInputs"].([]any)
@@ -104,7 +104,7 @@ func TestCreateWarmPool_BodyAndPath(t *testing.T) {
 			t.Errorf("%s should be omitted, body = %s", k, rs.lastBody)
 		}
 	}
-	if p.ID != "p-new" || p.DesiredCount != 2 {
+	if p.ID != "p-new" || p.PoolSize != 2 {
 		t.Errorf("pool = %+v", p)
 	}
 }
@@ -121,8 +121,8 @@ func TestCreateWarmPool_ZeroCountOmitted(t *testing.T) {
 	if err := json.Unmarshal(rs.lastBody, &sent); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
-	if _, ok := sent["desiredCount"]; ok {
-		t.Errorf("desiredCount 0 should be omitted, body = %s", rs.lastBody)
+	if _, ok := sent["poolSize"]; ok {
+		t.Errorf("poolSize 0 should be omitted, body = %s", rs.lastBody)
 	}
 	if _, ok := sent["ownerType"]; ok {
 		t.Errorf("ownerType should be omitted when unset, body = %s", rs.lastBody)
@@ -137,7 +137,7 @@ func TestUpdateWarmPool_OmitsUnsetAndCarriesSwitches(t *testing.T) {
 	emptyStack := ""
 	if _, err := rs.client().UpdateWarmPool(context.Background(), "ws-1", "p1", UpdateWarmPoolRequest{
 		Name:                &name,
-		DesiredCount:        &zero,
+		PoolSize:            &zero,
 		SessionInputs:       []SessionInputValue{{Key: "REPO", Value: "app"}},
 		UpdateSessionInputs: true,
 		StackID:             &emptyStack,
@@ -159,8 +159,8 @@ func TestUpdateWarmPool_OmitsUnsetAndCarriesSwitches(t *testing.T) {
 	}
 	// A pointer to 0 is a real "drain the pool" request and must survive
 	// omitempty — the wire type is *int for exactly this reason.
-	if v, ok := sent["desiredCount"]; !ok || v != float64(0) {
-		t.Errorf("desiredCount = %v (present=%v), want 0 present", v, ok)
+	if v, ok := sent["poolSize"]; !ok || v != float64(0) {
+		t.Errorf("poolSize = %v (present=%v), want 0 present", v, ok)
 	}
 	// A pointer to "" clears an override and must likewise be sent.
 	if v, ok := sent["stackId"]; !ok || v != "" {

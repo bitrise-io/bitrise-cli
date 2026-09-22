@@ -9,8 +9,8 @@ import (
 
 // WarmPool is the wire-format warm pool record. A pool is a stored
 // session-create request — template, session input values, feature flags,
-// machine and device overrides — plus an owner and a desired count. The
-// backend keeps DesiredCount sessions of that configuration booted and idle
+// machine and device overrides — plus an owner and a pool size. The
+// backend keeps PoolSize sessions of that configuration booted and idle
 // so a session created with CreateSessionRequest.WarmPoolID is handed one of
 // them instead of a cold start.
 type WarmPool struct {
@@ -25,9 +25,9 @@ type WarmPool struct {
 	OwnerType      string `json:"ownerType,omitempty"`
 	OwnerID        string `json:"ownerId,omitempty"`
 	CreatedByEmail string `json:"createdByEmail,omitempty"`
-	// DesiredCount is how many warm sessions the backend keeps booted; 0
+	// PoolSize is how many warm sessions the backend keeps booted; 0
 	// drains the pool but keeps it usable as a configuration preset.
-	DesiredCount int `json:"desiredCount,omitempty"`
+	PoolSize int `json:"poolSize,omitempty"`
 	// SessionInputs are the values the warm sessions are created with.
 	// Secret values come back redacted (empty Value, IsSecret true) —
 	// the internal/rde mapper masks them again as defense-in-depth.
@@ -80,7 +80,7 @@ type WarmPoolSession struct {
 }
 
 // CreateWarmPoolRequest is the POST body for creating a warm pool. Apart
-// from Name, OwnerType and DesiredCount, the fields are those of
+// from Name, OwnerType and PoolSize, the fields are those of
 // CreateSessionRequest that shape the VM, and the backend validates them
 // the same way.
 type CreateWarmPoolRequest struct {
@@ -90,8 +90,8 @@ type CreateWarmPoolRequest struct {
 	// "workspace" (shared; the only option for a Workspace API Token).
 	// Sent only when set so the backend default applies otherwise.
 	OwnerType string `json:"ownerType,omitempty"`
-	// DesiredCount may be 0: an inert pool that still serves as a preset.
-	DesiredCount            int                 `json:"desiredCount,omitempty"`
+	// PoolSize may be 0: an inert pool that still serves as a preset.
+	PoolSize                int                 `json:"poolSize,omitempty"`
 	SessionInputs           []SessionInputValue `json:"sessionInputs,omitempty"`
 	MapSavedToSessionInputs bool                `json:"mapSavedToSessionInputs,omitempty"`
 	EnabledFeatureFlagNames []string            `json:"enabledFeatureFlagNames,omitempty"`
@@ -108,8 +108,8 @@ type CreateWarmPoolRequest struct {
 // switch is true — UpdateTemplateRequest's convention. A configuration
 // change invalidates the pool's inventory, which the backend rebuilds.
 type UpdateWarmPoolRequest struct {
-	Name         *string `json:"name,omitempty"`
-	DesiredCount *int    `json:"desiredCount,omitempty"`
+	Name     *string `json:"name,omitempty"`
+	PoolSize *int    `json:"poolSize,omitempty"`
 
 	SessionInputs                 []SessionInputValue `json:"sessionInputs,omitempty"`
 	UpdateSessionInputs           bool                `json:"updateSessionInputs,omitempty"`

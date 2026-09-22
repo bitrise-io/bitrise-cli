@@ -13,8 +13,8 @@ import (
 //
 // A warm pool is a stored session configuration — template, session input
 // values, feature flags, optional stack / machine type / cluster and device
-// overrides — plus an owner and a desired count. The backend keeps
-// DesiredCount sessions of that configuration booted and idle ("warm
+// overrides — plus an owner and a pool size. The backend keeps
+// PoolSize sessions of that configuration booted and idle ("warm
 // sessions"); `session create --warm-pool` hands one out instantly, or
 // creates one from the configuration when none is available.
 type WarmPool struct {
@@ -29,10 +29,10 @@ type WarmPool struct {
 	OwnerType      string `json:"owner_type,omitempty"`
 	OwnerID        string `json:"owner_id,omitempty"`
 	CreatedByEmail string `json:"created_by_email,omitempty"`
-	// DesiredCount is how many warm sessions the backend keeps booted.
+	// PoolSize is how many warm sessions the backend keeps booted.
 	// 0 drains the pool but keeps it usable as a configuration preset —
 	// always emitted, since 0 is a meaningful value.
-	DesiredCount int `json:"desired_count"`
+	PoolSize int `json:"pool_size"`
 	// SessionInputs are the values the warm sessions are created with.
 	// Secret values are masked (empty Value, IsSecret true).
 	SessionInputs           []WarmPoolInput `json:"session_inputs,omitempty"`
@@ -68,7 +68,7 @@ type WarmPoolStatus struct {
 	Ready   int `json:"ready"`
 	Warming int `json:"warming"`
 	// ClaimedTotal and ColdTotal are lifetime counters. A growing
-	// ColdTotal means the desired count is too low for the demand.
+	// ColdTotal means the pool size is too low for the demand.
 	ClaimedTotal int `json:"claimed_total"`
 	ColdTotal    int `json:"cold_total"`
 	// LastError is the last machine-creation failure; ConfigError says
@@ -104,7 +104,7 @@ const (
 )
 
 // CreateWarmPoolRequest is the CLI-side request shape. Apart from Name,
-// OwnerType and DesiredCount these are the CreateSessionRequest fields
+// OwnerType and PoolSize these are the CreateSessionRequest fields
 // that shape the VM — a pool stores what a session request could send.
 type CreateWarmPoolRequest struct {
 	Name       string
@@ -113,8 +113,8 @@ type CreateWarmPoolRequest struct {
 	// token) or SessionOwnerWorkspace (shared; the only option for a
 	// Workspace API Token). Empty leaves the backend default.
 	OwnerType string
-	// DesiredCount may be 0: an inert pool that still serves as a preset.
-	DesiredCount            int
+	// PoolSize may be 0: an inert pool that still serves as a preset.
+	PoolSize                int
 	SessionInputs           []SessionInputValue
 	MapSavedToSessionInputs bool
 	EnabledFeatureFlagNames []string
@@ -133,7 +133,7 @@ type CreateWarmPoolRequest struct {
 // makes the backend replace the pool's current inventory.
 type UpdateWarmPoolRequest struct {
 	Name                    *string
-	DesiredCount            *int
+	PoolSize                *int
 	SessionInputs           *[]SessionInputValue
 	EnabledFeatureFlagNames *[]string
 	StackID                 *string
@@ -222,14 +222,14 @@ func (s *Service) CreateWarmPool(ctx context.Context, workspaceID string, req Cr
 	if req.TemplateID == "" {
 		return WarmPool{}, fmt.Errorf("template is required")
 	}
-	if req.DesiredCount < 0 {
-		return WarmPool{}, fmt.Errorf("desired count must not be negative")
+	if req.PoolSize < 0 {
+		return WarmPool{}, fmt.Errorf("pool size must not be negative")
 	}
 	w, err := s.client.CreateWarmPool(ctx, workspaceID, rdeapi.CreateWarmPoolRequest{
 		Name:                    req.Name,
 		TemplateID:              req.TemplateID,
 		OwnerType:               req.OwnerType,
-		DesiredCount:            req.DesiredCount,
+		PoolSize:                req.PoolSize,
 		SessionInputs:           sessionInputsToAPI(req.SessionInputs),
 		MapSavedToSessionInputs: req.MapSavedToSessionInputs,
 		EnabledFeatureFlagNames: req.EnabledFeatureFlagNames,
@@ -253,16 +253,16 @@ func (s *Service) UpdateWarmPool(ctx context.Context, workspaceID, warmPoolID st
 	if s.client == nil {
 		return WarmPool{}, errClient()
 	}
-	if req.DesiredCount != nil && *req.DesiredCount < 0 {
-		return WarmPool{}, fmt.Errorf("desired count must not be negative")
+	if req.PoolSize != nil && *req.PoolSize < 0 {
+		return WarmPool{}, fmt.Errorf("pool size must not be negative")
 	}
 	wire := rdeapi.UpdateWarmPoolRequest{
-		Name:         req.Name,
-		DesiredCount: req.DesiredCount,
-		StackID:      req.StackID,
-		MachineType:  req.MachineType,
-		Cluster:      req.Cluster,
-		NoDevice:     req.NoDevice,
+		Name:        req.Name,
+		PoolSize:    req.PoolSize,
+		StackID:     req.StackID,
+		MachineType: req.MachineType,
+		Cluster:     req.Cluster,
+		NoDevice:    req.NoDevice,
 	}
 	if req.SessionInputs != nil {
 		wire.SessionInputs = sessionInputsToAPI(*req.SessionInputs)
@@ -320,7 +320,7 @@ func warmPoolFromAPI(w rdeapi.WarmPool) WarmPool {
 		OwnerType:               w.OwnerType,
 		OwnerID:                 w.OwnerID,
 		CreatedByEmail:          w.CreatedByEmail,
-		DesiredCount:            w.DesiredCount,
+		PoolSize:                w.PoolSize,
 		EnabledFeatureFlagNames: w.EnabledFeatureFlagNames,
 		StackID:                 w.StackID,
 		MachineType:             w.MachineType,

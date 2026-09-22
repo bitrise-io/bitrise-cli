@@ -27,7 +27,7 @@ bitrise-cli rde warm-pool list [flags]
 ```
   bitrise-cli rde warm-pool list
   bitrise-cli rde warm-pool list --template TEMPLATE_ID
-  bitrise-cli rde warm-pool list --all --output json | jq '.items[] | {name, desired_count, ready: .status.ready}'
+  bitrise-cli rde warm-pool list --all --output json | jq '.items[] | {name, pool_size, ready: .status.ready}'
 ```
 
 ### Options

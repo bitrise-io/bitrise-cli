@@ -57,7 +57,7 @@ func newCreateCmd() *cobra.Command {
 		Use:   "create NAME",
 		Short: "Create a warm pool",
 		Long: `Create a warm pool: a stored session configuration the RDE backend keeps
---count sessions of booted and idle, ready to be claimed with 'rde session
+--size sessions of booted and idle, ready to be claimed with 'rde session
 create --warm-pool NAME'.
 
 NAME is a human-readable label for the pool; you can use it in place of the
@@ -66,9 +66,9 @@ template (by ID or name) the warm sessions are created from; the other
 configuration flags are those of 'rde session create' and are validated the
 same way — a pool can only store what a session request could send.
 
---count is how many warm sessions to keep booted. It defaults to 0: the pool
+--size is how many warm sessions to keep booted. It defaults to 0: the pool
 is created as an inert configuration preset and costs nothing until you
-raise the count with 'rde warm-pool set-count'. Every warm session costs
+raise the size with 'rde warm-pool set-size'. Every warm session costs
 machine time while idle.
 
 By default the pool is yours (--owner user): private, and it may reference
@@ -93,12 +93,12 @@ device flags to boot the template's declared device as is; --device-model,
 that device per field; with --device-platform the flags are the complete
 device to boot; --no-device boots none. A claimed session's app artifact is
 still given at claim time.`,
-		Example: `  bitrise-cli rde warm-pool create ios-devs --template TEMPLATE_ID --count 2
+		Example: `  bitrise-cli rde warm-pool create ios-devs --template TEMPLATE_ID --size 2
   # Shared with the workspace; inputs as plain values (no saved inputs).
-  bitrise-cli rde warm-pool create ci-devices --template TEMPLATE_ID --owner workspace --count 3 --secret-input GITHUB_TOKEN=ghp_xxx
+  bitrise-cli rde warm-pool create ci-devices --template TEMPLATE_ID --owner workspace --size 3 --secret-input GITHUB_TOKEN=ghp_xxx
   # A private pool that reuses a saved input and a feature flag.
   bitrise-cli rde warm-pool create mine --template TEMPLATE_ID --saved-input gh-token=SAVED_INPUT_ID --feature-flag enable_beta_simulator
-  # A configuration preset: nothing booted until 'set-count' raises the count.
+  # A configuration preset: nothing booted until 'set-size' raises the count.
   bitrise-cli rde warm-pool create preset --template TEMPLATE_ID --machine-type g2.mac.m2pro.6c-14g
   # The template's simulator, but an iPhone 15 on iOS 17.5; or no device at all.
   bitrise-cli rde warm-pool create ios-17 --template TEMPLATE_ID --device-model "iPhone 15" --device-os-version 17.5
@@ -113,7 +113,7 @@ still given at claim time.`,
 				return fmt.Errorf("--template is required")
 			}
 			if count < 0 {
-				return fmt.Errorf("--count must not be negative")
+				return fmt.Errorf("--size must not be negative")
 			}
 			switch owner {
 			case "", internalrde.SessionOwnerUser, internalrde.SessionOwnerWorkspace:
@@ -151,7 +151,7 @@ still given at claim time.`,
 				Name:                    name,
 				TemplateID:              templateID,
 				OwnerType:               owner,
-				DesiredCount:            count,
+				PoolSize:                count,
 				SessionInputs:           sessionInputs,
 				MapSavedToSessionInputs: mapSavedInputs,
 				EnabledFeatureFlagNames: featureFlags,
@@ -168,7 +168,7 @@ still given at claim time.`,
 		},
 	}
 	c.Flags().StringVar(&template, "template", "", "template ID or name the warm sessions are created from (required)")
-	c.Flags().IntVar(&count, "count", 0, "how many warm sessions to keep booted; 0 (the default) creates an inert configuration preset")
+	c.Flags().IntVar(&count, "size", 0, "how many warm sessions to keep booted; 0 (the default) creates an inert configuration preset")
 	c.Flags().StringVar(&owner, "owner", "", "who owns the pool: user (default; private to you) or workspace (shared with every member; inputs as plain values only). A Workspace API Token always creates workspace pools")
 	_ = c.RegisterFlagCompletionFunc("owner", func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
 		return []string{internalrde.SessionOwnerUser, internalrde.SessionOwnerWorkspace}, cobra.ShellCompDirectiveNoFileComp
@@ -260,9 +260,9 @@ device.
 
 Changing the configuration invalidates the pool's current inventory: the
 backend terminates the existing warm sessions and boots new ones from the
-updated configuration. Changing only --name or --count does not. For the
-count alone, 'rde warm-pool set-count' is the shorter spelling.`,
-		Example: `  bitrise-cli rde warm-pool update WARM_POOL_ID --name ios-devs-eu --count 4
+updated configuration. Changing only --name or --size does not. For the
+count alone, 'rde warm-pool set-size' is the shorter spelling.`,
+		Example: `  bitrise-cli rde warm-pool update WARM_POOL_ID --name ios-devs-eu --size 4
   # Replace the inputs (all of them) and switch to a bigger machine.
   bitrise-cli rde warm-pool update ios-devs --secret-input GITHUB_TOKEN=ghp_yyy --machine-type g2.mac.m2pro.12c-32g
   # Drop the stack override so the template's stack applies again.
@@ -280,7 +280,7 @@ count alone, 'rde warm-pool set-count' is the shorter spelling.`,
 				return fmt.Errorf("--clear-feature-flags cannot be combined with --feature-flag")
 			}
 			if count < 0 {
-				return fmt.Errorf("--count must not be negative")
+				return fmt.Errorf("--size must not be negative")
 			}
 			flags := cmd.Flags()
 			req := internalrde.UpdateWarmPoolRequest{}
@@ -292,9 +292,9 @@ count alone, 'rde warm-pool set-count' is the shorter spelling.`,
 				req.Name = &name
 				changed = true
 			}
-			if flags.Changed("count") {
+			if flags.Changed("size") {
 				n := count
-				req.DesiredCount = &n
+				req.PoolSize = &n
 				changed = true
 			}
 			if inputs.set() || clearInputs {
@@ -348,7 +348,7 @@ count alone, 'rde warm-pool set-count' is the shorter spelling.`,
 				changed = true
 			}
 			if !changed {
-				return fmt.Errorf("nothing to update: pass at least one of --name, --count, --input, --secret-input, --saved-input, --clear-inputs, --feature-flag, --clear-feature-flags, --stack, --machine-type, --cluster, the --device-* flags, --clear-device or --no-device")
+				return fmt.Errorf("nothing to update: pass at least one of --name, --size, --input, --secret-input, --saved-input, --clear-inputs, --feature-flag, --clear-feature-flags, --stack, --machine-type, --cluster, the --device-* flags, --clear-device or --no-device")
 			}
 			workspaceID, err := cmdutil.ResolveWorkspaceID(cmd)
 			if err != nil {
@@ -372,7 +372,7 @@ count alone, 'rde warm-pool set-count' is the shorter spelling.`,
 		},
 	}
 	c.Flags().StringVar(&name, "name", "", "new name")
-	c.Flags().IntVar(&count, "count", 0, "new desired count of warm sessions; 0 drains the pool but keeps it as a preset")
+	c.Flags().IntVar(&count, "size", 0, "new pool size of warm sessions; 0 drains the pool but keeps it as a preset")
 	inputs.bind(c)
 	c.Flags().BoolVar(&clearInputs, "clear-inputs", false, "remove every stored session input")
 	c.Flags().StringArrayVar(&featureFlags, "feature-flag", nil, "feature flag to enable on the warm sessions (repeatable; replaces the enabled flags as a whole)")
@@ -389,11 +389,11 @@ count alone, 'rde warm-pool set-count' is the shorter spelling.`,
 	return c
 }
 
-func newSetCountCmd() *cobra.Command {
+func newSetSizeCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "set-count WARM_POOL_ID COUNT",
-		Short: "Set how many warm sessions a pool keeps booted",
-		Long: `Set a warm pool's desired count — how many sessions of its configuration
+		Use:   "set-size WARM_POOL_ID SIZE",
+		Short: "Set a pool's size: how many warm sessions it keeps booted",
+		Long: `Set a warm pool's pool size — how many sessions of its configuration
 the RDE backend keeps booted and idle. Raising it boots sessions; lowering it
 terminates surplus warm sessions (claimed sessions are untouched). 0 drains
 the pool but keeps it usable as a configuration preset: 'rde session create
@@ -402,10 +402,10 @@ the pool but keeps it usable as a configuration preset: 'rde session create
 This is the knob for scaling a pool to business hours: run it from a cron job
 in the morning and again with 0 in the evening. A Workspace API Token works
 for workspace pools, so the job does not need a personal token.`,
-		Example: `  bitrise-cli rde warm-pool set-count ios-devs 3
+		Example: `  bitrise-cli rde warm-pool set-size ios-devs 3
   # Cron: warm up at 08:00 on weekdays, drain at 19:00.
-  0 8  * * 1-5  BITRISE_TOKEN=bitwat_… bitrise-cli rde warm-pool set-count WARM_POOL_ID 3 --workspace WORKSPACE_ID -q
-  0 19 * * 1-5  BITRISE_TOKEN=bitwat_… bitrise-cli rde warm-pool set-count WARM_POOL_ID 0 --workspace WORKSPACE_ID -q`,
+  0 8  * * 1-5  BITRISE_TOKEN=bitwat_… bitrise-cli rde warm-pool set-size WARM_POOL_ID 3 --workspace WORKSPACE_ID -q
+  0 19 * * 1-5  BITRISE_TOKEN=bitwat_… bitrise-cli rde warm-pool set-size WARM_POOL_ID 0 --workspace WORKSPACE_ID -q`,
 		Args: cmdutil.RequireArgs("WARM_POOL_ID", "COUNT"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			count, err := strconv.Atoi(args[1])
@@ -426,7 +426,7 @@ for workspace pools, so the job does not need a personal token.`,
 			if err != nil {
 				return err
 			}
-			p, err := svc.UpdateWarmPool(cmd.Context(), workspaceID, warmPoolID, internalrde.UpdateWarmPoolRequest{DesiredCount: &count})
+			p, err := svc.UpdateWarmPool(cmd.Context(), workspaceID, warmPoolID, internalrde.UpdateWarmPoolRequest{PoolSize: &count})
 			if err != nil {
 				return err
 			}
@@ -434,7 +434,7 @@ for workspace pools, so the job does not need a personal token.`,
 				return output.Render(cmd.OutOrStdout(), format, p, renderDetail)
 			}
 			if !cmdutil.IsQuiet(cmd) {
-				_, err := fmt.Fprintf(cmd.ErrOrStderr(), "Warm pool %s now keeps %d warm session(s)\n", p.Name, p.DesiredCount)
+				_, err := fmt.Fprintf(cmd.ErrOrStderr(), "Warm pool %s now keeps %d warm session(s)\n", p.Name, p.PoolSize)
 				return err
 			}
 			return nil

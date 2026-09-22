@@ -40,7 +40,7 @@ nothing until it is fixed), "paused" (backing off after repeated failures)
 or "error" (the last machine creation failed).`,
 		Example: `  bitrise-cli rde warm-pool list
   bitrise-cli rde warm-pool list --template TEMPLATE_ID
-  bitrise-cli rde warm-pool list --all --output json | jq '.items[] | {name, desired_count, ready: .status.ready}'`,
+  bitrise-cli rde warm-pool list --all --output json | jq '.items[] | {name, pool_size, ready: .status.ready}'`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			workspaceID, err := cmdutil.ResolveWorkspaceID(cmd)
 			if err != nil {
@@ -85,7 +85,7 @@ func renderList(w io.Writer, res listResult) error {
 			warming = strconv.Itoa(p.Status.Warming)
 		}
 		rows = append(rows, []string{
-			p.Name, templateLabel(p), ownerLabel(p), strconv.Itoa(p.DesiredCount),
+			p.Name, templateLabel(p), ownerLabel(p), strconv.Itoa(p.PoolSize),
 			ready, warming, statusLabel(p.Status), p.ID,
 		})
 	}

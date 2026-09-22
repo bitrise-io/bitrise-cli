@@ -44,9 +44,9 @@ func run(t *testing.T, c *cobra.Command, srvURL, workspaceID string, args []stri
 }
 
 const listBody = `{"warmPools":[
-	{"id":"p-1","name":"ios-devs","templateId":"t-1","templateName":"iOS Dev","ownerType":"workspace","ownerId":"my-ws","desiredCount":2,
+	{"id":"p-1","name":"ios-devs","templateId":"t-1","templateName":"iOS Dev","ownerType":"workspace","ownerId":"my-ws","poolSize":2,
 	 "status":{"ready":1,"warming":1,"claimedTotal":12,"coldTotal":3}},
-	{"id":"p-2","name":"mine","templateId":"t-1","templateName":"iOS Dev","ownerType":"user","createdByEmail":"a@b.io","desiredCount":0,
+	{"id":"p-2","name":"mine","templateId":"t-1","templateName":"iOS Dev","ownerType":"user","createdByEmail":"a@b.io","poolSize":0,
 	 "status":{"configError":"stack retired"}}
 ]}`
 
@@ -128,11 +128,11 @@ func TestListCmd_JSONOutput(t *testing.T) {
 	}
 	var got struct {
 		Items []struct {
-			ID           string `json:"id"`
-			Name         string `json:"name"`
-			DesiredCount int    `json:"desired_count"`
-			OwnerType    string `json:"owner_type"`
-			Status       struct {
+			ID        string `json:"id"`
+			Name      string `json:"name"`
+			PoolSize  int    `json:"pool_size"`
+			OwnerType string `json:"owner_type"`
+			Status    struct {
 				Ready        int    `json:"ready"`
 				ClaimedTotal int    `json:"claimed_total"`
 				ConfigError  string `json:"config_error"`
@@ -142,7 +142,7 @@ func TestListCmd_JSONOutput(t *testing.T) {
 	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
 		t.Fatalf("unmarshal JSON output: %v\n%s", err, stdout)
 	}
-	if len(got.Items) != 2 || got.Items[0].ID != "p-1" || got.Items[0].DesiredCount != 2 || got.Items[0].Status.Ready != 1 || got.Items[0].Status.ClaimedTotal != 12 {
+	if len(got.Items) != 2 || got.Items[0].ID != "p-1" || got.Items[0].PoolSize != 2 || got.Items[0].Status.Ready != 1 || got.Items[0].Status.ClaimedTotal != 12 {
 		t.Errorf("unexpected JSON items: %+v", got.Items)
 	}
 	if got.Items[1].OwnerType != "user" || got.Items[1].Status.ConfigError != "stack retired" {
@@ -181,7 +181,7 @@ func TestListCmd_MissingWorkspace(t *testing.T) {
 }
 
 const viewBody = `{"warmPool":{
-	"id":"p-1","name":"ios-devs","templateId":"t-1","templateName":"iOS Dev","ownerType":"workspace","ownerId":"my-ws","desiredCount":2,
+	"id":"p-1","name":"ios-devs","templateId":"t-1","templateName":"iOS Dev","ownerType":"workspace","ownerId":"my-ws","poolSize":2,
 	"machineType":"g2.mac.m2pro.6c-14g",
 	"sessionInputs":[{"key":"GITHUB_TOKEN","value":"leaked","isSecret":true},{"key":"REPO","value":"my-app"},{"key":"SSH_KEY","savedInputId":"si-1"}],
 	"enabledFeatureFlagNames":["enable_beta_simulator"],
@@ -208,7 +208,7 @@ func TestViewCmd_HappyPath(t *testing.T) {
 	}
 	for _, want := range []string{
 		"ios-devs", "p-1", "iOS Dev", "t-1", "workspace",
-		"Desired count:", "2", "1 ready, 1 warming", "12 claimed, 3 cold", "quota exceeded",
+		"Pool size:", "2", "1 ready, 1 warming", "12 claimed, 3 cold", "quota exceeded",
 		"g2.mac.m2pro.6c-14g", "iOS simulator · iPhone 16 · 18.2",
 		"GITHUB_TOKEN", "(hidden)", "REPO", "my-app", "SSH_KEY", "saved input", "si-1",
 		"enable_beta_simulator",
@@ -237,7 +237,7 @@ func TestViewCmd_JSONOutput(t *testing.T) {
 	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
 		t.Fatalf("unmarshal JSON output: %v\n%s", err, stdout)
 	}
-	if got["id"] != "p-1" || got["machine_type"] != "g2.mac.m2pro.6c-14g" || got["desired_count"] != float64(2) {
+	if got["id"] != "p-1" || got["machine_type"] != "g2.mac.m2pro.6c-14g" || got["pool_size"] != float64(2) {
 		t.Errorf("unexpected JSON: %v", got)
 	}
 	status, _ := got["status"].(map[string]any)
@@ -257,7 +257,7 @@ func TestViewCmd_ResolvesName(t *testing.T) {
 		case "/v1/workspaces/ws-1/warm-pools":
 			_, _ = io.WriteString(w, `{"warmPools":[{"id":"p-9","name":"ios-devs"},{"id":"p-7","name":"other"}]}`)
 		case "/v1/workspaces/ws-1/warm-pools/p-9":
-			_, _ = io.WriteString(w, `{"warmPool":{"id":"p-9","name":"ios-devs","desiredCount":1}}`)
+			_, _ = io.WriteString(w, `{"warmPool":{"id":"p-9","name":"ios-devs","poolSize":1}}`)
 		default:
 			t.Errorf("unexpected path: %s", r.URL.Path)
 		}
