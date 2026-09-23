@@ -161,6 +161,9 @@ func renderSessionDetail(w io.Writer, sess internalrde.Session) error {
 			state = "not running"
 		}
 		ew.F("%s%s — %s\n", lbl("Device:"), what, deviceStateStyle(s, d.State).Render(state))
+		if d.PageURL != "" {
+			ew.F("%s%s\n", lbl("Device page:"), d.PageURL)
+		}
 		guide := "bitrise-cli rde device-guide"
 		if d.Spec != nil && (d.Spec.Platform == "ios" || d.Spec.Platform == "android") {
 			guide += " " + d.Spec.Platform

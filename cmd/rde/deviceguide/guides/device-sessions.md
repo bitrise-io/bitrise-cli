@@ -335,14 +335,19 @@ device-guide ios|android`). The baseline recipes have the same shape on both:
 
 ## 5. Let a human watch
 
-A human watches and drives the device from the session's page in the RDE web
-UI: Sessions → the session → the **Device** row → **Open device view**. It is
-the same viewer page a PR preview link opens, attach-only for this session
-(it attaches, never creates, and cannot delete or terminate the session), but
-it requires being logged in with access to the session — its owner for a
-personal session, any workspace member for a workspace-owned one. There is no
-shareable link. Human taps and your taps go to the same device; do not fight
-over it.
+A human watches and drives the device on its page in the RDE web UI, and the
+session tells you where that page is: `device.page_url` (MCP / REST; CLI: the
+**Device page** line of `bitrise-cli rde session view`). Give the URL to the
+user, or open it yourself in a browser where they are logged in to Bitrise.
+It is the page behind Sessions → the session → the **Device** row → **Open
+device view**, and it shows the boot until the device is `READY`. It is the
+same viewer page a PR preview link opens, attach-only for this session (it
+attaches, never creates, and cannot delete or terminate the session), but it
+is not a credential: it opens only for someone logged in with access to the
+session — its owner for a personal session, any workspace member for a
+workspace-owned one. To show the app to someone outside the workspace, mint a
+preview link instead. Human taps and your taps go to the same device; do not
+fight over it.
 
 ## 6. Do not break the device — and what a `FAILED` really means
 

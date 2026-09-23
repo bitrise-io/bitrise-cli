@@ -506,6 +506,7 @@ func TestDeviceFromAPI(t *testing.T) {
 		DeviceNotes:   "cold boot",
 		AppName:       "Demo",
 		BuildNumber:   "42",
+		PageURL:       "https://app.bitrise.io/dev-environments/ws-1#/sessions/s-1/device",
 	})
 	if got == nil {
 		t.Fatal("deviceFromAPI returned nil for a populated device")
@@ -516,7 +517,7 @@ func TestDeviceFromAPI(t *testing.T) {
 	if got.Spec == nil || got.Spec.Platform != "android" || got.Spec.DeviceModel != "pixel_7" || got.Spec.SystemImage != "system-images;android-34;google_apis;x86_64" {
 		t.Errorf("unexpected spec: %+v", got.Spec)
 	}
-	if got.InstallReason != "adb: INSTALL_FAILED_OLDER_SDK" || got.DeviceNotes != "cold boot" || got.AppName != "Demo" || got.BuildNumber != "42" {
+	if got.InstallReason != "adb: INSTALL_FAILED_OLDER_SDK" || got.DeviceNotes != "cold boot" || got.AppName != "Demo" || got.BuildNumber != "42" || got.PageURL == "" {
 		t.Errorf("pass-through fields lost: %+v", got)
 	}
 }
