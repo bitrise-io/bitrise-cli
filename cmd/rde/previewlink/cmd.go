@@ -20,7 +20,8 @@ tooling, nothing for them to install.
 
 Minting is the only operation: nothing is stored when a link is created, so a
 link cannot be listed, read back or revoked — it is used until it expires. The
-sessions a link opens are ordinary sessions; see 'rde session list'.`,
+sessions a link opens are ordinary sessions owned by the workspace, whoever
+minted the link; see 'rde session list --scope workspace'.`,
 	}
 	c.AddCommand(newCreateCmd())
 	return c
