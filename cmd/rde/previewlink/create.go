@@ -74,10 +74,14 @@ per link and 20 per workspace; opens past the cap are refused. Each device
 auto-terminates after its idle window (--auto-terminate-minutes, at least 10,
 default 60).
 
+Every open spawns a session owned by the workspace — also when you mint the
+link logged in as yourself. You are recorded as its creator, but it is not one
+of your personal sessions: every workspace member can see and manage it, and it
+is listed by 'rde session list --scope workspace'.
+
 In CI, authenticate with a Workspace API Token rather than a personal one:
 minting preview links is one of the few RDE operations a workspace token may
-perform, and the sessions it opens belong to the workspace instead of a person.
-Pass it as BITRISE_TOKEN, which is used verbatim, and name the workspace with
+perform. Pass it as BITRISE_TOKEN, which is used verbatim, and name the workspace with
 --workspace or BITRISE_WORKSPACE_ID — a workspace token belongs to one
 workspace and cannot look up which workspaces an account has, so leaving it to
 be auto-detected fails.

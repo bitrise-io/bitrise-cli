@@ -12,7 +12,7 @@ exact matches and are ANDed, at most 8 per request).
 By default every session the authenticated user has in the workspace is
 listed. Pass --scope workspace for sessions owned by the workspace itself
 rather than by a user (created with 'rde session create --owner workspace',
-by a Workspace API Token, or spawned by workspace device preview links) —
+by a Workspace API Token, or spawned by any device preview link) —
 every workspace member sees the same list. With a Workspace API Token the
 workspace scope is the default and the only one available. The owning user
 or workspace is reported via the owner_type and owner_id fields in
