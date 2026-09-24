@@ -40,6 +40,17 @@ perform. Pass it as BITRISE_TOKEN, which is used verbatim, and name the workspac
 workspace and cannot look up which workspaces an account has, so leaving it to
 be auto-detected fails.
 
+Warm pools: pass --warm-pool to serve the link's opens from a workspace-owned
+warm pool ('rde warm-pool list'). Each open claims one of the pool's
+pre-booted device sessions when one is available — the click-to-app time is
+the app download, not a VM boot — and creates a session from the pool's
+configuration otherwise. The pool fixes the device and the machine, so omit
+--device-platform and the other --device-* flags, --stack and --machine-type
+with it; the pool's configuration must boot a device. Deleting the pool
+invalidates the link (later opens fail as expired); a pool that still exists
+but no longer boots the link's device degrades opens to the ordinary cold
+path instead, with a notice shown to the viewer.
+
 
 ```
 bitrise-cli rde preview-link create [flags]
@@ -49,6 +60,8 @@ bitrise-cli rde preview-link create [flags]
 
 ```
   bitrise-cli rde preview-link create --device-platform android --artifact-url https://…/app.apk
+  # Serve opens from a warm pool's pre-booted devices (the pool fixes the device).
+  bitrise-cli rde preview-link create --warm-pool WARM_POOL_ID --artifact-url https://…/app.apk
   bitrise-cli rde preview-link create --device-platform ios --artifact-url https://…/App.zip --device-model "iPhone 16"
   bitrise-cli rde preview-link create --device-platform ios --artifact-url-stdin < artifact-url.txt
   bitrise-cli rde preview-link create --device-platform android --artifact-url https://…/app.apk --ttl 4h
@@ -76,6 +89,7 @@ bitrise-cli rde preview-link create [flags]
       --machine-type string            machine type the link's devices run on; omit for the platform default (see 'rde machine-type list --stack STACK_ID')
       --stack string                   stack the link's devices run on; omit for the platform default (see 'rde stack list')
       --ttl duration                   how long the link stays openable (Go duration syntax: 4h, 30m); 0 uses the default of 24h, maximum 72h
+      --warm-pool string               workspace-owned warm pool (ID or name) whose pre-booted device sessions serve the link's opens; the pool fixes the device and the machine, so omit the --device-* flags, --stack and --machine-type (see 'rde warm-pool list')
 ```
 
 ### Options inherited from parent commands

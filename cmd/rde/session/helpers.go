@@ -98,6 +98,21 @@ func diskStatusText(s style.Styles, status string) string {
 	return status
 }
 
+// warmStateText renders a session's relation to its warm pool with the one
+// fact a caller wants from it: whether the session skipped the VM boot.
+// Unknown states (a value added after this code was written) render as-is.
+func warmStateText(s style.Styles, state string) string {
+	switch state {
+	case internalrde.WarmStateClaimed:
+		return s.Success.Render(state) + s.Dim.Render(" — handed out pre-booted from the warm pool")
+	case internalrde.WarmStateCold:
+		return s.Warn.Render(state) + s.Dim.Render(" — no warm session was available; created from the pool's configuration")
+	case "warming", "ready":
+		return state + s.Dim.Render(" — part of the pool's inventory, not yet claimed")
+	}
+	return state
+}
+
 // deviceStateStyle colors the device readiness like statusStyle colors the
 // session status: ready is good, failed is bad, anything else is in flight.
 func deviceStateStyle(s style.Styles, state string) lipgloss.Style {

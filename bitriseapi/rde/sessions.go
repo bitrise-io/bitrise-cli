@@ -45,9 +45,16 @@ type Session struct {
 	OwnerID string `json:"ownerId,omitempty"`
 	// Device is the session's virtual device and readiness; absent when
 	// the session has no device.
-	Device    *SessionDevice `json:"device,omitempty"`
-	CreatedAt string         `json:"createdAt,omitempty"`
-	UpdatedAt string         `json:"updatedAt,omitempty"`
+	Device *SessionDevice `json:"device,omitempty"`
+	// WarmPoolID is the warm pool this session belongs to (see WarmPool);
+	// empty when none. WarmState is its relation to that pool: "warming" /
+	// "ready" (pool inventory), "claimed" (handed out warm) or "cold"
+	// (created from the pool's configuration because no warm session was
+	// available). Empty when the session has no pool.
+	WarmPoolID string `json:"warmPoolId,omitempty"`
+	WarmState  string `json:"warmState,omitempty"`
+	CreatedAt  string `json:"createdAt,omitempty"`
+	UpdatedAt  string `json:"updatedAt,omitempty"`
 }
 
 // SessionTemplateSnapshot is the template config snapshotted at session
@@ -155,6 +162,15 @@ type CreateSessionRequest struct {
 	// workspace-owned sessions; sent only when set so the backend default
 	// applies otherwise.
 	OwnerType string `json:"ownerType,omitempty"`
+	// WarmPoolID claims a session from a warm pool (see WarmPool) instead
+	// of building one from this request. The pool fixes the configuration,
+	// so TemplateID, SessionInputs, MapSavedToSessionInputs,
+	// EnabledFeatureFlagNames, StackID, MachineType, Cluster, DeviceSpec,
+	// NoDevice and AIPrompt must be empty (the backend rejects them);
+	// OwnerType must be empty or the pool's. Name, Description, Labels,
+	// AutoTerminateMinutes and Artifact (device pools) apply to the
+	// claimed session.
+	WarmPoolID string `json:"warmPoolId,omitempty"`
 }
 
 // DeviceSpec describes a virtual device in the preview-link vocabulary.

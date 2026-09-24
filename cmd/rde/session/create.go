@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/bitrise-io/bitrise-cli/cmd/cmdutil"
+	"github.com/bitrise-io/bitrise-cli/cmd/rde/rdeflags"
 	"github.com/bitrise-io/bitrise-cli/internal/output"
 	"github.com/bitrise-io/bitrise-cli/internal/output/style"
 	internalrde "github.com/bitrise-io/bitrise-cli/internal/rde"
@@ -42,6 +43,7 @@ func newCreateCmd() *cobra.Command {
 		artifactURLStdin     bool
 		artifactName         string
 		owner                string
+		warmPool             string
 	)
 
 	c := &cobra.Command{
@@ -116,6 +118,17 @@ you when a device was requested) and touch nothing on the VM while it is
 "booting". A "failed" device is not always unusable: 'session view' prints the
 device notes, and the guide says which failures leave the device drivable.
 
+Warm pools: pass --warm-pool to claim a session from a warm pool ('rde
+warm-pool list') instead of describing one. A booted, idle warm session is
+handed out instantly (the session's warm state is "claimed"); when none is
+available one is created from the pool's stored configuration ("cold"). The
+pool fixes the configuration, so --template, --stack, --machine-type, the
+input flags, --feature-flag, --cluster, --ai-prompt, --map-saved-inputs and
+the device flags are rejected with it — change the pool instead. NAME,
+--description, --label, --auto-terminate-minutes and (on a device pool) the
+artifact flags apply to the claimed session; --owner may be omitted or the
+pool's owner.
+
 Example values:
   --input key=value
   --saved-input session-key=SAVED_INPUT_ID   # secret stored ahead of time
@@ -139,20 +152,41 @@ Example values:
   bitrise-cli rde session create ios-check --template TEMPLATE_ID --device-model "iPhone 15"
   bitrise-cli rde session create no-sim --template TEMPLATE_ID --no-device
   # Keep a signed artifact URL out of shell history and process args: read it from a file.
-  bitrise-cli rde session create android-check --device-platform android --artifact-url-stdin < artifact-url.txt`,
+  bitrise-cli rde session create android-check --device-platform android --artifact-url-stdin < artifact-url.txt
+  # Claim a pre-booted session from a warm pool (see 'rde warm-pool list').
+  bitrise-cli rde session create dev --warm-pool WARM_POOL_ID`,
 		Args: cmdutil.RequireArgs("NAME"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
 			if name == "" {
 				return fmt.Errorf("NAME must not be empty")
 			}
+			// A warm pool fixes the session's configuration: the backend
+			// rejects (not ignores) every flag that would shape the VM, so
+			// name the offending flags here instead of relaying a 400.
+			if warmPool != "" {
+				var conflicting []string
+				for _, f := range []string{
+					"template", "stack", "machine-type", "cluster",
+					"input", "secret-input", "saved-input", "map-saved-inputs", "feature-flag",
+					"ai-prompt", "device-platform", "device-model", "device-os-version", "device-system-image", "no-device",
+				} {
+					if cmd.Flags().Changed(f) {
+						conflicting = append(conflicting, "--"+f)
+					}
+				}
+				if len(conflicting) > 0 {
+					return fmt.Errorf("--warm-pool: the pool fixes the session's configuration, so %s cannot be combined with it — change the pool with 'rde warm-pool update' instead", strings.Join(conflicting, ", "))
+				}
+			}
 			// A session needs either a template or, for a template-less
 			// session, an explicit stack + machine type — unless a device is
 			// requested, in which case the backend fills whatever is missing
-			// from the platform's defaults. (stack/machine type may also
-			// accompany a template to override its defaults.)
-			if templateID == "" && devicePlatform == "" && (stack == "" || machineType == "") {
-				return fmt.Errorf("provide --template, --device-platform, or both --stack and --machine-type to create a session without a template")
+			// from the platform's defaults, or a warm pool supplies the whole
+			// configuration. (stack/machine type may also accompany a
+			// template to override its defaults.)
+			if warmPool == "" && templateID == "" && devicePlatform == "" && (stack == "" || machineType == "") {
+				return fmt.Errorf("provide --template, --warm-pool, --device-platform, or both --stack and --machine-type to create a session without a template")
 			}
 			switch devicePlatform {
 			case "", "ios", "android":
@@ -184,9 +218,10 @@ Example values:
 				return fmt.Errorf("--device-model, --device-os-version and --device-system-image require --device-platform (or --template with a declared device)")
 			}
 			// An artifact needs a device to land on: one requested here, or the
-			// one a template declares (the backend rejects a template without one).
-			if devicePlatform == "" && templateID == "" && (artifactURL != "" || artifactURLStdin || artifactName != "") {
-				return fmt.Errorf("--artifact-url, --artifact-url-stdin and --artifact-name require --device-platform (or --template with a template that declares a device)")
+			// one a template or warm pool declares (the backend rejects a
+			// template or pool without one).
+			if devicePlatform == "" && templateID == "" && warmPool == "" && (artifactURL != "" || artifactURLStdin || artifactName != "") {
+				return fmt.Errorf("--artifact-url, --artifact-url-stdin and --artifact-name require --device-platform (or --template / --warm-pool with a configuration that declares a device)")
 			}
 			if artifactURLStdin {
 				// Signed download URLs are bearer credentials; reading them
@@ -211,7 +246,7 @@ Example values:
 			if err != nil {
 				return err
 			}
-			sessionInputs, err := parseSessionInputs(inputs, secretInputs, savedInputs)
+			sessionInputs, err := rdeflags.ParseSessionInputs(inputs, secretInputs, savedInputs)
 			if err != nil {
 				return err
 			}
@@ -247,9 +282,12 @@ Example values:
 					OSVersion:   deviceOSVersion,
 					SystemImage: deviceSystemImage,
 				}
-				if artifactURL != "" {
-					req.Artifact = &internalrde.DeviceArtifact{URL: artifactURL, AppName: artifactName}
-				}
+			}
+			// The artifact lands on whichever device the session ends up
+			// with — the one requested here, the template's, or the warm
+			// pool's — so it is independent of the device flags.
+			if artifactURL != "" {
+				req.Artifact = &internalrde.DeviceArtifact{URL: artifactURL, AppName: artifactName}
 			}
 			req.NoDevice = noDevice
 			format := cmdutil.ResolveFormat(cmd)
@@ -269,6 +307,14 @@ Example values:
 					return err
 				}
 				req.TemplateID = resolvedID
+			}
+			// --warm-pool likewise takes a UUID or a pool name.
+			if warmPool != "" {
+				resolvedID, err := svc.ResolveWarmPoolID(cmd.Context(), workspaceID, warmPool)
+				if err != nil {
+					return err
+				}
+				req.WarmPoolID = resolvedID
 			}
 
 			res, err := svc.CreateSession(cmd.Context(), workspaceID, req)
@@ -337,6 +383,7 @@ Example values:
 	c.Flags().IntVar(&autoTerminateMinutes, "auto-terminate-minutes", 0, "minutes until auto-termination; 0 disables; omitted uses the backend default (~5 days)")
 	c.Flags().BoolVar(&mapSavedInputs, "map-saved-inputs", false, "auto-fill template session inputs from the user's saved inputs (matched by key)")
 	c.Flags().StringVar(&owner, "owner", "", "who owns the session: user (default; a personal session) or workspace (owned by the workspace itself, visible to every member; session inputs as plain values only). A Workspace API Token always creates workspace sessions")
+	c.Flags().StringVar(&warmPool, "warm-pool", "", "warm pool ID or name to claim the session from: a pre-booted warm session is handed out instantly, or one is created from the pool's configuration when none is available; the pool fixes the configuration, so --template, --stack, --machine-type, input, feature-flag, --cluster, --ai-prompt and device flags are rejected with it (see 'rde warm-pool list')")
 	_ = c.RegisterFlagCompletionFunc("owner", func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
 		return []string{internalrde.SessionOwnerUser, internalrde.SessionOwnerWorkspace}, cobra.ShellCompDirectiveNoFileComp
 	})
@@ -366,35 +413,6 @@ Example values:
 // deviceWaitPollInterval is how often --wait re-reads a device session while
 // its device is still booting (a variable so tests can shorten it).
 var deviceWaitPollInterval = 3 * time.Second
-
-// parseSessionInputs converts the user-friendly --input/--secret-input/--saved-input
-// flags into SessionInputValue entries. Returns an error on the first malformed
-// entry; later iterations don't run.
-func parseSessionInputs(plain, secret, saved []string) ([]internalrde.SessionInputValue, error) {
-	out := make([]internalrde.SessionInputValue, 0, len(plain)+len(secret)+len(saved))
-	for _, kv := range plain {
-		k, v, ok := strings.Cut(kv, "=")
-		if !ok || k == "" {
-			return nil, fmt.Errorf("--input %q: expected key=value", kv)
-		}
-		out = append(out, internalrde.SessionInputValue{Key: k, Value: v})
-	}
-	for _, kv := range secret {
-		k, v, ok := strings.Cut(kv, "=")
-		if !ok || k == "" {
-			return nil, fmt.Errorf("--secret-input %q: expected key=value", kv)
-		}
-		out = append(out, internalrde.SessionInputValue{Key: k, Value: v, IsSecret: true})
-	}
-	for _, kv := range saved {
-		k, v, ok := strings.Cut(kv, "=")
-		if !ok || k == "" || v == "" {
-			return nil, fmt.Errorf("--saved-input %q: expected key=savedInputID", kv)
-		}
-		out = append(out, internalrde.SessionInputValue{Key: k, SavedInputID: v})
-	}
-	return out, nil
-}
 
 func renderCreateResult(w io.Writer, res internalrde.CreateSessionResult) error {
 	s := style.New(w)

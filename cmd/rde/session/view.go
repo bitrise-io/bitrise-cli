@@ -132,6 +132,12 @@ func renderSessionDetail(w io.Writer, sess internalrde.Session) error {
 	} else if sess.TemplateOutdated {
 		ew.F("%s%s\n", lbl("Template state:"), s.Dim.Render("outdated (template changed since session creation)"))
 	}
+	if sess.WarmPoolID != "" {
+		ew.F("%s%s\n", lbl("Warm pool:"), s.Slug.Render(sess.WarmPoolID))
+	}
+	if sess.WarmState != "" {
+		ew.F("%s%s\n", lbl("Warm state:"), warmStateText(s, sess.WarmState))
+	}
 	// A dead session has nothing to connect to; the API may still echo the
 	// last known addresses, so don't invite a connection that cannot succeed.
 	if !isTerminalStatus(sess.Status) {

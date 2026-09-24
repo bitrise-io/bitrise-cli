@@ -3,6 +3,7 @@ package previewlink
 import (
 	"fmt"
 	"io"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -43,6 +44,7 @@ func newCreateCmd() *cobra.Command {
 		autoTerminateMins int
 		stack             string
 		machineType       string
+		warmPool          string
 	)
 
 	c := &cobra.Command{
@@ -83,8 +85,21 @@ perform. Pass it as BITRISE_TOKEN, which is used verbatim, and name the workspac
 --workspace or BITRISE_WORKSPACE_ID — a workspace token belongs to one
 workspace and cannot look up which workspaces an account has, so leaving it to
 be auto-detected fails.
+
+Warm pools: pass --warm-pool to serve the link's opens from a workspace-owned
+warm pool ('rde warm-pool list'). Each open claims one of the pool's
+pre-booted device sessions when one is available — the click-to-app time is
+the app download, not a VM boot — and creates a session from the pool's
+configuration otherwise. The pool fixes the device and the machine, so omit
+--device-platform and the other --device-* flags, --stack and --machine-type
+with it; the pool's configuration must boot a device. Deleting the pool
+invalidates the link (later opens fail as expired); a pool that still exists
+but no longer boots the link's device degrades opens to the ordinary cold
+path instead, with a notice shown to the viewer.
 `,
 		Example: `  bitrise-cli rde preview-link create --device-platform android --artifact-url https://…/app.apk
+  # Serve opens from a warm pool's pre-booted devices (the pool fixes the device).
+  bitrise-cli rde preview-link create --warm-pool WARM_POOL_ID --artifact-url https://…/app.apk
   bitrise-cli rde preview-link create --device-platform ios --artifact-url https://…/App.zip --device-model "iPhone 16"
   bitrise-cli rde preview-link create --device-platform ios --artifact-url-stdin < artifact-url.txt
   bitrise-cli rde preview-link create --device-platform android --artifact-url https://…/app.apk --ttl 4h
@@ -95,11 +110,26 @@ be auto-detected fails.
     --device-platform ios --artifact-url https://…/App.zip`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			if devicePlatform != "ios" && devicePlatform != "android" {
-				return fmt.Errorf("--device-platform must be ios or android")
-			}
-			if devicePlatform == "ios" && deviceSystemImage != "" {
-				return fmt.Errorf("--device-system-image applies to Android only")
+			if warmPool != "" {
+				// The pool fixes the device and the machine; the backend
+				// rejects anything that would re-specify them, so name the
+				// offending flags here instead of relaying a 400.
+				var conflicting []string
+				for _, f := range []string{"device-platform", "device-model", "device-os-version", "device-system-image", "stack", "machine-type"} {
+					if cmd.Flags().Changed(f) {
+						conflicting = append(conflicting, "--"+f)
+					}
+				}
+				if len(conflicting) > 0 {
+					return fmt.Errorf("--warm-pool: the pool fixes the device and the machine, so %s cannot be combined with it", strings.Join(conflicting, ", "))
+				}
+			} else {
+				if devicePlatform != "ios" && devicePlatform != "android" {
+					return fmt.Errorf("--device-platform must be ios or android (or pass --warm-pool to take the pool's device)")
+				}
+				if devicePlatform == "ios" && deviceSystemImage != "" {
+					return fmt.Errorf("--device-system-image applies to Android only")
+				}
 			}
 			if artifactURLStdin {
 				// Signed download URLs are bearer credentials; reading them
@@ -144,12 +174,6 @@ be auto-detected fails.
 			}
 
 			req := internalrde.CreatePreviewLinkRequest{
-				DeviceSpec: &internalrde.DeviceSpec{
-					Platform:    devicePlatform,
-					DeviceModel: deviceModel,
-					OSVersion:   deviceOSVersion,
-					SystemImage: deviceSystemImage,
-				},
 				Artifact: &internalrde.DeviceArtifact{
 					URL:         artifactURL,
 					AppName:     artifactName,
@@ -161,7 +185,24 @@ be auto-detected fails.
 				MachineType:                 machineType,
 				SessionAutoTerminateMinutes: autoTerminateMins,
 			}
-			link, err := internalrde.NewService(client).CreatePreviewLink(cmd.Context(), workspaceID, req)
+			if devicePlatform != "" {
+				// Absent with --warm-pool: the pool's device applies.
+				req.DeviceSpec = &internalrde.DeviceSpec{
+					Platform:    devicePlatform,
+					DeviceModel: deviceModel,
+					OSVersion:   deviceOSVersion,
+					SystemImage: deviceSystemImage,
+				}
+			}
+			svc := internalrde.NewService(client)
+			if warmPool != "" {
+				// --warm-pool takes a UUID or a pool name, like session create.
+				req.WarmPoolID, err = svc.ResolveWarmPoolID(cmd.Context(), workspaceID, warmPool)
+				if err != nil {
+					return err
+				}
+			}
+			link, err := svc.CreatePreviewLink(cmd.Context(), workspaceID, req)
 			if err != nil {
 				return err
 			}
@@ -182,8 +223,8 @@ be auto-detected fails.
 	c.Flags().IntVar(&autoTerminateMins, "auto-terminate-minutes", 0, "minutes a device stays alive after its last viewer disconnects; 0 uses the default of 60; minimum 10, maximum 480")
 	c.Flags().StringVar(&stack, "stack", "", "stack the link's devices run on; omit for the platform default (see 'rde stack list')")
 	c.Flags().StringVar(&machineType, "machine-type", "", "machine type the link's devices run on; omit for the platform default (see 'rde machine-type list --stack STACK_ID')")
+	c.Flags().StringVar(&warmPool, "warm-pool", "", "workspace-owned warm pool (ID or name) whose pre-booted device sessions serve the link's opens; the pool fixes the device and the machine, so omit the --device-* flags, --stack and --machine-type (see 'rde warm-pool list')")
 	c.MarkFlagsMutuallyExclusive("artifact-url", "artifact-url-stdin")
-	_ = c.MarkFlagRequired("device-platform")
 	return c
 }
 

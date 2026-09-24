@@ -23,6 +23,13 @@ type CreatePreviewLinkRequest struct {
 	// SessionAutoTerminateMinutes is the idle window of the sessions the link
 	// spawns. 0 uses the default of 60 minutes.
 	SessionAutoTerminateMinutes int `json:"sessionAutoTerminateMinutes,omitempty"`
+	// WarmPoolID serves the link's opens from a warm pool (see WarmPool):
+	// each open claims a warm session when one is available and creates
+	// one from the pool's configuration otherwise. The pool must be
+	// workspace-owned and boot a device; it fixes the machine and the
+	// device, so StackID and MachineType must be empty and DeviceSpec
+	// empty or equal to the pool's.
+	WarmPoolID string `json:"warmPoolId,omitempty"`
 }
 
 // PreviewLink is a minted device preview link. Nothing is stored server-side
