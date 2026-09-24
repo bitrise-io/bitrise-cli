@@ -134,7 +134,8 @@ type SessionDevice struct {
 	BuildNumber   string      `json:"build_number,omitempty"`
 	CommitSHA     string      `json:"commit_sha,omitempty"`
 	// PageURL is the device's page in the RDE web UI, for a browser where
-	// the user is logged in to Bitrise (not a shareable link).
+	// the user is logged in to Bitrise (not a shareable link). Empty on
+	// unclaimed warm pool inventory; set once the session is claimed.
 	PageURL string `json:"page_url,omitempty"`
 }
 
