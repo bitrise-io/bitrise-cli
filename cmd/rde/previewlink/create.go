@@ -92,8 +92,10 @@ pre-booted device sessions when one is available — the click-to-app time is
 the app download, not a VM boot — and creates a session from the pool's
 configuration otherwise. The pool fixes the device and the machine, so omit
 --device-platform and the other --device-* flags, --stack and --machine-type
-with it; the pool's configuration must boot a device. A pool deleted after
-minting degrades later opens to the ordinary cold path.
+with it; the pool's configuration must boot a device. Deleting the pool
+invalidates the link (later opens fail as expired); a pool that still exists
+but no longer boots the link's device degrades opens to the ordinary cold
+path instead, with a notice shown to the viewer.
 `,
 		Example: `  bitrise-cli rde preview-link create --device-platform android --artifact-url https://…/app.apk
   # Serve opens from a warm pool's pre-booted devices (the pool fixes the device).

@@ -450,9 +450,11 @@ func newDeleteCmd() *cobra.Command {
 		Long: `Delete a warm pool. Its warm sessions — the booted, unclaimed ones — are
 terminated and removed by the backend; sessions already claimed from the
 pool are ordinary sessions and are untouched. Preview links minted with this
-pool keep working, falling back to booting a device per open.
+pool stop working: every later open fails as an expired link would.
 
-This cannot be undone. Pass --yes to skip the confirmation prompt.`,
+This cannot be undone. Pass --yes to skip the confirmation prompt. To stop
+paying for idle machines while keeping the configuration and its links,
+set the pool size to 0 instead ('rde warm-pool set-size POOL 0').`,
 		Example: `  bitrise-cli rde warm-pool delete WARM_POOL_ID
   bitrise-cli rde warm-pool delete ios-devs --yes`,
 		Args: cmdutil.RequireArgs("WARM_POOL_ID"),
