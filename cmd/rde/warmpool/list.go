@@ -33,8 +33,8 @@ of one template (by ID or name).
 requires the workspace's billing-data permission (the same gate as 'rde
 usage').
 
-READY and WARMING are the pool's current inventory; DESIRED is the count the
-backend keeps booted. STATUS is "ok", or the problem 'view' explains:
+READY and WARMING are the pool's current inventory; SIZE is the pool size —
+the count the backend keeps booted. STATUS is "ok", or the problem 'view' explains:
 "config error" (the stored configuration no longer builds — the pool creates
 nothing until it is fixed), "paused" (backing off after repeated failures)
 or "error" (the last machine creation failed).`,
@@ -76,7 +76,7 @@ func renderList(w io.Writer, res listResult) error {
 		return err
 	}
 	s := style.New(w)
-	headers := []string{"NAME", "TEMPLATE", "OWNER", "DESIRED", "READY", "WARMING", "STATUS", "ID"}
+	headers := []string{"NAME", "TEMPLATE", "OWNER", "SIZE", "READY", "WARMING", "STATUS", "ID"}
 	rows := make([][]string, 0, len(res.Items))
 	for _, p := range res.Items {
 		ready, warming := "", ""

@@ -66,7 +66,7 @@ func TestListCmd_HappyPath(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
-	for _, want := range []string{"NAME", "DESIRED", "READY", "STATUS", "ios-devs", "iOS Dev", "workspace", "a@b.io", "config error", "p-1", "p-2"} {
+	for _, want := range []string{"NAME", "SIZE", "READY", "STATUS", "ios-devs", "iOS Dev", "workspace", "a@b.io", "config error", "p-1", "p-2"} {
 		if !strings.Contains(stdout, want) {
 			t.Errorf("stdout missing %q:\n%s", want, stdout)
 		}
