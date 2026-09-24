@@ -90,7 +90,8 @@ func TestViewCmd_DeviceIOS(t *testing.T) {
 				"installStatus":"PREVIEW_INSTALL_STATUS_FAILED",
 				"installReason":"artifact is not a zipped simulator .app",
 				"deviceNotes":"warm boot from snapshot",
-				"appName":"Demo","buildNumber":"42"
+				"appName":"Demo","buildNumber":"42",
+				"pageUrl":"https://app.bitrise.io/dev-environments/ws-1#/sessions/s-1/device"
 			}
 		}}`)
 	}))
@@ -102,6 +103,7 @@ func TestViewCmd_DeviceIOS(t *testing.T) {
 	}
 	for _, want := range []string{
 		"Device:", "iOS simulator · iPhone 16 · com.apple.CoreSimulator.SimRuntime.iOS-18-2 — ready",
+		"Device page:", "https://app.bitrise.io/dev-environments/ws-1#/sessions/s-1/device",
 		"Device notes:", "warm boot from snapshot",
 		"Device app:", "Demo #42 — install failed: artifact is not a zipped simulator .app",
 	} {
@@ -177,7 +179,8 @@ func TestViewCmd_JSONOutput_Device(t *testing.T) {
 				"installStatus":"PREVIEW_INSTALL_STATUS_FAILED",
 				"installReason":"bad artifact",
 				"deviceNotes":"warm boot",
-				"appName":"Demo","buildNumber":"42"
+				"appName":"Demo","buildNumber":"42",
+				"pageUrl":"https://app.bitrise.io/dev-environments/ws-1#/sessions/s-1/device"
 			}
 		}}`)
 	}))
@@ -202,6 +205,7 @@ func TestViewCmd_JSONOutput_Device(t *testing.T) {
 			DeviceNotes   string `json:"device_notes"`
 			AppName       string `json:"app_name"`
 			BuildNumber   string `json:"build_number"`
+			PageURL       string `json:"page_url"`
 		} `json:"device"`
 	}
 	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
@@ -219,6 +223,9 @@ func TestViewCmd_JSONOutput_Device(t *testing.T) {
 	}
 	if d.InstallReason != "bad artifact" || d.DeviceNotes != "warm boot" || d.AppName != "Demo" || d.BuildNumber != "42" {
 		t.Errorf("unexpected device fields: %+v", d)
+	}
+	if d.PageURL != "https://app.bitrise.io/dev-environments/ws-1#/sessions/s-1/device" {
+		t.Errorf("page_url = %q, want the device page passed through", d.PageURL)
 	}
 	if strings.Contains(stdout, "PREVIEW_") {
 		t.Errorf("wire enum leaked into JSON output:\n%s", stdout)

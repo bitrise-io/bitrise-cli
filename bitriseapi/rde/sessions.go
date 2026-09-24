@@ -205,6 +205,10 @@ type SessionDevice struct {
 	AppName       string      `json:"appName,omitempty"`
 	BuildNumber   string      `json:"buildNumber,omitempty"`
 	CommitSHA     string      `json:"commitSha,omitempty"`
+	// PageURL is the device's page in the RDE web UI; opening it needs a
+	// Bitrise login with access to the session. Empty on unclaimed warm pool
+	// sessions.
+	PageURL string `json:"pageUrl,omitempty"`
 }
 
 // UpdateSessionRequest is the PATCH body for updating a session. Pointer

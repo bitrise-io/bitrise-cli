@@ -133,6 +133,10 @@ type SessionDevice struct {
 	AppName       string      `json:"app_name,omitempty"`
 	BuildNumber   string      `json:"build_number,omitempty"`
 	CommitSHA     string      `json:"commit_sha,omitempty"`
+	// PageURL is the device's page in the RDE web UI, for a browser where
+	// the user is logged in to Bitrise (not a shareable link). Empty on
+	// unclaimed warm pool inventory; set once the session is claimed.
+	PageURL string `json:"page_url,omitempty"`
 }
 
 // deviceStateFromAPI maps PREVIEW_DEVICE_STATE_* to a short lowercase word
@@ -176,6 +180,7 @@ func deviceFromAPI(w *rdeapi.SessionDevice) *SessionDevice {
 		AppName:       w.AppName,
 		BuildNumber:   w.BuildNumber,
 		CommitSHA:     w.CommitSHA,
+		PageURL:       w.PageURL,
 	}
 	out.Spec = deviceSpecFromAPI(w.Spec)
 	return out

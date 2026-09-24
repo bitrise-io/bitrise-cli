@@ -200,3 +200,61 @@ func TestViewCmd_ShowsWarmState(t *testing.T) {
 		t.Errorf("JSON must not gain warm_* keys for a pool-less session:\n%s", stdout)
 	}
 }
+
+// A session claimed from a device pool carries its device page like any
+// other device session, in the create output and in JSON. Pool inventory
+// (warming / ready, not yet claimed) gets no page_url — the device view
+// refuses it — so session view prints no Device page line for it.
+func TestWarmPoolSession_DevicePage(t *testing.T) {
+	const pageURL = "https://app.bitrise.io/dev-environments/ws-1#/sessions/s-new/device"
+	claimed := `{"session":{"id":"s-new","name":"dev","status":"SESSION_STATUS_RUNNING","warmPoolId":"` + uuidPool + `","warmState":"claimed",
+		"device":{"spec":{"platform":"ios","deviceModel":"iPhone 16"},"state":"PREVIEW_DEVICE_STATE_READY","pageUrl":"` + pageURL + `"}}}`
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, claimed)
+	}))
+	defer srv.Close()
+
+	stdout, _, err := run(t, newCreateCmd(), srv.URL, "ws-1", []string{"dev", "--warm-pool", uuidPool}, output.Human)
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	for _, want := range []string{"Warm state:", "claimed", "Device:", "ready", "Device page:", pageURL} {
+		if !strings.Contains(stdout, want) {
+			t.Errorf("stdout missing %q:\n%s", want, stdout)
+		}
+	}
+
+	stdout, _, err = run(t, newCreateCmd(), srv.URL, "ws-1", []string{"dev", "--warm-pool", uuidPool}, output.JSON)
+	if err != nil {
+		t.Fatalf("Execute (json): %v", err)
+	}
+	var got struct {
+		Session struct {
+			WarmState string `json:"warm_state"`
+			Device    struct {
+				PageURL string `json:"page_url"`
+			} `json:"device"`
+		} `json:"session"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
+		t.Fatalf("unmarshal JSON output: %v\n%s", err, stdout)
+	}
+	if got.Session.WarmState != "claimed" || got.Session.Device.PageURL != pageURL {
+		t.Errorf("unexpected JSON: %+v", got)
+	}
+
+	inventory := `{"session":{"id":"s-1","name":"warm-1","status":"SESSION_STATUS_RUNNING","warmPoolId":"p-1","warmState":"ready",
+		"device":{"spec":{"platform":"ios","deviceModel":"iPhone 16"},"state":"PREVIEW_DEVICE_STATE_READY"}}}`
+	srv2 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, inventory)
+	}))
+	defer srv2.Close()
+
+	stdout, _, err = run(t, newViewCmd(), srv2.URL, "ws-1", []string{uuidSession}, output.Human)
+	if err != nil {
+		t.Fatalf("Execute (inventory): %v", err)
+	}
+	if !strings.Contains(stdout, "Device:") || strings.Contains(stdout, "Device page:") {
+		t.Errorf("inventory must show its device but no device page:\n%s", stdout)
+	}
+}
