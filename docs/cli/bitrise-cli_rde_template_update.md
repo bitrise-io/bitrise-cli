@@ -44,7 +44,7 @@ bitrise-cli rde template update TEMPLATE_ID [flags]
 
 ```
       --clear-device                 remove the template's declared device so sessions created from it boot none
-      --device-model string          device to boot: simctl device type ("iPhone 16") or emulator device profile ("pixel_7"); default: platform default; requires --device-platform
+      --device-model string          device to boot: simctl device type ("iPhone 16") or emulator device profile ("pixel_7"); default: platform default; requires --device-platform. "iPhone Duo" needs an Xcode 27.1+ stack (the session or template stack is validated)
       --device-os-version string     iOS only: an iOS version ("18.2") or simctl runtime id — anything else is rejected; default: newest installed; requires --device-platform
       --device-platform string       declare a virtual device sessions created from the template boot unless overridden: ios (simulator, macOS stack) or android (emulator, Linux stack); read 'rde device-guide' first
       --device-system-image string   Android only: sdkmanager system image package ("system-images;android-34;google_apis;x86_64"); default: platform default; requires --device-platform
