@@ -211,7 +211,7 @@ path instead, with a notice shown to the viewer.
 	}
 
 	c.Flags().StringVar(&devicePlatform, "device-platform", "", "device each open boots: ios (simulator) or android (emulator) (required)")
-	c.Flags().StringVar(&deviceModel, "device-model", "", "device to boot: simctl device type (\"iPhone 16\") or emulator device profile (\"pixel_7\") — a screen profile, not that phone's firmware; default: the platform default")
+	c.Flags().StringVar(&deviceModel, "device-model", "", "device to boot: simctl device type (\"iPhone 16\") or emulator device profile (\"pixel_7\") — a screen profile, not that phone's firmware; default: the platform default. \"iPhone Duo\" needs an Xcode 27.1+ stack: with no --stack it runs on the deployment's Duo default stack, on an older stack it is rejected")
 	c.Flags().StringVar(&deviceOSVersion, "device-os-version", "", "iOS only: an iOS version (\"18.2\") or simctl runtime id — anything else is rejected; default: newest installed")
 	c.Flags().StringVar(&deviceSystemImage, "device-system-image", "", "Android only: the API-level knob — sdkmanager system image package (\"system-images;android-34;google_apis;x86_64\"); default: the platform default")
 	c.Flags().StringVar(&artifactURL, "artifact-url", "", "app build to install on every open: absolute http(s) URL of a zipped simulator .app (iOS) or an .apk (Android), fetchable by anonymous GET (a signed URL is visible in shell history and process args — prefer --artifact-url-stdin)")
