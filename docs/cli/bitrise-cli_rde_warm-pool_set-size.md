@@ -11,8 +11,8 @@ the pool but keeps it usable as a configuration preset: 'rde session create
 --warm-pool' then creates sessions on demand from its configuration.
 
 This is the knob for scaling a pool to business hours: run it from a cron job
-in the morning and again with 0 in the evening. A Workspace API Token works
-for workspace pools, so the job does not need a personal token.
+in the morning and again with 0 in the evening. A Workspace API Token works,
+so the job does not need a personal token.
 
 ```
 bitrise-cli rde warm-pool set-size WARM_POOL_ID SIZE [flags]
