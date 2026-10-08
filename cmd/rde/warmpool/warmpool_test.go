@@ -46,7 +46,7 @@ func run(t *testing.T, c *cobra.Command, srvURL, workspaceID string, args []stri
 const listBody = `{"warmPools":[
 	{"id":"p-1","name":"ios-devs","templateId":"t-1","templateName":"iOS Dev","ownerType":"workspace","ownerId":"my-ws","poolSize":2,
 	 "status":{"ready":1,"warming":1,"claimedTotal":12,"coldTotal":3}},
-	{"id":"p-2","name":"mine","templateId":"t-1","templateName":"iOS Dev","ownerType":"user","createdByEmail":"a@b.io","poolSize":0,
+	{"id":"p-2","name":"presets","templateId":"t-1","templateName":"iOS Dev","ownerType":"workspace","ownerId":"my-ws","createdByEmail":"a@b.io","poolSize":0,
 	 "status":{"configError":"stack retired"}}
 ]}`
 
@@ -145,7 +145,7 @@ func TestListCmd_JSONOutput(t *testing.T) {
 	if len(got.Items) != 2 || got.Items[0].ID != "p-1" || got.Items[0].PoolSize != 2 || got.Items[0].Status.Ready != 1 || got.Items[0].Status.ClaimedTotal != 12 {
 		t.Errorf("unexpected JSON items: %+v", got.Items)
 	}
-	if got.Items[1].OwnerType != "user" || got.Items[1].Status.ConfigError != "stack retired" {
+	if got.Items[1].OwnerType != "workspace" || got.Items[1].Status.ConfigError != "stack retired" {
 		t.Errorf("unexpected second item: %+v", got.Items[1])
 	}
 }

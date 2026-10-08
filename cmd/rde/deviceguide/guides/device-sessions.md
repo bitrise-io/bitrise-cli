@@ -141,8 +141,8 @@ way `stack_id` / `machine_type` do:
 (VM boot, warmup, emulator/simulator boot). A **warm pool** keeps a number of
 sessions of one configuration booted and idle so a create is instant: it is a
 stored session configuration (template + input values + flags + optional
-machine/device overrides) plus an owner (`user` = private to its creator,
-`workspace` = shared with every member) and a `pool_size`. Create one
+machine/device overrides) plus a `pool_size`, owned by the workspace so every
+member can claim from it. Create one
 with `bitrise_devenv_create_warm_pool` / `bitrise-cli rde warm-pool create
 NAME --template T --size N`, then create sessions **from the pool** instead
 of the template:
@@ -159,11 +159,15 @@ result, just slower. The pool fixes the configuration: do not pass
 feature flags, stack/machine/cluster, `device_spec`, `no_device` or
 `ai_prompt` alongside `warm_pool_id` (they are rejected, not ignored);
 `name`, `description`, `labels`, `auto_terminate_minutes` and `artifact`
-still apply. `owner_type`, if given, must be the pool's own: a claimed session
-belongs to the pool's owner (you for a personal pool, the workspace for a
-workspace pool). A pool you cannot see — another member's personal pool —
-reads as not found, exactly like a pool that does not exist. The pool refills
-after each claim. Read the pool (`bitrise_devenv_get_warm_pool`,
+still apply. **A session claimed from a workspace pool is yours**: personal
+by default (`owner_type` omitted or `"user"`), or the workspace's if you pass
+`owner_type: "workspace"` (a session any member can see and manage; a
+workspace token always gets this). Either way the machine
+was booted without your personal state — no GitHub credential helper, no
+saved inputs — and keeps that VM for its whole life (a stop and restore
+restarts the same machine), so put anything personal on it yourself with
+`bitrise_devenv_execute` / `rde session exec`. The pool refills after each
+claim. Read the pool (`bitrise_devenv_get_warm_pool`,
 `rde warm-pool view`) for `status.ready` / `status.warming` before a burst of
 creates, and scale it with `pool_size` (`rde warm-pool set-size <id> N`;
 0 drains it and keeps it as a preset).

@@ -13,7 +13,7 @@ import (
 //
 // A warm pool is a stored session configuration — template, session input
 // values, feature flags, optional stack / machine type / cluster and device
-// overrides — plus an owner and a pool size. The backend keeps
+// overrides — plus a pool size, owned by the workspace. The backend keeps
 // PoolSize sessions of that configuration booted and idle ("warm
 // sessions"); `session create --warm-pool` hands one out instantly, or
 // creates one from the configuration when none is available.
@@ -23,9 +23,8 @@ type WarmPool struct {
 	WorkspaceID  string `json:"workspace_id,omitempty"`
 	TemplateID   string `json:"template_id,omitempty"`
 	TemplateName string `json:"template_name,omitempty"`
-	// OwnerType is SessionOwnerUser (private to its creator) or
-	// SessionOwnerWorkspace (shared with every member); OwnerID is the
-	// user ID or the workspace slug accordingly.
+	// OwnerType is SessionOwnerWorkspace: every pool belongs to the
+	// workspace; OwnerID is the workspace slug.
 	OwnerType      string `json:"owner_type,omitempty"`
 	OwnerID        string `json:"owner_id,omitempty"`
 	CreatedByEmail string `json:"created_by_email,omitempty"`
@@ -103,20 +102,15 @@ const (
 	WarmStateCold    = "cold"
 )
 
-// CreateWarmPoolRequest is the CLI-side request shape. Apart from Name,
-// OwnerType and PoolSize these are the CreateSessionRequest fields
-// that shape the VM — a pool stores what a session request could send.
+// CreateWarmPoolRequest is the CLI-side request shape. Apart from Name and
+// PoolSize these are the CreateSessionRequest fields that shape the VM — a
+// pool stores what a session request could send.
 type CreateWarmPoolRequest struct {
 	Name       string
 	TemplateID string
-	// OwnerType is SessionOwnerUser (the backend default for a personal
-	// token) or SessionOwnerWorkspace (shared; the only option for a
-	// Workspace API Token). Empty leaves the backend default.
-	OwnerType string
 	// PoolSize may be 0: an inert pool that still serves as a preset.
 	PoolSize                int
 	SessionInputs           []SessionInputValue
-	MapSavedToSessionInputs bool
 	EnabledFeatureFlagNames []string
 	StackID                 string
 	MachineType             string
@@ -228,10 +222,8 @@ func (s *Service) CreateWarmPool(ctx context.Context, workspaceID string, req Cr
 	w, err := s.client.CreateWarmPool(ctx, workspaceID, rdeapi.CreateWarmPoolRequest{
 		Name:                    req.Name,
 		TemplateID:              req.TemplateID,
-		OwnerType:               req.OwnerType,
 		PoolSize:                req.PoolSize,
 		SessionInputs:           sessionInputsToAPI(req.SessionInputs),
-		MapSavedToSessionInputs: req.MapSavedToSessionInputs,
 		EnabledFeatureFlagNames: req.EnabledFeatureFlagNames,
 		StackID:                 req.StackID,
 		MachineType:             req.MachineType,
