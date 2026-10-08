@@ -16,7 +16,7 @@ func TestGetWarmPool_MappingMasksSecretsAndParsesStatus(t *testing.T) {
 		"sessionInputs":[
 			{"key":"GITHUB_TOKEN","value":"leaked","isSecret":true},
 			{"key":"REPO","value":"app"},
-			{"key":"SSH_KEY","savedInputId":"si-1"}
+			{"key":"SSH_KEY","value":"ssh-ed25519 AAAA"}
 		],
 		"enabledFeatureFlagNames":["beta"],
 		"machineType":"g2.mac",
@@ -47,8 +47,8 @@ func TestGetWarmPool_MappingMasksSecretsAndParsesStatus(t *testing.T) {
 	if got := p.SessionInputs[1]; got.Value != "app" || got.IsSecret {
 		t.Errorf("plain input wrong: %+v", got)
 	}
-	if got := p.SessionInputs[2]; got.SavedInputID != "si-1" {
-		t.Errorf("saved input wrong: %+v", got)
+	if got := p.SessionInputs[2]; got.Value != "ssh-ed25519 AAAA" {
+		t.Errorf("third input wrong: %+v", got)
 	}
 	if p.DeviceSpec == nil || p.DeviceSpec.DeviceModel != "iPhone 16" {
 		t.Errorf("device spec = %+v", p.DeviceSpec)
@@ -76,7 +76,7 @@ func TestGetWarmPool_MappingMasksSecretsAndParsesStatus(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
 	}
-	for _, want := range []string{`"pool_size":2`, `"template_name":"iOS Dev"`, `"owner_type":"workspace"`, `"claimed_total":12`, `"cold_total":3`, `"session_id":"s-1"`, `"saved_input_id":"si-1"`, `"paused_until"`} {
+	for _, want := range []string{`"pool_size":2`, `"template_name":"iOS Dev"`, `"owner_type":"workspace"`, `"claimed_total":12`, `"cold_total":3`, `"session_id":"s-1"`, `"value":"ssh-ed25519 AAAA"`, `"paused_until"`} {
 		if !strings.Contains(string(out), want) {
 			t.Errorf("JSON missing %s:\n%s", want, out)
 		}
@@ -127,9 +127,8 @@ func TestCreateWarmPool_MapsRequestAndValidates(t *testing.T) {
 	p, err := svc.CreateWarmPool(context.Background(), "ws-1", CreateWarmPoolRequest{
 		Name:                    "ios-devs",
 		TemplateID:              "t1",
-		OwnerType:               SessionOwnerWorkspace,
 		PoolSize:                2,
-		SessionInputs:           []SessionInputValue{{Key: "GITHUB_TOKEN", Value: "ghp_x", IsSecret: true}, {Key: "SSH", SavedInputID: "si-1"}},
+		SessionInputs:           []SessionInputValue{{Key: "GITHUB_TOKEN", Value: "ghp_x", IsSecret: true}, {Key: "SSH", Value: "ssh-ed25519 AAAA"}},
 		EnabledFeatureFlagNames: []string{"beta"},
 		StackID:                 "osx-27-edge",
 		Cluster:                 "c1",
@@ -144,15 +143,15 @@ func TestCreateWarmPool_MapsRequestAndValidates(t *testing.T) {
 	if err := json.Unmarshal(rs.lastBody, &sent); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
-	if sent["templateId"] != "t1" || sent["ownerType"] != "workspace" || sent["poolSize"] != float64(2) || sent["stackId"] != "osx-27-edge" || sent["cluster"] != "c1" {
+	if sent["templateId"] != "t1" || sent["poolSize"] != float64(2) || sent["stackId"] != "osx-27-edge" || sent["cluster"] != "c1" {
 		t.Errorf("body = %s", rs.lastBody)
 	}
 	inputs, _ := sent["sessionInputs"].([]any)
 	if len(inputs) != 2 {
 		t.Fatalf("sessionInputs = %v", sent["sessionInputs"])
 	}
-	if in, _ := inputs[1].(map[string]any); in["savedInputId"] != "si-1" {
-		t.Errorf("saved input not forwarded: %v", inputs[1])
+	if in, _ := inputs[1].(map[string]any); in["value"] != "ssh-ed25519 AAAA" {
+		t.Errorf("second input not forwarded: %v", inputs[1])
 	}
 	if p.ID != "p-new" {
 		t.Errorf("pool = %+v", p)

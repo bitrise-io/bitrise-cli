@@ -126,8 +126,8 @@ pool fixes the configuration, so --template, --stack, --machine-type, the
 input flags, --feature-flag, --cluster, --ai-prompt, --map-saved-inputs and
 the device flags are rejected with it — change the pool instead. NAME,
 --description, --label, --auto-terminate-minutes and (on a device pool) the
-artifact flags apply to the claimed session; --owner may be omitted or the
-pool's owner.
+artifact flags apply to the claimed session, which is yours by default;
+--owner workspace keeps it the workspace's.
 
 Example values:
   --input key=value

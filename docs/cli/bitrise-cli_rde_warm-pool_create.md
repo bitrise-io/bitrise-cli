@@ -19,18 +19,15 @@ is created as an inert configuration preset and costs nothing until you
 raise the size with 'rde warm-pool set-size'. Every warm session costs
 machine time while idle.
 
-By default the pool is yours (--owner user): private, and it may reference
-your saved inputs (--saved-input, --map-saved-inputs). Pass --owner
-workspace to create a pool shared with every member of the workspace — the
-only kind a Workspace API Token can create or claim from, and the only kind
-that can back a preview link. A workspace pool carries no personal state:
-give every template session input as a value (--input / --secret-input).
+The pool belongs to the workspace: every member sees, claims from and
+manages it, a Workspace API Token can create and claim from it, and it can
+back a preview link. A pool carries no personal state: give every template
+session input as a value (--input / --secret-input); saved inputs are
+personal and cannot be referenced from a pool.
 
-Provide session input values via --input (one --input per key),
---secret-input (stored as secret-at-rest), or --saved-input (a saved input
-by ID; user pools only). A value passed inline with --secret-input ends up in
-your shell history and process arguments; for a user pool, prefer storing it
-once with 'rde saved-input create --value-stdin --secret' and referencing it.
+Provide session input values via --input (one --input per key) or
+--secret-input (stored as secret-at-rest). A value passed inline with
+--secret-input ends up in your shell history and process arguments.
 
 --stack, --machine-type and --cluster override the template's defaults for
 the warm sessions; omit them to use the template's.
@@ -50,10 +47,8 @@ bitrise-cli rde warm-pool create NAME [flags]
 
 ```
   bitrise-cli rde warm-pool create ios-devs --template TEMPLATE_ID --size 2
-  # Shared with the workspace; inputs as plain values (no saved inputs).
-  bitrise-cli rde warm-pool create ci-devices --template TEMPLATE_ID --owner workspace --size 3 --secret-input GITHUB_TOKEN=ghp_xxx
-  # A private pool that reuses a saved input and a feature flag.
-  bitrise-cli rde warm-pool create mine --template TEMPLATE_ID --saved-input gh-token=SAVED_INPUT_ID --feature-flag enable_beta_simulator
+  # Inputs as plain values; a feature flag enabled on every warm session.
+  bitrise-cli rde warm-pool create ci-devices --template TEMPLATE_ID --size 3 --secret-input GITHUB_TOKEN=ghp_xxx --feature-flag enable_beta_simulator
   # A configuration preset: nothing booted until 'set-size' raises the count.
   bitrise-cli rde warm-pool create preset --template TEMPLATE_ID --machine-type g2.mac.m2pro.6c-14g
   # The template's simulator, but an iPhone 15 on iOS 17.5; or no device at all.
@@ -73,11 +68,8 @@ bitrise-cli rde warm-pool create NAME [flags]
   -h, --help                         help for create
       --input stringArray            session input as key=value (repeatable)
       --machine-type string          machine type name to override the template's (see 'rde machine-type list --stack STACK_ID')
-      --map-saved-inputs             auto-fill template session inputs from your saved inputs, matched by key (user pools only; stored as saved-input references)
       --no-device                    boot the warm sessions without the template's device (ignored when the template declares none)
-      --owner string                 who owns the pool: user (default; private to you) or workspace (shared with every member; inputs as plain values only). A Workspace API Token always creates workspace pools
-      --saved-input stringArray      session input as key=savedInputID — uses one of your stored saved-input values (repeatable; user pools only)
-      --secret-input stringArray     session input as key=value, stored as a secret at rest (repeatable; the value is visible in shell history and process args — prefer --saved-input on a user pool)
+      --secret-input stringArray     session input as key=value, stored as a secret at rest (repeatable; the value is visible in shell history and process args)
       --size int                     how many warm sessions to keep booted; 0 (the default) creates an inert configuration preset
       --stack string                 stack ID to override the template's (see 'rde stack list')
       --template string              template ID or name the warm sessions are created from (required)

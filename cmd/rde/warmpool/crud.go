@@ -23,8 +23,7 @@ type inputFlags struct {
 
 func (f *inputFlags) bind(c *cobra.Command) {
 	c.Flags().StringArrayVar(&f.plain, "input", nil, "session input as key=value (repeatable)")
-	c.Flags().StringArrayVar(&f.secret, "secret-input", nil, "session input as key=value, stored as a secret at rest (repeatable; the value is visible in shell history and process args — prefer --saved-input on a user pool)")
-	c.Flags().StringArrayVar(&f.saved, "saved-input", nil, "session input as key=savedInputID — uses one of your stored saved-input values (repeatable; user pools only)")
+	c.Flags().StringArrayVar(&f.secret, "secret-input", nil, "session input as key=value, stored as a secret at rest (repeatable; the value is visible in shell history and process args)")
 }
 
 // set reports whether any input flag was given.
@@ -40,9 +39,7 @@ func newCreateCmd() *cobra.Command {
 	var (
 		template          string
 		count             int
-		owner             string
 		inputs            inputFlags
-		mapSavedInputs    bool
 		featureFlags      []string
 		stack             string
 		machineType       string
@@ -71,18 +68,15 @@ is created as an inert configuration preset and costs nothing until you
 raise the size with 'rde warm-pool set-size'. Every warm session costs
 machine time while idle.
 
-By default the pool is yours (--owner user): private, and it may reference
-your saved inputs (--saved-input, --map-saved-inputs). Pass --owner
-workspace to create a pool shared with every member of the workspace — the
-only kind a Workspace API Token can create or claim from, and the only kind
-that can back a preview link. A workspace pool carries no personal state:
-give every template session input as a value (--input / --secret-input).
+The pool belongs to the workspace: every member sees, claims from and
+manages it, a Workspace API Token can create and claim from it, and it can
+back a preview link. A pool carries no personal state: give every template
+session input as a value (--input / --secret-input); saved inputs are
+personal and cannot be referenced from a pool.
 
-Provide session input values via --input (one --input per key),
---secret-input (stored as secret-at-rest), or --saved-input (a saved input
-by ID; user pools only). A value passed inline with --secret-input ends up in
-your shell history and process arguments; for a user pool, prefer storing it
-once with 'rde saved-input create --value-stdin --secret' and referencing it.
+Provide session input values via --input (one --input per key) or
+--secret-input (stored as secret-at-rest). A value passed inline with
+--secret-input ends up in your shell history and process arguments.
 
 --stack, --machine-type and --cluster override the template's defaults for
 the warm sessions; omit them to use the template's.
@@ -94,10 +88,8 @@ that device per field; with --device-platform the flags are the complete
 device to boot; --no-device boots none. A claimed session's app artifact is
 still given at claim time.`,
 		Example: `  bitrise-cli rde warm-pool create ios-devs --template TEMPLATE_ID --size 2
-  # Shared with the workspace; inputs as plain values (no saved inputs).
-  bitrise-cli rde warm-pool create ci-devices --template TEMPLATE_ID --owner workspace --size 3 --secret-input GITHUB_TOKEN=ghp_xxx
-  # A private pool that reuses a saved input and a feature flag.
-  bitrise-cli rde warm-pool create mine --template TEMPLATE_ID --saved-input gh-token=SAVED_INPUT_ID --feature-flag enable_beta_simulator
+  # Inputs as plain values; a feature flag enabled on every warm session.
+  bitrise-cli rde warm-pool create ci-devices --template TEMPLATE_ID --size 3 --secret-input GITHUB_TOKEN=ghp_xxx --feature-flag enable_beta_simulator
   # A configuration preset: nothing booted until 'set-size' raises the count.
   bitrise-cli rde warm-pool create preset --template TEMPLATE_ID --machine-type g2.mac.m2pro.6c-14g
   # The template's simulator, but an iPhone 15 on iOS 17.5; or no device at all.
@@ -114,16 +106,6 @@ still given at claim time.`,
 			}
 			if count < 0 {
 				return fmt.Errorf("--size must not be negative")
-			}
-			switch owner {
-			case "", internalrde.SessionOwnerUser, internalrde.SessionOwnerWorkspace:
-			default:
-				return fmt.Errorf("--owner must be %s or %s", internalrde.SessionOwnerUser, internalrde.SessionOwnerWorkspace)
-			}
-			// Fail fast on what the backend is certain to reject: saved
-			// inputs are personal and have no place on a shared pool.
-			if owner == internalrde.SessionOwnerWorkspace && (len(inputs.saved) > 0 || mapSavedInputs) {
-				return fmt.Errorf("--owner workspace: saved inputs are personal and cannot be used on a workspace pool — pass the values with --input or --secret-input instead of --saved-input / --map-saved-inputs")
 			}
 			sessionInputs, err := inputs.parse()
 			if err != nil {
@@ -150,10 +132,8 @@ still given at claim time.`,
 			p, err := svc.CreateWarmPool(cmd.Context(), workspaceID, internalrde.CreateWarmPoolRequest{
 				Name:                    name,
 				TemplateID:              templateID,
-				OwnerType:               owner,
 				PoolSize:                count,
 				SessionInputs:           sessionInputs,
-				MapSavedToSessionInputs: mapSavedInputs,
 				EnabledFeatureFlagNames: featureFlags,
 				StackID:                 stack,
 				MachineType:             machineType,
@@ -169,12 +149,7 @@ still given at claim time.`,
 	}
 	c.Flags().StringVar(&template, "template", "", "template ID or name the warm sessions are created from (required)")
 	c.Flags().IntVar(&count, "size", 0, "how many warm sessions to keep booted; 0 (the default) creates an inert configuration preset")
-	c.Flags().StringVar(&owner, "owner", "", "who owns the pool: user (default; private to you) or workspace (shared with every member; inputs as plain values only). A Workspace API Token always creates workspace pools")
-	_ = c.RegisterFlagCompletionFunc("owner", func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
-		return []string{internalrde.SessionOwnerUser, internalrde.SessionOwnerWorkspace}, cobra.ShellCompDirectiveNoFileComp
-	})
 	inputs.bind(c)
-	c.Flags().BoolVar(&mapSavedInputs, "map-saved-inputs", false, "auto-fill template session inputs from your saved inputs, matched by key (user pools only; stored as saved-input references)")
 	c.Flags().StringArrayVar(&featureFlags, "feature-flag", nil, "name of a template feature flag to enable on the warm sessions (repeatable)")
 	c.Flags().StringVar(&stack, "stack", "", "stack ID to override the template's (see 'rde stack list')")
 	c.Flags().StringVar(&machineType, "machine-type", "", "machine type name to override the template's (see 'rde machine-type list --stack STACK_ID')")
@@ -247,7 +222,7 @@ func newUpdateCmd() *cobra.Command {
 left as it is.
 
 Session inputs and feature flags are replaced as a whole: passing any
---input / --secret-input / --saved-input flag replaces the pool's entire
+--input / --secret-input flag replaces the pool's entire
 input list with the ones given, and any --feature-flag replaces the enabled
 flags. Use --clear-inputs / --clear-feature-flags to empty a list.
 --stack, --machine-type and --cluster set an override; pass an empty value
@@ -274,7 +249,7 @@ count alone, 'rde warm-pool set-size' is the shorter spelling.`,
 		Args: cmdutil.RequireArgs("WARM_POOL_ID"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if inputs.set() && clearInputs {
-				return fmt.Errorf("--clear-inputs cannot be combined with --input, --secret-input or --saved-input")
+				return fmt.Errorf("--clear-inputs cannot be combined with --input or --secret-input")
 			}
 			if len(featureFlags) > 0 && clearFeatureFlags {
 				return fmt.Errorf("--clear-feature-flags cannot be combined with --feature-flag")
@@ -348,7 +323,7 @@ count alone, 'rde warm-pool set-size' is the shorter spelling.`,
 				changed = true
 			}
 			if !changed {
-				return fmt.Errorf("nothing to update: pass at least one of --name, --size, --input, --secret-input, --saved-input, --clear-inputs, --feature-flag, --clear-feature-flags, --stack, --machine-type, --cluster, the --device-* flags, --clear-device or --no-device")
+				return fmt.Errorf("nothing to update: pass at least one of --name, --size, --input, --secret-input, --clear-inputs, --feature-flag, --clear-feature-flags, --stack, --machine-type, --cluster, the --device-* flags, --clear-device or --no-device")
 			}
 			workspaceID, err := cmdutil.ResolveWorkspaceID(cmd)
 			if err != nil {
@@ -400,8 +375,8 @@ the pool but keeps it usable as a configuration preset: 'rde session create
 --warm-pool' then creates sessions on demand from its configuration.
 
 This is the knob for scaling a pool to business hours: run it from a cron job
-in the morning and again with 0 in the evening. A Workspace API Token works
-for workspace pools, so the job does not need a personal token.`,
+in the morning and again with 0 in the evening. A Workspace API Token works,
+so the job does not need a personal token.`,
 		Example: `  bitrise-cli rde warm-pool set-size ios-devs 3
   # Cron: warm up at 08:00 on weekdays, drain at 19:00.
   0 8  * * 1-5  BITRISE_TOKEN=bitwat_… bitrise-cli rde warm-pool set-size WARM_POOL_ID 3 --workspace WORKSPACE_ID -q

@@ -25,13 +25,11 @@ func newListCmd() *cobra.Command {
 	c := &cobra.Command{
 		Use:   "list",
 		Short: "List warm pools in the workspace",
-		Long: `List the warm pools visible to you: the workspace's pools plus your own
-user pools — never another member's. Pass --template to see only the pools
+		Long: `List the workspace's warm pools. Pass --template to see only the pools
 of one template (by ID or name).
 
---all lists every pool in the workspace read-only, for cost visibility. It
-requires the workspace's billing-data permission (the same gate as 'rde
-usage').
+--all is the read-only cost view of the same pools, the one 'rde usage'
+shows; it requires the workspace's billing-data permission.
 
 READY and WARMING are the pool's current inventory; SIZE is the pool size —
 the count the backend keeps booted. STATUS is "ok", or the problem 'view' explains:
@@ -66,7 +64,7 @@ or "error" (the last machine creation failed).`,
 		},
 	}
 	c.Flags().StringVar(&template, "template", "", "only pools of this template (ID or name)")
-	c.Flags().BoolVar(&all, "all", false, "every pool in the workspace, including other members' user pools (read-only; requires the billing-data permission)")
+	c.Flags().BoolVar(&all, "all", false, "the read-only cost view (requires the billing-data permission)")
 	return c
 }
 
@@ -76,7 +74,7 @@ func renderList(w io.Writer, res listResult) error {
 		return err
 	}
 	s := style.New(w)
-	headers := []string{"NAME", "TEMPLATE", "OWNER", "SIZE", "READY", "WARMING", "STATUS", "ID"}
+	headers := []string{"NAME", "TEMPLATE", "CREATED BY", "SIZE", "READY", "WARMING", "STATUS", "ID"}
 	rows := make([][]string, 0, len(res.Items))
 	for _, p := range res.Items {
 		ready, warming := "", ""
@@ -85,7 +83,7 @@ func renderList(w io.Writer, res listResult) error {
 			warming = strconv.Itoa(p.Status.Warming)
 		}
 		rows = append(rows, []string{
-			p.Name, templateLabel(p), ownerLabel(p), strconv.Itoa(p.PoolSize),
+			p.Name, templateLabel(p), createdByLabel(p), strconv.Itoa(p.PoolSize),
 			ready, warming, statusLabel(p.Status), p.ID,
 		})
 	}
@@ -116,16 +114,13 @@ func templateLabel(p internalrde.WarmPool) string {
 	return p.TemplateID
 }
 
-// ownerLabel says who the pool belongs to: "workspace" for a shared pool,
-// the creator's email for a user pool (falling back to the owner kind).
-func ownerLabel(p internalrde.WarmPool) string {
-	if p.OwnerType == internalrde.SessionOwnerWorkspace {
-		return internalrde.SessionOwnerWorkspace
-	}
+// createdByLabel is the creator's email, or "workspace token" for a pool a
+// Workspace API Token created (no person stands behind it).
+func createdByLabel(p internalrde.WarmPool) string {
 	if p.CreatedByEmail != "" {
 		return p.CreatedByEmail
 	}
-	return p.OwnerType
+	return "workspace token"
 }
 
 // statusLabel condenses the status into one word for the table; 'view'

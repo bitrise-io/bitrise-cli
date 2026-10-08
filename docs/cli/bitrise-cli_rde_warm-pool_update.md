@@ -8,7 +8,7 @@ Update a warm pool. Only the flags you pass are sent; everything else is
 left as it is.
 
 Session inputs and feature flags are replaced as a whole: passing any
---input / --secret-input / --saved-input flag replaces the pool's entire
+--input / --secret-input flag replaces the pool's entire
 input list with the ones given, and any --feature-flag replaces the enabled
 flags. Use --clear-inputs / --clear-feature-flags to empty a list.
 --stack, --machine-type and --cluster set an override; pass an empty value
@@ -59,8 +59,7 @@ bitrise-cli rde warm-pool update WARM_POOL_ID [flags]
       --machine-type string          machine type override; "" removes the override
       --name string                  new name
       --no-device                    true: the warm sessions boot without the template's device; --no-device=false boots it again
-      --saved-input stringArray      session input as key=savedInputID — uses one of your stored saved-input values (repeatable; user pools only)
-      --secret-input stringArray     session input as key=value, stored as a secret at rest (repeatable; the value is visible in shell history and process args — prefer --saved-input on a user pool)
+      --secret-input stringArray     session input as key=value, stored as a secret at rest (repeatable; the value is visible in shell history and process args)
       --size int                     new pool size of warm sessions; 0 drains the pool but keeps it as a preset
       --stack string                 stack ID override; "" removes the override
 ```

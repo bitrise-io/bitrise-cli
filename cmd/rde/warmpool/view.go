@@ -65,14 +65,10 @@ func renderDetail(w io.Writer, p internalrde.WarmPool) error {
 	if p.TemplateID != "" {
 		ew.F("%s%s\n", lbl("Template ID:"), s.Slug.Render(p.TemplateID))
 	}
-	if p.OwnerType != "" {
-		owner := p.OwnerType
-		if p.OwnerType == internalrde.SessionOwnerWorkspace {
-			owner += s.Dim.Render(" — shared with every member")
-		} else if p.CreatedByEmail != "" {
-			owner += " (" + p.CreatedByEmail + ")"
-		}
-		ew.F("%s%s\n", lbl("Owner:"), owner)
+	if p.CreatedByEmail != "" {
+		ew.F("%s%s\n", lbl("Created by:"), p.CreatedByEmail)
+	} else {
+		ew.F("%s%s\n", lbl("Created by:"), s.Dim.Render("workspace API token"))
 	}
 	ew.F("%s%d\n", lbl("Pool size:"), p.PoolSize)
 	if st := p.Status; st != nil {

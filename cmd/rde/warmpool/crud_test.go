@@ -32,14 +32,14 @@ func TestCreateCmd_HappyPath(t *testing.T) {
 	defer srv.Close()
 
 	stdout, _, err := run(t, newCreateCmd(), srv.URL, "ws-1", []string{
-		"ios-devs", "--template", uuidTemplate, "--size", "2", "--owner", "workspace",
+		"ios-devs", "--template", uuidTemplate, "--size", "2",
 		"--input", "REPO=my-app", "--secret-input", "GITHUB_TOKEN=ghp_x",
 		"--feature-flag", "beta", "--machine-type", "g2.mac", "--cluster", "c1",
 	}, output.Human)
 	if err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
-	if gotBody["name"] != "ios-devs" || gotBody["templateId"] != uuidTemplate || gotBody["ownerType"] != "workspace" || gotBody["poolSize"] != float64(2) {
+	if gotBody["name"] != "ios-devs" || gotBody["templateId"] != uuidTemplate || gotBody["poolSize"] != float64(2) {
 		t.Errorf("unexpected create body: %v", gotBody)
 	}
 	if gotBody["machineType"] != "g2.mac" || gotBody["cluster"] != "c1" {
@@ -110,28 +110,6 @@ func TestCreateCmd_DefaultsAreMinimal(t *testing.T) {
 	}
 }
 
-// A user pool may reference saved inputs and ask for auto-mapping.
-func TestCreateCmd_SavedInputsOnUserPool(t *testing.T) {
-	var gotBody map[string]any
-	srv := mutationServer(t, http.MethodPost, "/v1/workspaces/ws-1/warm-pools", `{"warmPool":{"id":"p-new","name":"mine"}}`, &gotBody)
-	defer srv.Close()
-
-	if _, _, err := run(t, newCreateCmd(), srv.URL, "ws-1",
-		[]string{"mine", "--template", uuidTemplate, "--saved-input", "gh-token=si-1", "--map-saved-inputs"}, output.Human); err != nil {
-		t.Fatalf("Execute: %v", err)
-	}
-	inputs, _ := gotBody["sessionInputs"].([]any)
-	if len(inputs) != 1 {
-		t.Fatalf("sessionInputs = %v", gotBody["sessionInputs"])
-	}
-	if in, _ := inputs[0].(map[string]any); in["savedInputId"] != "si-1" {
-		t.Errorf("saved input wrong: %v", inputs[0])
-	}
-	if gotBody["mapSavedToSessionInputs"] != true {
-		t.Errorf("mapSavedToSessionInputs = %v, want true", gotBody["mapSavedToSessionInputs"])
-	}
-}
-
 // A template NAME resolves through ListTemplates; the create body carries
 // the ID.
 func TestCreateCmd_ResolvesTemplateName(t *testing.T) {
@@ -167,9 +145,6 @@ func TestCreateCmd_RejectsBadFlags(t *testing.T) {
 		{"no template", []string{"ios-devs"}, "--template is required"},
 		{"no name", nil, "NAME"},
 		{"negative count", []string{"ios-devs", "--template", uuidTemplate, "--size", "-1"}, "--size must not be negative"},
-		{"unknown owner", []string{"ios-devs", "--template", uuidTemplate, "--owner", "agent"}, "--owner must be"},
-		{"saved input on workspace pool", []string{"ios-devs", "--template", uuidTemplate, "--owner", "workspace", "--saved-input", "k=si-1"}, "saved inputs are personal"},
-		{"map saved on workspace pool", []string{"ios-devs", "--template", uuidTemplate, "--owner", "workspace", "--map-saved-inputs"}, "saved inputs are personal"},
 		{"malformed input", []string{"ios-devs", "--template", uuidTemplate, "--input", "novalue"}, "expected key=value"},
 	}
 	for _, tc := range cases {

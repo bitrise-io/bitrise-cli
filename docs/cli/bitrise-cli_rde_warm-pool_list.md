@@ -4,13 +4,11 @@ List warm pools in the workspace
 
 ### Synopsis
 
-List the warm pools visible to you: the workspace's pools plus your own
-user pools — never another member's. Pass --template to see only the pools
+List the workspace's warm pools. Pass --template to see only the pools
 of one template (by ID or name).
 
---all lists every pool in the workspace read-only, for cost visibility. It
-requires the workspace's billing-data permission (the same gate as 'rde
-usage').
+--all is the read-only cost view of the same pools, the one 'rde usage'
+shows; it requires the workspace's billing-data permission.
 
 READY and WARMING are the pool's current inventory; SIZE is the pool size —
 the count the backend keeps booted. STATUS is "ok", or the problem 'view' explains:
@@ -33,7 +31,7 @@ bitrise-cli rde warm-pool list [flags]
 ### Options
 
 ```
-      --all               every pool in the workspace, including other members' user pools (read-only; requires the billing-data permission)
+      --all               the read-only cost view (requires the billing-data permission)
   -h, --help              help for list
       --template string   only pools of this template (ID or name)
 ```
