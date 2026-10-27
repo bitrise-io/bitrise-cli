@@ -58,9 +58,11 @@ optional. on_create runs once when the session is created (on a warm pool:
 when the pool warms the machine). on_claim runs on every claim, when the
 session is assigned to its owner. on_restore runs every time a stopped
 session is restored — background processes do not survive a stop, so
-anything that must run again belongs here too. A hook left empty runs
-nothing: with no on_create the session (or a warm pool machine) is set up
-as soon as it boots, and a template with no hooks at all is valid. A hook is done when its script exits (0 = done, non-zero =
+anything that must run again belongs here too. A hook runs when it is in
+the hooks object, even with an empty script ("" finishes at once, exit 0);
+leave a hook out to not have it: with no on_create the session (or a warm
+pool machine) is set up as soon as it boots, and a template with no hooks
+at all is valid. A hook is done when its script exits (0 = done, non-zero =
 failed): start long-running work, like a dev server, in the background so
 the script can exit — without the values it must not keep ('env -u SECRET
 cmd &'). An On create that has not exited after 20 minutes is ended by RDE
