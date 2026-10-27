@@ -76,7 +76,10 @@ func renderDetail(w io.Writer, t internalrde.Template) error {
 	if h := t.Hooks; h != nil {
 		ew.Ln()
 		ew.Ln(s.Dim.Render("Lifecycle hooks"))
-		for _, hook := range []struct{ name, script string }{
+		for _, hook := range []struct {
+			name   string
+			script *string
+		}{
 			{"On create", h.OnCreate}, {"On claim", h.OnClaim}, {"On restore", h.OnRestore},
 		} {
 			ew.F("  %-12s%s\n", hook.name, hookScriptSummary(s, hook.script))
@@ -158,11 +161,14 @@ func lifecycleModeText(s style.Styles, t internalrde.Template) string {
 
 // hookScriptSummary says whether a hook is set and how big it is; the text
 // itself is in --output json.
-func hookScriptSummary(s style.Styles, script string) string {
-	if script == "" {
-		return s.Dim.Render("(not set)")
+func hookScriptSummary(s style.Styles, script *string) string {
+	if script == nil {
+		return s.Dim.Render("(not added)")
 	}
-	lines := strings.Count(strings.TrimRight(script, "\n"), "\n") + 1
+	if strings.TrimSpace(*script) == "" {
+		return "empty (runs and finishes at once)"
+	}
+	lines := strings.Count(strings.TrimRight(*script, "\n"), "\n") + 1
 	if lines == 1 {
 		return "1 line"
 	}

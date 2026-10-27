@@ -208,7 +208,7 @@ func TestViewCmd_ShowsLifecycleHooks(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
-	for _, want := range []string{"Lifecycle:", "hooks", "Lifecycle hooks", "On create", "2 lines", "On claim", "(not set)", "On restore", "1 line", "GH_TOKEN (required, on claim)"} {
+	for _, want := range []string{"Lifecycle:", "hooks", "Lifecycle hooks", "On create", "2 lines", "On claim", "(not added)", "On restore", "1 line", "GH_TOKEN (required, on claim)"} {
 		if !strings.Contains(stdout, want) {
 			t.Errorf("stdout missing %q:\n%s", want, stdout)
 		}

@@ -46,11 +46,13 @@ type Template struct {
 // TemplateHooks are a template's lifecycle hook scripts (bash). On create
 // runs once when the session is created (on a warm pool: when the pool warms
 // the machine); On claim runs on every claim; On restore runs every time a
-// stopped session is restored. Empty means "no such hook".
+// stopped session is restored. nil means the template does not have the
+// hook; an added hook runs even when its script is empty ("" finishes at
+// once, exit 0).
 type TemplateHooks struct {
-	OnCreate  string `json:"onCreate,omitempty"`
-	OnClaim   string `json:"onClaim,omitempty"`
-	OnRestore string `json:"onRestore,omitempty"`
+	OnCreate  *string `json:"onCreate,omitempty"`
+	OnClaim   *string `json:"onClaim,omitempty"`
+	OnRestore *string `json:"onRestore,omitempty"`
 }
 
 // TemplateVariable is a baked-in template variable.

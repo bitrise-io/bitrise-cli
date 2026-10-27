@@ -49,10 +49,13 @@ type Template struct {
 // background so the script can exit. RDE ends an On create that has not
 // exited within 20 minutes (exit code 124), and refuses every interactive
 // action on the session while On create is pending or running.
+//
+// A hook that is left out (nil) is not added and never runs; an added hook
+// runs even when its script is empty ("" finishes at once, exit 0).
 type TemplateHooks struct {
-	OnCreate  string `json:"on_create,omitempty"`
-	OnClaim   string `json:"on_claim,omitempty"`
-	OnRestore string `json:"on_restore,omitempty"`
+	OnCreate  *string `json:"on_create,omitempty"`
+	OnClaim   *string `json:"on_claim,omitempty"`
+	OnRestore *string `json:"on_restore,omitempty"`
 }
 
 // Scopes of a template's values. Every variable and session input belongs

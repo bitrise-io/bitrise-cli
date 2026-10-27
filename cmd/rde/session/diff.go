@@ -138,15 +138,18 @@ func lifecycleLabel(c internalrde.TemplateConfig) string {
 		return "legacy scripts"
 	}
 	var set []string
-	for _, h := range []struct{ name, script string }{
+	for _, h := range []struct {
+		name   string
+		script *string
+	}{
 		{"On create", c.Hooks.OnCreate}, {"On claim", c.Hooks.OnClaim}, {"On restore", c.Hooks.OnRestore},
 	} {
-		if h.script != "" {
+		if h.script != nil {
 			set = append(set, h.name)
 		}
 	}
 	if len(set) == 0 {
-		return "hooks (none set)"
+		return "hooks (none added)"
 	}
 	return "hooks (" + strings.Join(set, ", ") + ")"
 }
