@@ -43,8 +43,21 @@ type WarmPool struct {
 	DeviceSpec *DeviceSpec     `json:"deviceSpec,omitempty"`
 	NoDevice   bool            `json:"noDevice,omitempty"`
 	Status     *WarmPoolStatus `json:"status,omitempty"`
-	CreatedAt  string          `json:"createdAt,omitempty"`
-	UpdatedAt  string          `json:"updatedAt,omitempty"`
+	// SetupFailed is present only while the pool is paused after three
+	// consecutive On create failures (lifecycle hooks): the kept failed
+	// machine and why. Claims are refused meanwhile.
+	SetupFailed *WarmPoolSetupFailed `json:"setupFailed,omitempty"`
+	CreatedAt   string               `json:"createdAt,omitempty"`
+	UpdatedAt   string               `json:"updatedAt,omitempty"`
+}
+
+// WarmPoolSetupFailed describes a warm pool paused after repeated On create
+// failures: the session kept for inspection and its last failure.
+type WarmPoolSetupFailed struct {
+	SessionID string `json:"sessionId,omitempty"`
+	FailedAt  string `json:"failedAt,omitempty"`
+	ExitCode  int    `json:"exitCode,omitempty"`
+	Message   string `json:"message,omitempty"`
 }
 
 // WarmPoolStatus is the live state of a warm pool.
@@ -221,4 +234,23 @@ func (c *Client) DeleteWarmPool(ctx context.Context, workspaceID, warmPoolID str
 		return fmt.Errorf("warm pool ID is required")
 	}
 	return c.del(ctx, wsPath(workspaceID, "/warm-pools/"+url.PathEscape(warmPoolID)))
+}
+
+// RetryWarmPool resumes a pool paused after repeated On create failures:
+// the backend deletes the kept failed machine, clears the streak and warms
+// again. A pool that is not paused this way is returned unchanged.
+// Endpoint: POST /v1/workspaces/{workspaceId}/warm-pools/{warmPoolId}/retry.
+func (c *Client) RetryWarmPool(ctx context.Context, workspaceID, warmPoolID string) (WarmPool, error) {
+	if workspaceID == "" {
+		return WarmPool{}, fmt.Errorf("workspace ID is required")
+	}
+	if warmPoolID == "" {
+		return WarmPool{}, fmt.Errorf("warm pool ID is required")
+	}
+	var resp warmPoolResp
+	p := wsPath(workspaceID, "/warm-pools/"+url.PathEscape(warmPoolID)+"/retry")
+	if err := c.sendJSON(ctx, http.MethodPost, p, struct{}{}, &resp); err != nil {
+		return WarmPool{}, err
+	}
+	return resp.WarmPool, nil
 }

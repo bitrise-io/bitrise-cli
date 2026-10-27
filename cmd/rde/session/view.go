@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -118,6 +119,11 @@ func renderSessionDetail(w io.Writer, sess internalrde.Session) error {
 	if sess.Status != "" {
 		ew.F("%s%s\n", lbl("Status:"), statusStyle(s, sess.Status).Render(sess.Status))
 	}
+	// "running" says the machine is up; on a session with lifecycle hooks
+	// the phase says whether its setup is done.
+	if lc := sess.Lifecycle; lc != nil && lc.Phase != "" {
+		ew.F("%s%s\n", lbl("Setup:"), lifecyclePhaseText(s, lc.Phase))
+	}
 	if sess.AgentSessionStatus != "" {
 		ew.F("%s%s\n", lbl("Agent status:"), sess.AgentSessionStatus)
 	}
@@ -226,6 +232,13 @@ func renderSessionDetail(w io.Writer, sess internalrde.Session) error {
 			ew.F("%s %s\n", lbl("  "+k+":"), sess.Labels[k])
 		}
 	}
+	if lc := sess.Lifecycle; lc != nil && len(lc.Runs) > 0 {
+		ew.Ln()
+		ew.Ln(s.Dim.Render("Lifecycle hooks"))
+		for _, r := range lc.Runs {
+			ew.F("%s %s\n", lbl(fmt.Sprintf("  %s #%d:", hookLabel(r.Hook), r.Attempt)), hookRunText(s, r))
+		}
+	}
 	if snap := sess.TemplateSnapshot; snap != nil {
 		if snap.StackID != "" || snap.MachineType != "" {
 			ew.Ln()
@@ -248,7 +261,18 @@ func renderSessionDetail(w io.Writer, sess internalrde.Session) error {
 				if in.IsSecret {
 					val = s.Dim.Render("(hidden)")
 				}
-				ew.F("%s %s\n", lbl("  "+in.Key+":"), val)
+				if in.SuppliedByPool {
+					// A pool-time value: the API never returns it to the
+					// claimer, only the key.
+					val = s.Dim.Render("(set on the pool)")
+				}
+				key := in.Key
+				// On a session that runs lifecycle hooks a value belongs to
+				// a scope; a legacy session's values are all shared.
+				if snap.LifecycleMode == "hooks" {
+					key += " (" + strings.ToLower(internalrde.ScopeLabel(in.Hook)) + ")"
+				}
+				ew.F("%s %s\n", lbl("  "+key+":"), val)
 			}
 		}
 		if len(snap.FeatureFlags) > 0 {

@@ -22,6 +22,15 @@ saved inputs are personal and never reach a pool. A session claimed from a
 pool is yours; pass '--owner workspace' to 'rde session create' to keep it
 the workspace's instead.
 
+On a template with lifecycle hooks a pool's inputs are the Shared and On
+create ones (set once, for everyone who claims); each claimant supplies the
+On claim and On restore inputs on 'rde session create --warm-pool'. A
+value marked secret (--secret-input) is encrypted at rest and hidden in
+output. A warm session is ready to claim once
+On create finished. When On create fails three times in a row the pool
+pauses with the last machine kept for inspection ('view' shows "Setup
+failed:"); fix the script, then 'rde warm-pool retry'.
+
 Warm sessions cost machine time while idle. Set the pool size to what
 demand needs and scale it with 'rde warm-pool set-size POOL N' — the
 intended way to warm a pool for business hours is a cron job that sets the
@@ -68,6 +77,7 @@ bitrise-cli rde warm-pool [flags]
 * [bitrise-cli rde warm-pool create](bitrise-cli_rde_warm-pool_create.md)	 - Create a warm pool
 * [bitrise-cli rde warm-pool delete](bitrise-cli_rde_warm-pool_delete.md)	 - Delete a warm pool and terminate its warm sessions
 * [bitrise-cli rde warm-pool list](bitrise-cli_rde_warm-pool_list.md)	 - List warm pools in the workspace
+* [bitrise-cli rde warm-pool retry](bitrise-cli_rde_warm-pool_retry.md)	 - Resume a warm pool paused after repeated On create failures
 * [bitrise-cli rde warm-pool set-size](bitrise-cli_rde_warm-pool_set-size.md)	 - Set a pool's size: how many warm sessions it keeps booted
 * [bitrise-cli rde warm-pool update](bitrise-cli_rde_warm-pool_update.md)	 - Update a warm pool's name, count or configuration
 * [bitrise-cli rde warm-pool view](bitrise-cli_rde_warm-pool_view.md)	 - Show a warm pool's status, configuration and warm sessions

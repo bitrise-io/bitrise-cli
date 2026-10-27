@@ -28,6 +28,8 @@ To boot an iOS simulator or Android emulator with a session, read
 		newCreateCmd(),
 		newUpdateCmd(),
 		newRestoreCmd(),
+		newRebuildCmd(),
+		newRunHookCmd(),
 		newTerminateCmd(),
 		newDeleteCmd(),
 		newDeleteTerminatedCmd(),

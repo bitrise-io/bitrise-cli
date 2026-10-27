@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -54,6 +55,14 @@ const maxLogLine = 1 << 20
 // clean end of stream and returns nil. Pre-stream failures come back as
 // *APIError (e.g. 404 = "logs not available yet").
 func (c *Client) StreamSessionLogs(ctx context.Context, workspaceID, sessionID, stage string, idleTimeout time.Duration, fn func(LogChunk) error) error {
+	return c.StreamSessionLogsAttempt(ctx, workspaceID, sessionID, stage, 0, idleTimeout, fn)
+}
+
+// StreamSessionLogsAttempt is StreamSessionLogs narrowed to one attempt of a
+// hook stage (1-based; 0 = every attempt in order, the StreamSessionLogs
+// behaviour). The backend ignores attempt on the non-hook stages.
+// Endpoint: GET /v1/workspaces/{workspaceId}/sessions/{sessionId}/logs/{stage}?attempt=N.
+func (c *Client) StreamSessionLogsAttempt(ctx context.Context, workspaceID, sessionID, stage string, attempt int, idleTimeout time.Duration, fn func(LogChunk) error) error {
 	if workspaceID == "" {
 		return fmt.Errorf("workspace ID is required")
 	}
@@ -61,6 +70,9 @@ func (c *Client) StreamSessionLogs(ctx context.Context, workspaceID, sessionID, 
 		return fmt.Errorf("session ID is required")
 	}
 	p := wsPath(workspaceID, "/sessions/"+url.PathEscape(sessionID)+"/logs/"+url.PathEscape(stage))
+	if attempt > 0 {
+		p += "?attempt=" + strconv.Itoa(attempt)
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+p, nil)
 	if err != nil {
 		return fmt.Errorf("build request: %w", err)

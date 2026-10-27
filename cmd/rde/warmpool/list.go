@@ -84,7 +84,7 @@ func renderList(w io.Writer, res listResult) error {
 		}
 		rows = append(rows, []string{
 			p.Name, templateLabel(p), createdByLabel(p), strconv.Itoa(p.PoolSize),
-			ready, warming, statusLabel(p.Status), p.ID,
+			ready, warming, poolStatusLabel(p), p.ID,
 		})
 	}
 	const (
@@ -125,6 +125,15 @@ func createdByLabel(p internalrde.WarmPool) string {
 
 // statusLabel condenses the status into one word for the table; 'view'
 // prints the messages behind it.
+// poolStatusLabel is statusLabel with the pause-after-setup-failures state
+// on top: it outranks everything but a configuration error.
+func poolStatusLabel(p internalrde.WarmPool) string {
+	if p.SetupFailed != nil && (p.Status == nil || p.Status.ConfigError == "") {
+		return "setup failed"
+	}
+	return statusLabel(p.Status)
+}
+
 func statusLabel(st *internalrde.WarmPoolStatus) string {
 	switch {
 	case st == nil:

@@ -86,6 +86,14 @@ func renderDetail(w io.Writer, p internalrde.WarmPool) error {
 			ew.F("%s%s%s\n", lbl("Paused until:"), formatTime(st.PausedUntil), s.Dim.Render(" — backing off after repeated failures"))
 		}
 	}
+	if sf := p.SetupFailed; sf != nil {
+		msg := sf.Message
+		if msg == "" {
+			msg = fmt.Sprintf("On create exited with code %d", sf.ExitCode)
+		}
+		ew.F("%s%s\n", lbl("Setup failed:"), s.Failure.Render(msg))
+		ew.F("%s%s\n", lbl(""), s.Dim.Render(fmt.Sprintf("paused after three failed On create runs (%s); the last machine is kept as session %s — inspect its logs, fix the template, then 'rde warm-pool retry'", formatTime(sf.FailedAt), sf.SessionID)))
+	}
 	if p.StackID != "" {
 		ew.F("%s%s\n", lbl("Stack:"), p.StackID)
 	}
@@ -118,7 +126,11 @@ func renderDetail(w io.Writer, p internalrde.WarmPool) error {
 			case in.IsSecret:
 				val = s.Dim.Render("(hidden)")
 			}
-			ew.F("%s %s\n", lbl("  "+in.Key+":"), val)
+			key := in.Key
+			if in.Hook != "" {
+				key += " (" + in.Hook + ")"
+			}
+			ew.F("%s %s\n", lbl("  "+key+":"), val)
 		}
 	}
 	if len(p.EnabledFeatureFlagNames) > 0 {

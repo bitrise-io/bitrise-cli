@@ -125,3 +125,64 @@ func deviceStateStyle(s style.Styles, state string) lipgloss.Style {
 		return s.Dim
 	}
 }
+
+// lifecyclePhaseText renders a session's lifecycle phase (internal/rde
+// delivers it lowercased, prefix-stripped) with the one fact a caller wants
+// from it: whether the setup is still running, done, or broken. Unknown
+// phases (a value added after this code was written) render as-is.
+func lifecyclePhaseText(s style.Styles, phase string) string {
+	words := strings.ReplaceAll(phase, "_", " ")
+	switch phase {
+	case "ready":
+		return s.Success.Render(words) + s.Dim.Render(" — every lifecycle hook is done")
+	case "setting_up":
+		return s.BuildStatus("in-progress").Render(words) + s.Dim.Render(" — On create is running; exec, ssh, upload, download and the terminal open when it finishes")
+	case "personalizing":
+		return s.BuildStatus("in-progress").Render(words) + s.Dim.Render(" — the system setup / On claim is running")
+	case "restoring":
+		return s.BuildStatus("in-progress").Render(words) + s.Dim.Render(" — On restore is running")
+	case "setup_failed", "personalization_failed", "restore_failed":
+		return s.Failure.Render(words) + s.Dim.Render(" — the last hook failed; see the lifecycle hooks below and 'session logs'")
+	case "warming", "ready_to_claim":
+		return words + s.Dim.Render(" — warm pool inventory, not yet claimed")
+	}
+	return words
+}
+
+// hookLabel is the human name of a lifecycle hook ("on_create" → "On
+// create"); the platform's own "personalize" step is the system setup (its injected scripts).
+func hookLabel(hook string) string {
+	switch hook {
+	case "on_create":
+		return "On create"
+	case "on_claim":
+		return "On claim"
+	case "on_restore":
+		return "On restore"
+	case "personalize":
+		return "System setup"
+	}
+	return hook
+}
+
+// hookRunText renders one hook run's state with what matters about it: the
+// exit code of a failure, and whether that failure was RDE ending an On
+// create that did not exit within its limit. Unknown states render as-is.
+func hookRunText(s style.Styles, r internalrde.HookRun) string {
+	switch r.State {
+	case "succeeded":
+		return s.Success.Render(r.State)
+	case "failed":
+		if r.Hook == internalrde.HookOnCreate && r.ExitCode == internalrde.HookExitCodeOnCreateLimit {
+			return s.Failure.Render(fmt.Sprintf("failed (exit %d)", r.ExitCode)) + s.Dim.Render(" — On create did not finish within 20 minutes; long-running work must be started in the background so the script can exit")
+		}
+		return s.Failure.Render(fmt.Sprintf("failed (exit %d)", r.ExitCode))
+	case "interrupted":
+		return s.Failure.Render(r.State) + s.Dim.Render(" — the machine stopped mid-run")
+	case "skipped":
+		return s.Dim.Render("skipped — an earlier hook failed")
+	case "pending", "running":
+		return s.BuildStatus("in-progress").Render(r.State)
+	}
+	return r.State
+}

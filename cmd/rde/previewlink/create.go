@@ -92,7 +92,11 @@ pre-booted device sessions when one is available — the click-to-app time is
 the app download, not a VM boot — and creates a session from the pool's
 configuration otherwise. The pool fixes the device and the machine, so omit
 --device-platform and the other --device-* flags, --stack and --machine-type
-with it; the pool's configuration must boot a device. Deleting the pool
+with it; the pool's configuration must boot a device. On a template with
+lifecycle hooks the pool's On claim hook runs on every open with nobody there
+to answer for inputs, so minting is refused while the template has a required
+On claim or On restore input (optional ones use their defaults); a pool paused
+after setup failures refuses opens too. Deleting the pool
 invalidates the link (later opens fail as expired); a pool that still exists
 but no longer boots the link's device degrades opens to the ordinary cold
 path instead, with a notice shown to the viewer.

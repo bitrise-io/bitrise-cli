@@ -196,3 +196,204 @@ func TestDiffCmd_ShowsDeviceChange(t *testing.T) {
 		t.Errorf("unchanged stack must not be listed:\n%s", stdout)
 	}
 }
+
+func TestViewCmd_ShowsLifecycle(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/workspaces/ws-1/sessions/"+uuidSession {
+			t.Errorf("unexpected path: %s", r.URL.Path)
+		}
+		_, _ = io.WriteString(w, `{"session":{"id":"s-1","name":"dev","status":"SESSION_STATUS_RUNNING",
+			"lifecycle":{"mode":"hooks","phase":"LIFECYCLE_PHASE_SETUP_FAILED","hasOnRestoreHook":true,
+				"runs":[
+					{"id":"r-1","hook":"on_create","attempt":1,"state":"HOOK_RUN_STATE_FAILED","exitCode":2,"triggeredBy":"create","ranIn":"session","queuedAt":"2026-10-07T10:00:00Z","startedAt":"2026-10-07T10:00:05Z","finishedAt":"2026-10-07T10:01:00Z"},
+					{"id":"r-2","hook":"personalize","attempt":1,"state":"HOOK_RUN_STATE_SKIPPED","triggeredBy":"create","ranIn":"session","queuedAt":"2026-10-07T10:00:00Z"}
+				]},
+			"templateSnapshot":{"templateName":"tmpl","lifecycleMode":"hooks","hasOnCreateHook":true,"hasOnRestoreHook":true,
+				"sessionInputs":[{"key":"GH_TOKEN","isSecret":true,"hook":"on_claim"}]}}}`)
+	}))
+	defer srv.Close()
+
+	stdout, _, err := run(t, newViewCmd(), srv.URL, "ws-1", []string{uuidSession}, output.Human)
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	for _, want := range []string{"Setup:", "setup failed", "Lifecycle hooks", "On create #1:", "failed (exit 2)", "System setup #1:", "skipped"} {
+		if !strings.Contains(stdout, want) {
+			t.Errorf("stdout missing %q:\n%s", want, stdout)
+		}
+	}
+
+	stdout, _, err = run(t, newViewCmd(), srv.URL, "ws-1", []string{uuidSession}, output.JSON)
+	if err != nil {
+		t.Fatalf("Execute (json): %v", err)
+	}
+	var got map[string]any
+	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
+		t.Fatalf("unmarshal JSON output: %v\n%s", err, stdout)
+	}
+	lc, _ := got["lifecycle"].(map[string]any)
+	if lc["mode"] != "hooks" || lc["phase"] != "setup_failed" || lc["has_on_restore_hook"] != true {
+		t.Errorf("unexpected lifecycle in JSON: %v", got["lifecycle"])
+	}
+	runs, _ := lc["runs"].([]any)
+	if len(runs) != 2 {
+		t.Fatalf("runs = %v, want 2", lc["runs"])
+	}
+	first, _ := runs[0].(map[string]any)
+	if first["hook"] != "on_create" || first["state"] != "failed" || first["exit_code"] != float64(2) || first["started_at"] == nil {
+		t.Errorf("unexpected first run in JSON: %v", first)
+	}
+	// The ready signal is gone: a run has no ready_via / ready_at.
+	for _, gone := range []string{"ready_via", "ready_at"} {
+		if _, ok := first[gone]; ok {
+			t.Errorf("run must not carry %s: %v", gone, first)
+		}
+	}
+	snap, _ := got["template_snapshot"].(map[string]any)
+	if snap["lifecycle_mode"] != "hooks" || snap["has_on_create_hook"] != true || snap["has_on_restore_hook"] != true {
+		t.Errorf("unexpected snapshot lifecycle fields in JSON: %v", snap)
+	}
+	inputs, _ := snap["session_inputs"].([]any)
+	if in, _ := inputs[0].(map[string]any); in["hook"] != "on_claim" {
+		t.Errorf("session_inputs[0].hook = %v, want on_claim", in["hook"])
+	}
+}
+
+func TestViewCmd_LegacySessionHasNoLifecycle(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, `{"session":{"id":"s-1","name":"dev","status":"SESSION_STATUS_RUNNING"}}`)
+	}))
+	defer srv.Close()
+
+	stdout, _, err := run(t, newViewCmd(), srv.URL, "ws-1", []string{uuidSession}, output.Human)
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if strings.Contains(stdout, "Setup:") || strings.Contains(stdout, "Lifecycle hooks") {
+		t.Errorf("a legacy session must not render lifecycle lines:\n%s", stdout)
+	}
+	stdout, _, err = run(t, newViewCmd(), srv.URL, "ws-1", []string{uuidSession}, output.JSON)
+	if err != nil {
+		t.Fatalf("Execute (json): %v", err)
+	}
+	if strings.Contains(stdout, `"lifecycle"`) {
+		t.Errorf("--output json must omit lifecycle on a legacy session:\n%s", stdout)
+	}
+}
+
+func TestDiffCmd_ShowsLifecycleHooksChange(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, `{
+			"snapshot":{"stackId":"linux","machineType":"standard","lifecycleMode":"hooks","hooks":{"onCreate":"echo create"}},
+			"current":{"stackId":"linux","machineType":"standard","lifecycleMode":"hooks","hooks":{"onCreate":"echo create","onClaim":"echo claim"}}
+		}`)
+	}))
+	defer srv.Close()
+
+	stdout, _, err := run(t, newDiffCmd(), srv.URL, "ws-1", []string{uuidSession}, output.Human)
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if !strings.Contains(stdout, "Lifecycle:") || !strings.Contains(stdout, "hooks (On create) → hooks (On create, On claim)") {
+		t.Errorf("stdout missing the lifecycle change:\n%s", stdout)
+	}
+}
+
+// A legacy template's session carries platform-mapped hooks on the snapshot
+// side; that is not a template edit and must not read as a difference.
+func TestDiffCmd_MappedLegacySnapshotIsNoDifference(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, `{
+			"snapshot":{"stackId":"linux","machineType":"standard","startupScript":"npm run dev","lifecycleMode":"hooks","hooks":{"onCreate":"# Converted","onRestore":"npm run dev"}},
+			"current":{"stackId":"linux","machineType":"standard","startupScript":"npm run dev","lifecycleMode":"legacy"}
+		}`)
+	}))
+	defer srv.Close()
+
+	stdout, _, err := run(t, newDiffCmd(), srv.URL, "ws-1", []string{uuidSession}, output.Human)
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if !strings.Contains(stdout, "No differences.") {
+		t.Errorf("stdout should report no differences:\n%s", stdout)
+	}
+}
+
+// An On create that RDE ended at its limit (exit 124) is explained on the
+// run line: the script has to exit, long-running work goes to the background.
+func TestViewCmd_OnCreateLimitExplained(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, `{"session":{"id":"s-1","name":"dev","status":"SESSION_STATUS_RUNNING",
+			"lifecycle":{"mode":"hooks","phase":"LIFECYCLE_PHASE_SETUP_FAILED",
+				"runs":[{"id":"r-1","hook":"on_create","attempt":1,"state":"HOOK_RUN_STATE_FAILED","exitCode":124,"triggeredBy":"create","ranIn":"session"}]}}}`)
+	}))
+	defer srv.Close()
+
+	stdout, _, err := run(t, newViewCmd(), srv.URL, "ws-1", []string{uuidSession}, output.Human)
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	for _, want := range []string{"failed (exit 124)", "did not finish within 20 minutes", "background"} {
+		if !strings.Contains(stdout, want) {
+			t.Errorf("stdout missing %q:\n%s", want, stdout)
+		}
+	}
+}
+
+// run-hook refuses On create client-side, in the backend's words, without
+// a request; the other hooks are queued.
+func TestRunHookCmd_OnCreateRefused(t *testing.T) {
+	calls := 0
+	var gotBody map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		if r.Method != http.MethodPost || r.URL.Path != "/v1/workspaces/ws-1/sessions/"+uuidSession+"/hook-runs" {
+			t.Errorf("unexpected: %s %s", r.Method, r.URL.Path)
+		}
+		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		_, _ = io.WriteString(w, `{"run":{"id":"r-2","hook":"on_restore","attempt":2,"state":"HOOK_RUN_STATE_PENDING","triggeredBy":"run_again"}}`)
+	}))
+	defer srv.Close()
+
+	_, _, err := run(t, newRunHookCmd(), srv.URL, "ws-1", []string{uuidSession, "--hook", "on_create"}, output.Human)
+	if err == nil {
+		t.Fatal("expected an error for --hook on_create")
+	}
+	if want := "On create cannot be run again on this machine. Use Rebuild to run it on a fresh one."; !strings.Contains(err.Error(), want) || !strings.Contains(err.Error(), "session rebuild") {
+		t.Errorf("error = %q, want the backend's words and the rebuild command", err)
+	}
+	if calls != 0 {
+		t.Errorf("backend was called %d times for a refused hook", calls)
+	}
+
+	stdout, _, err := run(t, newRunHookCmd(), srv.URL, "ws-1", []string{uuidSession, "--hook", "on_restore"}, output.Human)
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if gotBody["hook"] != "on_restore" {
+		t.Errorf("body = %v, want hook on_restore", gotBody)
+	}
+	if !strings.Contains(stdout, "On restore #2 queued") {
+		t.Errorf("stdout missing the queued run:\n%s", stdout)
+	}
+}
+
+// exec dials the machine itself, so the backend's access gate during On
+// create is applied client-side, with the backend's message.
+func TestExecCmd_RefusedWhileOnCreateRuns(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, `{"session":{"id":"s-1","name":"dev","status":"SESSION_STATUS_RUNNING",
+			"sshAddress":"ssh vagrant@example.invalid -p 22","sshPassword":"pw","sshConnectionOpen":true,
+			"lifecycle":{"mode":"hooks","phase":"LIFECYCLE_PHASE_SETTING_UP",
+				"runs":[{"id":"r-1","hook":"on_create","attempt":1,"state":"HOOK_RUN_STATE_RUNNING","triggeredBy":"create","ranIn":"session"}]}}}`)
+	}))
+	defer srv.Close()
+
+	_, _, err := run(t, newExecCmd(), srv.URL, "ws-1", []string{uuidSession, "--", "true"}, output.Human)
+	if err == nil {
+		t.Fatal("expected exec to be refused while On create runs")
+	}
+	if want := "Session is setting up: On create is still running. Access opens when it finishes."; !strings.Contains(err.Error(), want) {
+		t.Errorf("error = %q, want %q", err, want)
+	}
+}

@@ -127,6 +127,10 @@ func resumeSession(ctx context.Context, cmd *cobra.Command, svc *internalrde.Ser
 			cmdutil.SilenceRootErrors(cmd)
 			return fmt.Errorf("session ended provisioning with status %q (expected running)", ready.Status)
 		}
+		if err := internalrde.LifecycleFailure(ready); err != nil {
+			cmdutil.SilenceRootErrors(cmd)
+			return err
+		}
 	default:
 		cmdutil.SilenceRootErrors(cmd)
 		return fmt.Errorf("session %s is %q and can't be resumed right now; try again shortly", rec.RDESessionID, sess.Status)

@@ -292,3 +292,31 @@ func TestWarmPoolID_OnSessionAndPreviewLinkRequests(t *testing.T) {
 		t.Errorf("warmPoolId should be omitted when unset, body = %s", rs.lastBody)
 	}
 }
+
+func TestRetryWarmPool_Path(t *testing.T) {
+	rs := newRecordingServer(t, `{"warmPool":{"id":"p1","name":"ios lab","poolSize":2}}`)
+	pool, err := rs.client().RetryWarmPool(context.Background(), "ws-1", "p1")
+	if err != nil {
+		t.Fatalf("RetryWarmPool: %v", err)
+	}
+	if rs.lastMethod != http.MethodPost {
+		t.Errorf("method = %s, want POST", rs.lastMethod)
+	}
+	if want := "/v1/workspaces/ws-1/warm-pools/p1/retry"; rs.lastPath != want {
+		t.Errorf("path = %s, want %s", rs.lastPath, want)
+	}
+	if pool.ID != "p1" {
+		t.Errorf("pool id = %q, want p1", pool.ID)
+	}
+}
+
+func TestWarmPool_SetupFailedDecodes(t *testing.T) {
+	rs := newRecordingServer(t, `{"warmPool":{"id":"p1","name":"ios lab","setupFailed":{"sessionId":"s-9","failedAt":"2026-10-08T12:00:00Z","exitCode":2,"message":"On create exited with code 2"}}}`)
+	pool, err := rs.client().GetWarmPool(context.Background(), "ws-1", "p1")
+	if err != nil {
+		t.Fatalf("GetWarmPool: %v", err)
+	}
+	if pool.SetupFailed == nil || pool.SetupFailed.SessionID != "s-9" || pool.SetupFailed.ExitCode != 2 {
+		t.Errorf("setupFailed = %+v, want session s-9 / exit 2", pool.SetupFailed)
+	}
+}

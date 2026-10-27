@@ -758,6 +758,13 @@ func sshTargetForSession(sess Session) (sshTarget, error) {
 			sess.Status,
 		)
 	}
+	// The backend refuses every interactive action while On create is
+	// pending or running; exec / ssh dial the machine directly, so the same
+	// gate applies here, in the backend's words. `create --wait` /
+	// `rebuild --wait` return only once the lifecycle phase is ready.
+	if OnCreateInFlight(sess.Lifecycle) {
+		return sshTarget{}, fmt.Errorf("%s", ErrSessionSettingUp)
+	}
 	if !sess.SSHConnectionOpen || sess.SSHAddress == "" || sess.SSHPassword == "" {
 		return sshTarget{}, fmt.Errorf(
 			"session SSH is not ready yet (credentials not populated); the session may still be provisioning — wait a few seconds and retry",

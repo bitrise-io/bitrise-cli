@@ -185,3 +185,80 @@ func TestUpdateTemplate_DeviceSpecFlag(t *testing.T) {
 		t.Errorf("body = %s", rs.lastBody)
 	}
 }
+
+func TestTemplates_HooksOnTheWire(t *testing.T) {
+	rs := newRecordingServer(t, `{"template":{"id":"t-new","name":"Hooks","lifecycleMode":"hooks","hooks":{"onCreate":"echo create","onRestore":"echo restore"},"sessionInputs":[{"key":"GH_TOKEN","hook":"on_claim"}]}}`)
+
+	tmpl, err := rs.client().CreateTemplate(context.Background(), "ws-1", CreateTemplateRequest{
+		Name: "Hooks", StackID: "linux", MachineType: "standard",
+		Hooks:         &TemplateHooks{OnCreate: "echo create", OnRestore: "echo restore"},
+		SessionInputs: []SessionInputCreate{{Key: "GH_TOKEN", Required: true, Hook: "on_claim"}},
+	})
+	if err != nil {
+		t.Fatalf("CreateTemplate: %v", err)
+	}
+	var sent map[string]any
+	if err := json.Unmarshal(rs.lastBody, &sent); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	hooks, _ := sent["hooks"].(map[string]any)
+	if hooks["onCreate"] != "echo create" || hooks["onRestore"] != "echo restore" {
+		t.Errorf("sent hooks = %v", sent["hooks"])
+	}
+	if _, ok := hooks["onClaim"]; ok {
+		t.Errorf("unset hook must be omitted: %v", hooks)
+	}
+	inputs, _ := sent["sessionInputs"].([]any)
+	if in, _ := inputs[0].(map[string]any); in["hook"] != "on_claim" {
+		t.Errorf("sent sessionInputs[0].hook = %v", in["hook"])
+	}
+	if tmpl.LifecycleMode != "hooks" || tmpl.Hooks == nil || tmpl.Hooks.OnRestore != "echo restore" || tmpl.SessionInputs[0].Hook != "on_claim" {
+		t.Errorf("parsed template = %+v (hooks %+v)", tmpl, tmpl.Hooks)
+	}
+
+	if _, err := rs.client().UpdateTemplate(context.Background(), "ws-1", "t1", UpdateTemplateRequest{
+		Hooks: &TemplateHooks{OnCreate: "echo v2"}, UpdateHooks: true,
+	}); err != nil {
+		t.Fatalf("UpdateTemplate: %v", err)
+	}
+	if err := json.Unmarshal(rs.lastBody, &sent); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if sent["updateHooks"] != true {
+		t.Errorf("updateHooks = %v, want true", sent["updateHooks"])
+	}
+}
+
+func TestTemplates_ScopesAndProtected(t *testing.T) {
+	rs := newRecordingServer(t, `{"template":{"id":"t1","name":"Hooks","lifecycleMode":"hooks","templateVariables":[{"key":"REG","isSecret":true,"protected":true,"hook":"on_create"}],"sessionInputs":[{"key":"GH","hook":"on_restore"}]}}`)
+	tmpl, err := rs.client().CreateTemplate(context.Background(), "ws-1", CreateTemplateRequest{
+		Name: "Hooks", StackID: "linux", MachineType: "standard",
+		Hooks:             &TemplateHooks{OnCreate: "echo"},
+		TemplateVariables: []TemplateVariableCreate{{Key: "REG", Value: "tok", Hook: "on_create", Protected: true}, {Key: "APP", Value: "demo"}},
+		SessionInputs:     []SessionInputCreate{{Key: "GH", Hook: "on_restore"}},
+	})
+	if err != nil {
+		t.Fatalf("CreateTemplate: %v", err)
+	}
+	var sent map[string]any
+	if err := json.Unmarshal(rs.lastBody, &sent); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	vars, _ := sent["templateVariables"].([]any)
+	if v, _ := vars[0].(map[string]any); v["protected"] != true || v["hook"] != "on_create" || v["value"] != "tok" {
+		t.Errorf("sent templateVariables[0] = %v", vars[0])
+	}
+	if v, _ := vars[1].(map[string]any); v["protected"] != nil || v["hook"] != nil {
+		t.Errorf("protected and hook must be omitted when unset: %v", vars[1])
+	}
+	inputs, _ := sent["sessionInputs"].([]any)
+	if in, _ := inputs[0].(map[string]any); in["hook"] != "on_restore" {
+		t.Errorf("sent sessionInputs[0] = %v", inputs[0])
+	}
+	if len(tmpl.TemplateVariables) != 1 || !tmpl.TemplateVariables[0].Protected || !tmpl.TemplateVariables[0].IsSecret || tmpl.TemplateVariables[0].Hook != "on_create" {
+		t.Errorf("parsed variables = %+v", tmpl.TemplateVariables)
+	}
+	if len(tmpl.SessionInputs) != 1 || tmpl.SessionInputs[0].Hook != "on_restore" {
+		t.Errorf("parsed inputs = %+v", tmpl.SessionInputs)
+	}
+}

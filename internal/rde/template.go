@@ -10,14 +10,22 @@ import (
 
 // Template is the CLI-facing template record.
 type Template struct {
-	ID                string             `json:"id"`
-	Name              string             `json:"name"`
-	Description       string             `json:"description,omitempty"`
-	StackID           string             `json:"stack_id,omitempty"`
-	MachineType       string             `json:"machine_type,omitempty"`
-	WorkingDirectory  string             `json:"working_directory,omitempty"`
-	StartupScript     string             `json:"startup_script,omitempty"`
-	WarmupScript      string             `json:"warmup_script,omitempty"`
+	ID               string `json:"id"`
+	Name             string `json:"name"`
+	Description      string `json:"description,omitempty"`
+	StackID          string `json:"stack_id,omitempty"`
+	MachineType      string `json:"machine_type,omitempty"`
+	WorkingDirectory string `json:"working_directory,omitempty"`
+	StartupScript    string `json:"startup_script,omitempty"`
+	WarmupScript     string `json:"warmup_script,omitempty"`
+	// LifecycleMode says how the template's scripts run: "legacy"
+	// (startup_script / warmup_script) or "hooks" (Hooks, run on the booted
+	// machine). Passed through verbatim so future modes reach callers
+	// without a CLI change.
+	LifecycleMode string `json:"lifecycle_mode,omitempty"`
+	// Hooks are the lifecycle hook scripts of a "hooks" template; nil on a
+	// legacy template.
+	Hooks             *TemplateHooks     `json:"hooks,omitempty"`
 	CreatedByEmail    string             `json:"created_by_email,omitempty"`
 	WorkspaceID       string             `json:"workspace_id,omitempty"`
 	TemplateVariables []TemplateVariable `json:"template_variables,omitempty"`
@@ -31,12 +39,80 @@ type Template struct {
 	UpdatedAt  *time.Time  `json:"updated_at,omitempty"`
 }
 
-// TemplateVariable is a baked-in template variable.
+// TemplateHooks are a template's lifecycle hook scripts (bash), each run
+// on the booted machine as the session user. On create runs once when the
+// session is created (on a warm pool: when the pool warms the machine, with
+// the pool's shared inputs); On claim runs on every claim, when the session
+// is assigned to its owner; On restore runs every time a stopped session
+// is restored. Empty means "no such hook". A hook is done when its script
+// exits (0 = done, non-zero = failed); long-running work is started in the
+// background so the script can exit. RDE ends an On create that has not
+// exited within 20 minutes (exit code 124), and refuses every interactive
+// action on the session while On create is pending or running.
+type TemplateHooks struct {
+	OnCreate  string `json:"on_create,omitempty"`
+	OnClaim   string `json:"on_claim,omitempty"`
+	OnRestore string `json:"on_restore,omitempty"`
+}
+
+// Scopes of a template's values. Every variable and session input belongs
+// to one scope — its `hook`: ScopeShared reaches every hook, the others reach
+// that hook only (and need a template with lifecycle hooks). A hook receives
+// the shared values plus its own, nothing else; its own value wins over a
+// shared value of the same key. Keys are unique within a scope and the same
+// key may exist on several scopes. Legacy templates, and specs without a
+// hook key, keep every value shared — which is exactly what they had.
+const (
+	ScopeShared    = "shared"
+	ScopeOnCreate  = HookOnCreate
+	ScopeOnClaim   = HookOnClaim
+	ScopeOnRestore = HookOnRestore
+)
+
+// Scopes lists the scopes in run order: shared values are applied with On
+// create, then each hook's own; later steps override earlier ones.
+var Scopes = []string{ScopeShared, ScopeOnCreate, ScopeOnClaim, ScopeOnRestore}
+
+// NormalizeScope maps a wire `hook` to a scope: empty means shared.
+func NormalizeScope(hook string) string {
+	if hook == "" {
+		return ScopeShared
+	}
+	return hook
+}
+
+// ScopeLabel renders a scope the way the product names it ("Shared", "On
+// create", …); an unknown value renders as-is so a scope added after this
+// code was written still shows up.
+func ScopeLabel(hook string) string {
+	switch NormalizeScope(hook) {
+	case ScopeShared:
+		return "Shared"
+	case ScopeOnCreate:
+		return "On create"
+	case ScopeOnClaim:
+		return "On claim"
+	case ScopeOnRestore:
+		return "On restore"
+	}
+	return hook
+}
+
+// TemplateVariable is a baked-in variable of a template.
 type TemplateVariable struct {
-	Key            string `json:"key"`
-	Value          string `json:"value,omitempty"`
-	IsSecret       bool   `json:"is_secret,omitempty"`
-	ExposeAsEnvVar bool   `json:"expose_as_env_var,omitempty"`
+	Key      string `json:"key"`
+	Value    string `json:"value,omitempty"`
+	IsSecret bool   `json:"is_secret,omitempty"`
+	// ExposeAsEnvVar ("Also in terminal"): hooks always receive the value;
+	// this additionally writes it to the session's shell profile when its
+	// scope's step runs. Refused on a protected variable.
+	ExposeAsEnvVar bool `json:"expose_as_env_var,omitempty"`
+	// Hook is the variable's scope (see Scopes): empty or "shared", or
+	// "on_create" / "on_claim" / "on_restore" on a template with hooks.
+	Hook string `json:"hook,omitempty"`
+	// Protected: secret and write-only — the API never returns the value,
+	// an empty value on update keeps the stored one. Implies IsSecret.
+	Protected bool `json:"protected,omitempty"`
 }
 
 // SessionInputDef is an input definition on a template.
@@ -46,6 +122,63 @@ type SessionInputDef struct {
 	Required       bool   `json:"required,omitempty"`
 	DefaultValue   string `json:"default_value,omitempty"`
 	ExposeAsEnvVar bool   `json:"expose_as_env_var,omitempty"`
+	// Hook is the input's scope (see Scopes): empty or "shared" (supplied
+	// when the session or the pool is created), "on_create" (supplied with
+	// the pool or the direct create), "on_claim" / "on_restore" (supplied
+	// by whoever claims, or at a direct create).
+	Hook string `json:"hook,omitempty"`
+}
+
+// ScopeKeys is one scope's keys, for grouped listings.
+type ScopeKeys struct {
+	Scope string
+	Keys  []string
+}
+
+// MissingRequiredInputs returns the template's required inputs that
+// `supplied` does not cover, grouped by scope in run order — what a direct
+// create still has to give (a direct create needs every required input of
+// every scope). An unscoped supplied value (no Hook) covers every scope
+// that defines its key, so one value (or one saved input) fills the same
+// key on several scopes; a scoped one covers its scope only. Callers skip
+// the check when the backend fills inputs itself
+// (map_saved_to_session_inputs).
+func MissingRequiredInputs(t Template, supplied []SessionInputValue) []ScopeKeys {
+	have := make(map[string]bool, len(supplied))
+	scoped := make(map[string]bool, len(supplied))
+	for _, v := range supplied {
+		if v.Hook == "" {
+			have[v.Key] = true
+		} else {
+			scoped[NormalizeScope(v.Hook)+"\x00"+v.Key] = true
+		}
+	}
+	byScope := map[string][]string{}
+	var order []string
+	for _, in := range t.SessionInputs {
+		scope := NormalizeScope(in.Hook)
+		if !in.Required || have[in.Key] || scoped[scope+"\x00"+in.Key] {
+			continue
+		}
+		if _, seen := byScope[scope]; !seen {
+			order = append(order, scope)
+		}
+		byScope[scope] = append(byScope[scope], in.Key)
+	}
+	var out []ScopeKeys
+	for _, scope := range Scopes {
+		if keys, ok := byScope[scope]; ok {
+			out = append(out, ScopeKeys{Scope: scope, Keys: keys})
+			delete(byScope, scope)
+		}
+	}
+	// A scope this code does not know goes last, in the order seen.
+	for _, scope := range order {
+		if keys, ok := byScope[scope]; ok {
+			out = append(out, ScopeKeys{Scope: scope, Keys: keys})
+		}
+	}
+	return out
 }
 
 // FeatureFlag is a feature flag defined by a template.
@@ -75,6 +208,13 @@ type TemplateSpec struct {
 	StartupScript    *string `json:"startup_script,omitempty"`
 	WarmupScript     *string `json:"warmup_script,omitempty"`
 
+	// Hooks are the lifecycle hooks (On create / On claim / On restore).
+	// Nil = don't touch on update (legacy scripts on create); non-nil =
+	// replace the template's hooks as a whole, which also turns a legacy
+	// template into a hooks template. A template has either hooks or the
+	// legacy scripts, never both.
+	Hooks *TemplateHooks `json:"hooks,omitempty"`
+
 	// Nil = don't touch on update; non-nil = replace the server's list with
 	// these values (even if empty). On create, nil/empty is equivalent.
 	TemplateVariables *[]TemplateVariableSpec `json:"template_variables,omitempty"`
@@ -91,21 +231,33 @@ type TemplateSpec struct {
 	ClearDeviceSpec bool        `json:"-"`
 }
 
-// TemplateVariableSpec is the editable shape of a template variable.
+// TemplateVariableSpec is the editable shape of a variable. A spec without
+// a hook key is a shared variable (legacy specs keep working).
 type TemplateVariableSpec struct {
 	Key            string `json:"key"`
 	Value          string `json:"value,omitempty"`
 	IsSecret       bool   `json:"is_secret,omitempty"`
 	ExposeAsEnvVar bool   `json:"expose_as_env_var,omitempty"`
+	// Hook: see TemplateVariable.Hook. A per-hook scope needs a template
+	// with lifecycle hooks.
+	Hook string `json:"hook,omitempty"`
+	// Protected: see TemplateVariable.Protected. An empty Value on update
+	// keeps the stored one, so the view → edit → update round-trip keeps
+	// write-only values.
+	Protected bool `json:"protected,omitempty"`
 }
 
-// SessionInputSpec is the editable shape of a session input definition.
+// SessionInputSpec is the editable shape of a session input definition. A
+// spec without a hook key is a shared input (legacy specs keep working).
 type SessionInputSpec struct {
 	Key            string `json:"key"`
 	Description    string `json:"description,omitempty"`
 	Required       bool   `json:"required,omitempty"`
 	DefaultValue   string `json:"default_value,omitempty"`
 	ExposeAsEnvVar bool   `json:"expose_as_env_var,omitempty"`
+	// Hook: see SessionInputDef.Hook. A per-hook scope needs a template
+	// with lifecycle hooks.
+	Hook string `json:"hook,omitempty"`
 }
 
 // FeatureFlagSpec is the editable shape of a feature flag.
@@ -143,6 +295,7 @@ func (s *Service) CreateTemplate(ctx context.Context, workspaceID string, spec T
 		WorkingDirectory: deref(spec.WorkingDirectory),
 		StartupScript:    deref(spec.StartupScript),
 		WarmupScript:     deref(spec.WarmupScript),
+		Hooks:            hooksToAPI(spec.Hooks),
 		DeviceSpec:       deviceSpecToAPI(spec.DeviceSpec),
 	}
 	if spec.TemplateVariables != nil {
@@ -202,6 +355,10 @@ func (s *Service) UpdateTemplate(ctx context.Context, workspaceID, templateID st
 		req.DeviceSpec = deviceSpecToAPI(spec.DeviceSpec)
 		req.UpdateDeviceSpec = true
 	}
+	if spec.Hooks != nil {
+		req.Hooks = hooksToAPI(spec.Hooks)
+		req.UpdateHooks = true
+	}
 	t, err := s.client.UpdateTemplate(ctx, workspaceID, templateID, req)
 	if err != nil {
 		return Template{}, err
@@ -232,6 +389,8 @@ func toWireVariables(in []TemplateVariableSpec) []rdeapi.TemplateVariableCreate 
 			Value:          v.Value,
 			IsSecret:       v.IsSecret,
 			ExposeAsEnvVar: v.ExposeAsEnvVar,
+			Hook:           v.Hook,
+			Protected:      v.Protected,
 		})
 	}
 	return out
@@ -246,10 +405,29 @@ func toWireSessionInputs(in []SessionInputSpec) []rdeapi.SessionInputCreate {
 			Required:       i.Required,
 			DefaultValue:   i.DefaultValue,
 			ExposeAsEnvVar: i.ExposeAsEnvVar,
+			Hook:           i.Hook,
 		})
 	}
 	return out
 }
+
+func hooksToAPI(h *TemplateHooks) *rdeapi.TemplateHooks {
+	if h == nil {
+		return nil
+	}
+	return &rdeapi.TemplateHooks{OnCreate: h.OnCreate, OnClaim: h.OnClaim, OnRestore: h.OnRestore}
+}
+
+func hooksFromAPI(h *rdeapi.TemplateHooks) *TemplateHooks {
+	if h == nil {
+		return nil
+	}
+	return &TemplateHooks{OnCreate: h.OnCreate, OnClaim: h.OnClaim, OnRestore: h.OnRestore}
+}
+
+// lifecycleModeHooks is the Template.LifecycleMode of a template whose
+// scripts are lifecycle hooks.
+const lifecycleModeHooks = "hooks"
 
 func toWireFeatureFlags(in []FeatureFlagSpec) []rdeapi.FeatureFlagCreate {
 	out := make([]rdeapi.FeatureFlagCreate, 0, len(in))
@@ -390,11 +568,21 @@ func templateFromAPI(w rdeapi.Template) Template {
 		WorkingDirectory: w.WorkingDirectory,
 		StartupScript:    w.StartupScript,
 		WarmupScript:     w.WarmupScript,
+		LifecycleMode:    w.LifecycleMode,
+		Hooks:            hooksFromAPI(w.Hooks),
 		CreatedByEmail:   w.CreatedByEmail,
 		WorkspaceID:      w.WorkspaceID,
 		DeviceSpec:       deviceSpecFromAPI(w.DeviceSpec),
 		CreatedAt:        parseTime(w.CreatedAt),
 		UpdatedAt:        parseTime(w.UpdatedAt),
+	}
+	if w.LifecycleMode == lifecycleModeHooks {
+		// A hooks template stores no legacy scripts: the backend reads
+		// startup_script back as a generated, read-only equivalent of the
+		// hooks, which it refuses on writes. Drop it so the documented
+		// round-trip (view -o json → edit → update) sends only what the
+		// template really holds — the hooks.
+		out.StartupScript, out.WarmupScript = "", ""
 	}
 	for _, v := range w.TemplateVariables {
 		// Mask secret values at the CLI boundary: passing them through
@@ -402,15 +590,19 @@ func templateFromAPI(w rdeapi.Template) Template {
 		// Because the CLI never opts into include_secrets on template reads,
 		// the backend already omits these values — this masking
 		// is the belt-and-suspenders second line of defense.
+		// A protected variable is write-only on top: the backend returns
+		// no value for it with or without include_secrets.
 		val := v.Value
-		if v.IsSecret {
+		if v.IsSecret || v.Protected {
 			val = ""
 		}
 		out.TemplateVariables = append(out.TemplateVariables, TemplateVariable{
 			Key:            v.Key,
 			Value:          val,
-			IsSecret:       v.IsSecret,
+			IsSecret:       v.IsSecret || v.Protected,
 			ExposeAsEnvVar: v.ExposeAsEnvVar,
+			Hook:           v.Hook,
+			Protected:      v.Protected,
 		})
 	}
 	for _, i := range w.SessionInputs {
@@ -420,6 +612,7 @@ func templateFromAPI(w rdeapi.Template) Template {
 			Required:       i.Required,
 			DefaultValue:   i.DefaultValue,
 			ExposeAsEnvVar: i.ExposeAsEnvVar,
+			Hook:           i.Hook,
 		})
 	}
 	for _, f := range w.FeatureFlags {

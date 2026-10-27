@@ -8,7 +8,7 @@ Show what changed between the template config snapshotted at the session's
 creation time and the template's current config. Most useful when a session
 reports template_outdated=true.
 
-Lists which template variable keys changed (values are never exposed) and
+Lists which variable keys changed (values are never exposed) and
 the simple per-field differences (stack, machine type, scripts, working
 directory, declared device). When the template was deleted, only the
 snapshot is shown.

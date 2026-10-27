@@ -281,6 +281,10 @@ func runFresh(ctx context.Context, cmd *cobra.Command, opts freshOptions) error 
 		cmdutil.SilenceRootErrors(cmd)
 		return fmt.Errorf("session ended provisioning with status %q (expected running)", ready.Status)
 	}
+	if err := internalrde.LifecycleFailure(ready); err != nil {
+		cmdutil.SilenceRootErrors(cmd)
+		return err
+	}
 
 	// "running" does not mean SSH is reachable yet — the backend
 	// issues credentials a few seconds later. Wait for them before

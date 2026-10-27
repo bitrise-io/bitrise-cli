@@ -328,3 +328,141 @@ func TestUpdateCmd_FileWithoutDeviceLeavesItAlone(t *testing.T) {
 		t.Errorf("updateDeviceSpec should be absent, body=%v", gotBody)
 	}
 }
+
+func TestCreateCmd_HooksFromSpec(t *testing.T) {
+	var gotBody map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		_, _ = io.WriteString(w, `{"template":{"id":"t-new","name":"Hooks","lifecycleMode":"hooks","hooks":{"onCreate":"echo create"}}}`)
+	}))
+	defer srv.Close()
+
+	c := newCreateCmd()
+	c.SetIn(strings.NewReader(`{"name":"Hooks","stack_id":"linux-ubuntu-24.04","machine_type":"standard",
+		"hooks":{"on_create":"echo create","on_claim":"echo claim"},
+		"session_inputs":[{"key":"GH_TOKEN","required":true,"hook":"on_claim"}]}`))
+	stdout, _, err := run(t, c, srv.URL, "ws-1", []string{"--file", "-"}, output.Human)
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	hooks, _ := gotBody["hooks"].(map[string]any)
+	if hooks["onCreate"] != "echo create" || hooks["onClaim"] != "echo claim" {
+		t.Errorf("hooks = %v, want the spec's hooks in camelCase", gotBody["hooks"])
+	}
+	if _, ok := hooks["onRestore"]; ok {
+		t.Errorf("an unset hook must be omitted from the body: %v", hooks)
+	}
+	if _, ok := gotBody["updateHooks"]; ok {
+		t.Errorf("create must not send updateHooks: %v", gotBody)
+	}
+	inputs, _ := gotBody["sessionInputs"].([]any)
+	if in, _ := inputs[0].(map[string]any); in["hook"] != "on_claim" {
+		t.Errorf("sessionInputs[0].hook = %v, want on_claim", in["hook"])
+	}
+	if !strings.Contains(stdout, "Lifecycle:") {
+		t.Errorf("stdout should show the lifecycle mode:\n%s", stdout)
+	}
+}
+
+func TestUpdateCmd_HooksCarryReplaceFlag(t *testing.T) {
+	var gotBody map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		_, _ = io.WriteString(w, `{"template":{"id":"t-1","name":"Hooks"}}`)
+	}))
+	defer srv.Close()
+
+	c := newUpdateCmd()
+	c.SetIn(strings.NewReader(`{"hooks":{"on_create":"echo v2"}}`))
+	if _, _, err := run(t, c, srv.URL, "ws-1", []string{uuidTemplateID, "--file", "-"}, output.Human); err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if gotBody["updateHooks"] != true {
+		t.Errorf("updateHooks = %v, want true (body=%v)", gotBody["updateHooks"], gotBody)
+	}
+	if hooks, _ := gotBody["hooks"].(map[string]any); hooks["onCreate"] != "echo v2" {
+		t.Errorf("hooks = %v", gotBody["hooks"])
+	}
+	// A spec without hooks must leave them alone.
+	gotBody = nil
+	c = newUpdateCmd()
+	c.SetIn(strings.NewReader(`{"name":"Renamed"}`))
+	if _, _, err := run(t, c, srv.URL, "ws-1", []string{uuidTemplateID, "--file", "-"}, output.Human); err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if _, ok := gotBody["updateHooks"]; ok {
+		t.Errorf("updateHooks must be absent when hooks is omitted: %v", gotBody)
+	}
+}
+
+// A variable's scope (hook) and protected ride along on create (camelCase on
+// the wire), as does an input's scope; a legacy entry without a hook key is
+// sent without one — the backend stores it as shared. on_create_only is gone.
+func TestCreateCmd_ScopedAndProtectedVariables(t *testing.T) {
+	var gotBody map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		_, _ = io.WriteString(w, `{"template":{"id":"t-new","name":"Hooks","lifecycleMode":"hooks","hooks":{"onCreate":"echo create"},
+			"sessionInputs":[{"key":"GH_TOKEN","required":true,"hook":"on_restore"}],
+			"templateVariables":[{"key":"REGISTRY_TOKEN","isSecret":true,"protected":true,"hook":"on_create"},{"key":"APP","value":"demo","exposeAsEnvVar":true,"hook":"shared"}]}}`)
+	}))
+	defer srv.Close()
+
+	c := newCreateCmd()
+	c.SetIn(strings.NewReader(`{"name":"Hooks","stack_id":"linux-ubuntu-24.04","machine_type":"standard",
+		"hooks":{"on_create":"echo create"},
+		"session_inputs":[{"key":"GH_TOKEN","required":true,"hook":"on_restore"}],
+		"template_variables":[{"key":"REGISTRY_TOKEN","value":"tok","hook":"on_create","protected":true},{"key":"APP","value":"demo","expose_as_env_var":true},{"key":"OLD","value":"x","is_secret":true,"on_create_only":true}]}`))
+	stdout, _, err := run(t, c, srv.URL, "ws-1", []string{"--file", "-"}, output.JSON)
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	vars, _ := gotBody["templateVariables"].([]any)
+	if len(vars) != 3 {
+		t.Fatalf("templateVariables = %v, want 3", gotBody["templateVariables"])
+	}
+	cases := []struct {
+		key  string
+		want map[string]any
+	}{
+		{"REGISTRY_TOKEN", map[string]any{"value": "tok", "hook": "on_create", "protected": true}},
+		{"APP", map[string]any{"value": "demo", "exposeAsEnvVar": true}},
+		{"OLD", map[string]any{"value": "x", "isSecret": true}},
+	}
+	for i, tc := range cases {
+		v, _ := vars[i].(map[string]any)
+		if v["key"] != tc.key {
+			t.Errorf("templateVariables[%d].key = %v, want %s", i, v["key"], tc.key)
+		}
+		for k, want := range tc.want {
+			if v[k] != want {
+				t.Errorf("templateVariables[%d].%s = %v, want %v", i, k, v[k], want)
+			}
+		}
+		for _, gone := range []string{"onCreateOnly", "on_create_only"} {
+			if _, ok := v[gone]; ok {
+				t.Errorf("templateVariables[%d] carries %s, which no longer exists: %v", i, gone, v)
+			}
+		}
+	}
+	if v, _ := vars[1].(map[string]any); v["hook"] != nil || v["protected"] != nil {
+		t.Errorf("hook and protected must be omitted when unset (legacy = shared): %v", v)
+	}
+	inputs, _ := gotBody["sessionInputs"].([]any)
+	if in, _ := inputs[0].(map[string]any); in["hook"] != "on_restore" {
+		t.Errorf("sessionInputs[0].hook = %v, want on_restore", in["hook"])
+	}
+	// The read side carries scope and protected back, with the value masked.
+	var got map[string]any
+	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
+		t.Fatalf("unmarshal JSON output: %v\n%s", err, stdout)
+	}
+	outVars, _ := got["template_variables"].([]any)
+	first, _ := outVars[0].(map[string]any)
+	if first["protected"] != true || first["is_secret"] != true || first["hook"] != "on_create" || first["value"] != nil {
+		t.Errorf("template_variables[0] = %v, want protected + is_secret + hook on_create and no value", first)
+	}
+	if _, ok := first["on_create_only"]; ok {
+		t.Errorf("template_variables[0] carries on_create_only, which no longer exists: %v", first)
+	}
+}

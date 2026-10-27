@@ -27,7 +27,15 @@ personal and cannot be referenced from a pool.
 
 Provide session input values via --input (one --input per key) or
 --secret-input (stored as secret-at-rest). A value passed inline with
---secret-input ends up in your shell history and process arguments.
+--secret-input ends up in your shell history and process arguments. A value
+applies to every scope that defines its key; prefix the key with a scope
+(--input on_create:REGISTRY=…) to give that scope its own value.
+
+On a template with lifecycle hooks only the Shared and On create inputs go
+on the pool ('rde template view' marks each input's scope); an On claim or
+On restore key is rejected — each claimant supplies those on 'rde session
+create --warm-pool'. Exposed ("Also in terminal") Shared and On create
+values stay on the pool machine for whoever claims it.
 
 --stack, --machine-type and --cluster override the template's defaults for
 the warm sessions; omit them to use the template's.
@@ -66,10 +74,10 @@ bitrise-cli rde warm-pool create NAME [flags]
       --device-system-image string   Android only: the API-level knob — sdkmanager system image package ("system-images;android-34;google_apis;x86_64"); default: the template's, else the platform default
       --feature-flag stringArray     name of a template feature flag to enable on the warm sessions (repeatable)
   -h, --help                         help for create
-      --input stringArray            session input as key=value (repeatable)
+      --input stringArray            session input as [scope:]key=value (repeatable); unscoped applies to every scope that defines the key, scope:key (shared, on_create) to that scope only
       --machine-type string          machine type name to override the template's (see 'rde machine-type list --stack STACK_ID')
       --no-device                    boot the warm sessions without the template's device (ignored when the template declares none)
-      --secret-input stringArray     session input as key=value, stored as a secret at rest (repeatable; the value is visible in shell history and process args)
+      --secret-input stringArray     session input as [scope:]key=value, stored as a secret at rest (repeatable; the value is visible in shell history and process args)
       --size int                     how many warm sessions to keep booted; 0 (the default) creates an inert configuration preset
       --stack string                 stack ID to override the template's (see 'rde stack list')
       --template string              template ID or name the warm sessions are created from (required)

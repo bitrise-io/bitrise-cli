@@ -32,7 +32,12 @@ SSH_ASKPASS helper without parsing:
 
   RDE_SSH_PASSWORD="$(bitrise-cli rde session ssh SESSION_ID --password-only)"
 
---output json emits {address, host, port, user, password, command}.`,
+--output json emits {address, host, port, user, password, command}.
+
+On a session with lifecycle hooks the details are withheld while On create
+is pending or running ("Session is setting up: On create is still running.
+Access opens when it finishes."): wait for 'session view' to show "Setup:
+ready".`,
 		Example: `  bitrise-cli rde session ssh SESSION_ID
   bitrise-cli rde session ssh SESSION_ID --output json
   RDE_SSH_PASSWORD="$(bitrise-cli rde session ssh SESSION_ID --password-only)"`,

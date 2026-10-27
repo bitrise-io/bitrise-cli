@@ -46,9 +46,24 @@ type WarmPool struct {
 	DeviceSpec *DeviceSpec `json:"device_spec,omitempty"`
 	NoDevice   bool        `json:"no_device,omitempty"`
 	// Status is the pool's live state; nil only if the backend omitted it.
-	Status    *WarmPoolStatus `json:"status,omitempty"`
-	CreatedAt *time.Time      `json:"created_at,omitempty"`
-	UpdatedAt *time.Time      `json:"updated_at,omitempty"`
+	Status *WarmPoolStatus `json:"status,omitempty"`
+	// SetupFailed is set only while the pool is paused after three
+	// consecutive On create failures (lifecycle hooks): the pool stopped
+	// warming, claims are refused, and the last failed machine is kept as a
+	// session to inspect (its logs and terminal work). 'warm-pool retry' or
+	// any configuration change resumes warming.
+	SetupFailed *WarmPoolSetupFailed `json:"setup_failed,omitempty"`
+	CreatedAt   *time.Time           `json:"created_at,omitempty"`
+	UpdatedAt   *time.Time           `json:"updated_at,omitempty"`
+}
+
+// WarmPoolSetupFailed describes why a warm pool is paused after repeated
+// On create failures and which session was kept for inspection.
+type WarmPoolSetupFailed struct {
+	SessionID string     `json:"session_id"`
+	FailedAt  *time.Time `json:"failed_at,omitempty"`
+	ExitCode  int        `json:"exit_code"`
+	Message   string     `json:"message,omitempty"`
 }
 
 // WarmPoolInput is a stored session input value: either a plain or secret
@@ -58,6 +73,9 @@ type WarmPoolInput struct {
 	Value        string `json:"value,omitempty"`
 	IsSecret     bool   `json:"is_secret,omitempty"`
 	SavedInputID string `json:"saved_input_id,omitempty"`
+	// Hook is the scope the value is for; empty applies it to every scope
+	// that defines the key.
+	Hook string `json:"hook,omitempty"`
 }
 
 // WarmPoolStatus is the live state of a warm pool. The counters are always
@@ -284,6 +302,20 @@ func (s *Service) DeleteWarmPool(ctx context.Context, workspaceID, warmPoolID st
 	return s.client.DeleteWarmPool(ctx, workspaceID, warmPoolID)
 }
 
+// RetryWarmPool resumes a pool paused after repeated On create failures:
+// the kept failed machine is deleted and the pool warms again. A pool that
+// is not paused this way comes back unchanged.
+func (s *Service) RetryWarmPool(ctx context.Context, workspaceID, warmPoolID string) (WarmPool, error) {
+	if s.client == nil {
+		return WarmPool{}, errClient()
+	}
+	w, err := s.client.RetryWarmPool(ctx, workspaceID, warmPoolID)
+	if err != nil {
+		return WarmPool{}, err
+	}
+	return warmPoolFromAPI(w), nil
+}
+
 // sessionInputsToAPI converts session input values to the wire shape. Nil
 // in, nil out, so an absent list stays absent on the wire.
 func sessionInputsToAPI(in []SessionInputValue) []rdeapi.SessionInputValue {
@@ -297,6 +329,7 @@ func sessionInputsToAPI(in []SessionInputValue) []rdeapi.SessionInputValue {
 			Value:        i.Value,
 			IsSecret:     i.IsSecret,
 			SavedInputID: i.SavedInputID,
+			Hook:         i.Hook,
 		})
 	}
 	return out
@@ -335,11 +368,20 @@ func warmPoolFromAPI(w rdeapi.WarmPool) WarmPool {
 			Value:        val,
 			IsSecret:     i.IsSecret,
 			SavedInputID: i.SavedInputID,
+			Hook:         i.Hook,
 		})
 	}
 	if w.Status != nil {
 		st := warmPoolStatusFromAPI(*w.Status)
 		out.Status = &st
+	}
+	if w.SetupFailed != nil {
+		out.SetupFailed = &WarmPoolSetupFailed{
+			SessionID: w.SetupFailed.SessionID,
+			FailedAt:  parseTime(w.SetupFailed.FailedAt),
+			ExitCode:  w.SetupFailed.ExitCode,
+			Message:   w.SetupFailed.Message,
+		}
 	}
 	return out
 }
