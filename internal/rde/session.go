@@ -896,7 +896,9 @@ func OnCreateInFlight(l *SessionLifecycle) bool {
 }
 
 func lifecycleInFlight(l *SessionLifecycle) bool {
-	if l == nil {
+	// A session that does not run lifecycle hooks has nothing to wait for:
+	// the backend sends it a lifecycle block too (mode "legacy", no phase).
+	if l == nil || l.Mode != "hooks" {
 		return false
 	}
 	switch l.Phase {

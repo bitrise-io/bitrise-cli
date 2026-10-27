@@ -626,24 +626,35 @@ func TestWaitForReady_HooksSessionSettlesOnFailureAndUnknownPhases(t *testing.T)
 	}
 }
 
-// A legacy session (no lifecycle) returns at "running", exactly as before.
+// A legacy session returns at "running", exactly as before — with no
+// lifecycle block (older backends) and with the one the backend sends today
+// (mode "legacy", no phase), which must not read as "setting up".
 func TestWaitForReady_LegacySessionReturnsAtRunning(t *testing.T) {
-	var calls int
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		calls++
-		_, _ = io.WriteString(w, `{"session":{"id":"s1","status":"SESSION_STATUS_RUNNING"}}`)
-	}))
-	t.Cleanup(srv.Close)
-	svc := NewService(rdeapi.New(srv.URL, "tok"))
-	sess, err := svc.WaitForReady(context.Background(), "ws-1", "s1", time.Millisecond, nil)
-	if err != nil {
-		t.Fatalf("WaitForReady: %v", err)
-	}
-	if calls != 1 || sess.Status != "running" || sess.Lifecycle != nil {
-		t.Errorf("legacy session: calls=%d status=%q lifecycle=%v, want one poll, running, nil", calls, sess.Status, sess.Lifecycle)
-	}
-	if LifecycleFailure(sess) != nil {
-		t.Errorf("a legacy session is never a lifecycle failure")
+	for name, body := range map[string]string{
+		"no lifecycle":          `{"session":{"id":"s1","status":"SESSION_STATUS_RUNNING"}}`,
+		"legacy lifecycle mode": `{"session":{"id":"s1","status":"SESSION_STATUS_RUNNING","lifecycle":{"mode":"legacy","phase":"LIFECYCLE_PHASE_UNSPECIFIED","runs":[]}}}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			var calls int
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				calls++
+				_, _ = io.WriteString(w, body)
+			}))
+			t.Cleanup(srv.Close)
+			svc := NewService(rdeapi.New(srv.URL, "tok"))
+			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+			defer cancel()
+			sess, err := svc.WaitForReady(ctx, "ws-1", "s1", time.Millisecond, nil)
+			if err != nil {
+				t.Fatalf("WaitForReady: %v", err)
+			}
+			if calls != 1 || sess.Status != "running" {
+				t.Errorf("legacy session: calls=%d status=%q, want one poll, running", calls, sess.Status)
+			}
+			if LifecycleFailure(sess) != nil {
+				t.Errorf("a legacy session is never a lifecycle failure")
+			}
+		})
 	}
 }
 
