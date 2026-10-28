@@ -47,7 +47,7 @@ type Template struct {
 // is restored. Empty means "no such hook". A hook is done when its script
 // exits (0 = done, non-zero = failed); long-running work is started in the
 // background so the script can exit. RDE ends an On create that has not
-// exited within 20 minutes (exit code 124), and refuses every interactive
+// exited within 2 hours (exit code 124), and refuses every interactive
 // action on the session while On create is pending or running.
 //
 // A hook that is left out (nil) is not added and never runs; an added hook

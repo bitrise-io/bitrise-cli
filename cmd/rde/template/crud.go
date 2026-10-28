@@ -82,7 +82,7 @@ pool machine) is set up as soon as it boots, and a template with no hooks
 at all is valid. A hook is done when its script exits (0 = done, non-zero =
 failed): start long-running work, like a dev server, in the background so
 the script can exit — without the values it must not keep ('env -u SECRET
-cmd &'). An On create that has not exited after 20 minutes is ended by RDE
+cmd &'). An On create that has not exited after 2 hours is ended by RDE
 (exit code 124). While On create is pending or running the session cannot
 be reached: exec, ssh, upload, download and the terminal are refused
 ("Session is setting up: On create is still running. Access opens when it

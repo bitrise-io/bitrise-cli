@@ -174,7 +174,7 @@ func hookRunText(s style.Styles, r internalrde.HookRun) string {
 		return s.Success.Render(r.State)
 	case "failed":
 		if r.Hook == internalrde.HookOnCreate && r.ExitCode == internalrde.HookExitCodeOnCreateLimit {
-			return s.Failure.Render(fmt.Sprintf("failed (exit %d)", r.ExitCode)) + s.Dim.Render(" — On create did not finish within 20 minutes; long-running work must be started in the background so the script can exit")
+			return s.Failure.Render(fmt.Sprintf("failed (exit %d)", r.ExitCode)) + s.Dim.Render(" — On create did not finish within 2 hours; long-running work must be started in the background so the script can exit")
 		}
 		return s.Failure.Render(fmt.Sprintf("failed (exit %d)", r.ExitCode))
 	case "interrupted":

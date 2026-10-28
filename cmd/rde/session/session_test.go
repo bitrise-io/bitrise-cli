@@ -333,7 +333,7 @@ func TestViewCmd_OnCreateLimitExplained(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
-	for _, want := range []string{"failed (exit 124)", "did not finish within 20 minutes", "background"} {
+	for _, want := range []string{"failed (exit 124)", "did not finish within 2 hours", "background"} {
 		if !strings.Contains(stdout, want) {
 			t.Errorf("stdout missing %q:\n%s", want, stdout)
 		}

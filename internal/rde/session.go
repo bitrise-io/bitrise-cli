@@ -125,7 +125,7 @@ type HookRun struct {
 }
 
 // HookExitCodeOnCreateLimit is the HookRun.ExitCode of an On create run RDE
-// ended because it did not finish within its limit (20 minutes): the script
+// ended because it did not finish within its limit (2 hours): the script
 // has to exit — long-running work belongs in the background.
 const HookExitCodeOnCreateLimit = 124
 
