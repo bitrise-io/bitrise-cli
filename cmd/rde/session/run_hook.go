@@ -26,9 +26,10 @@ the session's inputs; 'session view' lists the new attempt (triggered by
 Use it after a setup failure ("Setup: setup failed" / "personalization
 failed" / "restore script failed") whose cause was transient — a flaky
 download, a service that was not up yet — because the machine and everything
-on it stay as they are. A fix to the template's script does not reach an
-existing session (it keeps its creation-time hooks): 'session rebuild' or a
-new session is the way to pick it up.
+on it stay as they are. It repeats the session's creation-time script: a fix
+to the template's script does not reach an existing session, and neither
+does 'session rebuild' (it keeps the same creation-time copy). Create a new
+session to use the fixed template.
 
   --hook   on_claim or on_restore (only hooks the session was created
            with), or personalize — the platform's own System setup step
