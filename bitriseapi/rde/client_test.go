@@ -166,6 +166,15 @@ func TestAPIError_IncludesFieldViolations(t *testing.T) {
 	}
 }
 
+// A streaming endpoint wraps its pre-stream status in {"error":{...}}; it
+// reads like any other API error rather than as raw JSON.
+func TestAPIError_UnwrapsStreamErrorEnvelope(t *testing.T) {
+	err := parseAPIError(http.StatusBadRequest, []byte(`{"error":{"code":3,"message":"Bad request.","details":[{"@type":"type.googleapis.com/google.rpc.BadRequest","fieldViolations":[{"field":"stage","description":"stage LOG_STAGE_ON_CREATE is only available on sessions with lifecycle hooks"}]}]}}`))
+	if want := "RDE API 400: Bad request.: stage LOG_STAGE_ON_CREATE is only available on sessions with lifecycle hooks"; err.Error() != want {
+		t.Errorf("Error() = %q, want %q", err.Error(), want)
+	}
+}
+
 func TestAPIError_FieldViolationFallsBackToFieldName(t *testing.T) {
 	rs := newRecordingServer(t, `{"details":[{"@type":"type.googleapis.com/google.rpc.BadRequest","fieldViolations":[{"field":"name"}]}]}`)
 	rs.status = http.StatusBadRequest

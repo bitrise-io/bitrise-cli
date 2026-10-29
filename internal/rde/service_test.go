@@ -694,6 +694,26 @@ func TestSSHTargetForSession_GatedDuringOnCreate(t *testing.T) {
 	}
 }
 
+// An unclaimed warm session never shows its connection details: the
+// pre-flight says it has to be claimed first instead of "retry", which
+// would never succeed.
+func TestSSHTargetForSession_RefusedOnUnclaimedWarmSession(t *testing.T) {
+	for _, state := range []string{"warming", "ready", "retiring"} {
+		sess := Session{Status: "running", WarmPoolID: "pool-1", WarmState: state}
+		_, err := sshTargetForSession(sess)
+		if err == nil || !strings.Contains(err.Error(), "warm session held by warm pool pool-1") || !strings.Contains(err.Error(), "--warm-pool pool-1") {
+			t.Errorf("%s: err = %v, want the claim-first refusal", state, err)
+		}
+	}
+	claimed := Session{
+		Status: "running", SSHAddress: "ssh ubuntu@h.example -p 2222", SSHPassword: "pw", SSHConnectionOpen: true,
+		WarmPoolID: "pool-1", WarmState: WarmStateClaimed,
+	}
+	if _, err := sshTargetForSession(claimed); err != nil {
+		t.Fatalf("claimed: err = %v, want the dial target", err)
+	}
+}
+
 func TestRunSessionHook_RefusesOnCreate(t *testing.T) {
 	rs := newRecordingServer(t, `{"run":{"id":"r-2","hook":"on_claim","attempt":2,"state":"HOOK_RUN_STATE_PENDING"}}`)
 	_, err := rs.service().RunSessionHook(context.Background(), "ws-1", "s-1", HookOnCreate)

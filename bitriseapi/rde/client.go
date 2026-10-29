@@ -175,6 +175,14 @@ func (c *Client) do(req *http.Request) ([]byte, error) {
 func parseAPIError(statusCode int, body []byte) *APIError {
 	var e errorBody
 	_ = json.Unmarshal(body, &e)
+	// A streaming endpoint (session logs) wraps the same status in
+	// {"error":{...}}, like its mid-stream error frames.
+	var wrapped struct {
+		Error *errorBody `json:"error"`
+	}
+	if e.Message == "" && json.Unmarshal(body, &wrapped) == nil && wrapped.Error != nil {
+		e = *wrapped.Error
+	}
 	apiErr := &APIError{
 		StatusCode: statusCode,
 		Message:    e.Message,

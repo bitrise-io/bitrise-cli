@@ -758,6 +758,15 @@ func sshTargetForSession(sess Session) (sshTarget, error) {
 			sess.Status,
 		)
 	}
+	// Unclaimed pool inventory never shows its connection details, so the
+	// "not ready yet, retry" below would never clear; say it has to be
+	// claimed first, in the backend's words.
+	if UnclaimedWarmState(sess.WarmState) {
+		return sshTarget{}, fmt.Errorf(
+			"This session is a warm session held by warm pool %s and cannot be used or changed until it is claimed — create a session with --warm-pool %s to claim it.",
+			sess.WarmPoolID, sess.WarmPoolID,
+		)
+	}
 	// The backend refuses every interactive action while On create is
 	// pending or running; exec / ssh dial the machine directly, so the same
 	// gate applies here, in the backend's words. `create --wait` /

@@ -120,6 +120,17 @@ const (
 	WarmStateCold    = "cold"
 )
 
+// UnclaimedWarmState reports whether a Session.WarmState marks unclaimed
+// pool inventory ("warming", "ready", or "retiring" while the pool removes
+// it): such a session cannot be used until it is claimed.
+func UnclaimedWarmState(state string) bool {
+	switch state {
+	case "warming", "ready", "retiring":
+		return true
+	}
+	return false
+}
+
 // CreateWarmPoolRequest is the CLI-side request shape. Apart from Name and
 // PoolSize these are the CreateSessionRequest fields that shape the VM — a
 // pool stores what a session request could send.
