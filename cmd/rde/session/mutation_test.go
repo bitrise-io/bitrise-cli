@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/bitrise-io/bitrise-cli/internal/output"
+	internalrde "github.com/bitrise-io/bitrise-cli/internal/rde"
 )
 
 // uuidTemplate is a UUID-shaped template arg so ResolveTemplateID
@@ -86,6 +87,12 @@ func TestCreateCmd_MissingRequiredInputsGroupedByScope(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "--map-saved-inputs") || !strings.Contains(err.Error(), "rde template view "+uuidTemplate) {
 		t.Errorf("error must say how to give the inputs: %q", err.Error())
+	}
+
+	// Only shared inputs missing (as on a template without hooks): no scope
+	// label.
+	if got, want := missingInputsMessage("t-1", []internalrde.ScopeKeys{{Scope: internalrde.ScopeShared, Keys: []string{"A", "B"}}}), "missing required session inputs: A, B\n"; !strings.HasPrefix(got, want) {
+		t.Errorf("shared only: got %q, want prefix %q", got, want)
 	}
 
 	// A scoped value covers its scope only: on_claim:GH_TOKEN leaves the

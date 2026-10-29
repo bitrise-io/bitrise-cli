@@ -464,12 +464,17 @@ var deviceWaitPollInterval = 3 * time.Second
 
 // missingInputsMessage lists the required inputs a direct create still has
 // to give, one line per scope (Shared, On create, On claim, On restore), and
-// how to give them.
+// how to give them. When only shared inputs are missing (always the case on
+// a template without lifecycle hooks) the scope label is left out.
 func missingInputsMessage(template string, missing []internalrde.ScopeKeys) string {
 	var b strings.Builder
-	b.WriteString("missing required session inputs:\n")
-	for _, m := range missing {
-		fmt.Fprintf(&b, "  %-12s%s\n", internalrde.ScopeLabel(m.Scope)+":", strings.Join(m.Keys, ", "))
+	if len(missing) == 1 && missing[0].Scope == internalrde.ScopeShared {
+		fmt.Fprintf(&b, "missing required session inputs: %s\n", strings.Join(missing[0].Keys, ", "))
+	} else {
+		b.WriteString("missing required session inputs:\n")
+		for _, m := range missing {
+			fmt.Fprintf(&b, "  %-12s%s\n", internalrde.ScopeLabel(m.Scope)+":", strings.Join(m.Keys, ", "))
+		}
 	}
 	fmt.Fprintf(&b, "give each one with --input KEY=VALUE, --secret-input KEY=VALUE or --saved-input KEY=SAVED_INPUT_ID, or pass --map-saved-inputs to fill them from your saved inputs ('rde template view %s' describes them)", template)
 	return b.String()
