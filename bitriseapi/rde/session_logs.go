@@ -1,11 +1,11 @@
 package rde
 
 import (
-	"bufio"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -30,10 +30,6 @@ type logStreamLine struct {
 	Result LogChunk   `json:"result"`
 	Error  *errorBody `json:"error"`
 }
-
-// maxLogLine caps the bufio.Scanner token size. Log lines can be long (stack
-// traces, base64 blobs); the default 64KiB is too small, so allow up to 1MiB.
-const maxLogLine = 1 << 20
 
 // StreamSessionLogs opens the server-streaming log endpoint for one stage of a
 // session and invokes fn for every non-empty content chunk, in order.
@@ -96,8 +92,10 @@ func (c *Client) StreamSessionLogsAttempt(ctx context.Context, workspaceID, sess
 	defer close(stop) // unblocks the reader goroutine when we return early
 
 	go func() {
-		scanner := bufio.NewScanner(resp.Body)
-		scanner.Buffer(make([]byte, 0, 64*1024), maxLogLine)
+		// A json.Decoder rather than a line scanner: a frame has no size
+		// cap, and the replay of a finished stage can arrive as one frame
+		// far larger than any sensible line limit.
+		dec := json.NewDecoder(resp.Body)
 		send := func(f frame) bool {
 			select {
 			case frames <- f:
@@ -106,14 +104,19 @@ func (c *Client) StreamSessionLogsAttempt(ctx context.Context, workspaceID, sess
 				return false
 			}
 		}
-		for scanner.Scan() {
-			line := scanner.Bytes()
-			if len(strings.TrimSpace(string(line))) == 0 {
-				continue
-			}
+		for {
 			var ln logStreamLine
-			if jerr := json.Unmarshal(line, &ln); jerr != nil {
-				send(frame{err: fmt.Errorf("decode log frame: %w", jerr)})
+			if jerr := dec.Decode(&ln); jerr != nil {
+				if errors.Is(jerr, io.EOF) {
+					send(frame{done: true})
+					return
+				}
+				var syntaxErr *json.SyntaxError
+				var typeErr *json.UnmarshalTypeError
+				if errors.As(jerr, &syntaxErr) || errors.As(jerr, &typeErr) {
+					jerr = fmt.Errorf("decode log frame: %w", jerr)
+				}
+				send(frame{err: jerr})
 				return
 			}
 			if ln.Error != nil {
@@ -127,11 +130,6 @@ func (c *Client) StreamSessionLogsAttempt(ctx context.Context, workspaceID, sess
 				return
 			}
 		}
-		if serr := scanner.Err(); serr != nil {
-			send(frame{err: serr})
-			return
-		}
-		send(frame{done: true})
 	}()
 
 	// Idle timer: armed from the start and reset on every content chunk, so it

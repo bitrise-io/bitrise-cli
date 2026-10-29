@@ -131,6 +131,16 @@ func UnclaimedWarmState(state string) bool {
 	return false
 }
 
+// unclaimedWarmSessionError is the refusal for exec, ssh and vnc on
+// unclaimed pool inventory, in the backend's words: it never shows its
+// connection details, so "not ready yet, retry" would never clear.
+func unclaimedWarmSessionError(sess Session) error {
+	return fmt.Errorf("%s", fmt.Sprintf(
+		"This session is a warm session held by warm pool %s and cannot be used or changed until it is claimed — create a session with --warm-pool %s to claim it.",
+		sess.WarmPoolID, sess.WarmPoolID,
+	))
+}
+
 // CreateWarmPoolRequest is the CLI-side request shape. Apart from Name and
 // PoolSize these are the CreateSessionRequest fields that shape the VM — a
 // pool stores what a session request could send.

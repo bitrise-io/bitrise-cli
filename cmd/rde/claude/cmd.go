@@ -277,12 +277,12 @@ func runFresh(ctx context.Context, cmd *cobra.Command, opts freshOptions) error 
 		}); err != nil {
 		return fmt.Errorf("waiting for session: %w", err)
 	}
+	// Nothing above printed why the wait failed, so these errors are left
+	// for Cobra to print.
 	if ready.Status != "running" {
-		cmdutil.SilenceRootErrors(cmd)
 		return fmt.Errorf("session ended provisioning with status %q (expected running)", ready.Status)
 	}
 	if err := internalrde.LifecycleFailure(ready); err != nil {
-		cmdutil.SilenceRootErrors(cmd)
 		return err
 	}
 

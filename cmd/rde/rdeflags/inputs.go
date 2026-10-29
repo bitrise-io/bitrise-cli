@@ -49,18 +49,19 @@ func ParseSessionInputs(plain, secret, saved []string) ([]internalrde.SessionInp
 // splitInput parses one [scope:]key=value flag value (form names the
 // unprefixed shape for the error). hook is "" without a scope prefix; a
 // prefix must be one of the known scopes (shared, on_create, on_claim,
-// on_restore).
+// on_restore). Errors name the key, never the value: a --secret-input
+// value must not end up in a terminal or CI log because of a typo.
 func splitInput(flag, kv, form string) (hook, key, value string, err error) {
 	k, v, ok := strings.Cut(kv, "=")
 	if !ok || k == "" {
-		return "", "", "", fmt.Errorf("%s %q: expected %s (the key may carry a scope prefix, scope:key)", flag, kv, form)
+		return "", "", "", fmt.Errorf("%s: expected %s (the key may carry a scope prefix, scope:key)", flag, form)
 	}
 	if scope, bare, scoped := strings.Cut(k, ":"); scoped {
 		if !isScope(scope) {
-			return "", "", "", fmt.Errorf("%s %q: unknown scope %q (one of %s)", flag, kv, scope, strings.Join(internalrde.Scopes, ", "))
+			return "", "", "", fmt.Errorf("%s %q: unknown scope %q (one of %s)", flag, k, scope, strings.Join(internalrde.Scopes, ", "))
 		}
 		if bare == "" {
-			return "", "", "", fmt.Errorf("%s %q: expected %s after the scope prefix", flag, kv, form)
+			return "", "", "", fmt.Errorf("%s %q: expected %s after the scope prefix", flag, k, form)
 		}
 		hook, k = scope, bare
 	}

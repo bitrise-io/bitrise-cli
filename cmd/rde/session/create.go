@@ -377,8 +377,10 @@ Example values:
 					return fmt.Errorf("waiting for session: %w", waitErr)
 				}
 				// A running VM is not a usable device: when one was requested,
-				// keep polling (same timeout budget) until it reports ready or failed.
-				for ready.Status == "running" && ready.Device != nil && (ready.Device.State == "" || ready.Device.State == "booting") {
+				// keep polling (same timeout budget) until it reports ready or
+				// failed — unless a hook failed, which is the answer already.
+				for ready.Status == "running" && internalrde.LifecycleFailure(ready) == nil &&
+					ready.Device != nil && (ready.Device.State == "" || ready.Device.State == "booting") {
 					select {
 					case <-waitCtx.Done():
 						return fmt.Errorf("waiting for device: %w", waitCtx.Err())
@@ -402,7 +404,9 @@ Example values:
 					if renderErr := output.Render(cmd.OutOrStdout(), format, res, renderCreateResult); renderErr != nil {
 						return renderErr
 					}
-					cmdutil.SilenceRootErrors(cmd)
+					// No SilenceRootErrors: the rendered session doesn't say what
+					// went wrong or which log to read, so the error goes to stderr
+					// too — the only diagnostic with --output json.
 					if deviceFailed {
 						return fmt.Errorf("session is running but its device failed to boot: %s", ready.Device.DeviceNotes)
 					}

@@ -1,6 +1,9 @@
 package rdeflags
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestParseSessionInputs(t *testing.T) {
 	got, err := ParseSessionInputs(
@@ -84,5 +87,19 @@ func TestParseSessionInputs_ScopePrefix(t *testing.T) {
 	}
 	if _, err := ParseSessionInputs(nil, nil, []string{"on_claim:key="}); err == nil {
 		t.Error("expected error for a scoped --saved-input with empty ID")
+	}
+}
+
+// A malformed --secret-input must not print its value.
+func TestParseSessionInputs_ErrorsNeverEchoTheValue(t *testing.T) {
+	const secret = "s3cr3t-value"
+	for _, bad := range []string{"on-claim:TOKEN=" + secret, ":TOKEN=" + secret, "on_claim:=" + secret, secret} {
+		_, err := ParseSessionInputs(nil, []string{bad}, nil)
+		if err == nil {
+			t.Fatalf("expected error for --secret-input %q", bad)
+		}
+		if strings.Contains(err.Error(), secret) {
+			t.Errorf("error for a malformed --secret-input prints its value: %v", err)
+		}
 	}
 }

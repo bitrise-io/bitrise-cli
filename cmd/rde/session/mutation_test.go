@@ -1020,6 +1020,54 @@ func TestCreateCmd_WaitLifecycleFailedExitsNonZero(t *testing.T) {
 	}
 }
 
+// TestCreateCmd_WaitLifecycleFailedReportsOnStderr: the session goes to
+// stdout, and the failure with its log hint to stderr, so --output json
+// callers see why the command exited 1.
+func TestCreateCmd_WaitLifecycleFailedReportsOnStderr(t *testing.T) {
+	body := `{"session":{"id":"` + uuidSession + `","name":"hooks-check","status":"SESSION_STATUS_RUNNING","lifecycle":{"mode":"hooks","phase":"LIFECYCLE_PHASE_SETUP_FAILED"}}}`
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, body)
+	}))
+	defer srv.Close()
+
+	stdout, stderr, err := run(t, newCreateCmd(), srv.URL, "ws-1",
+		[]string{"hooks-check", "--template", uuidTemplate, "--wait"}, output.JSON)
+	if err == nil {
+		t.Fatal("expected a non-zero exit")
+	}
+	if !strings.Contains(stdout, uuidSession) {
+		t.Errorf("stdout should carry the session JSON:\n%s", stdout)
+	}
+	if !strings.Contains(stderr, "--stage on-create") {
+		t.Errorf("stderr should carry the failure and its log hint:\n%s", stderr)
+	}
+}
+
+// TestCreateCmd_WaitLifecycleFailedStopsDeviceWait: a failed hook ends the
+// wait even while the device still reports booting.
+func TestCreateCmd_WaitLifecycleFailedStopsDeviceWait(t *testing.T) {
+	deviceWaitPollInterval = time.Millisecond
+	t.Cleanup(func() { deviceWaitPollInterval = 3 * time.Second })
+	body := `{"session":{"id":"` + uuidSession + `","name":"ios-check","status":"SESSION_STATUS_RUNNING","device":{"spec":{"platform":"ios"},"state":"PREVIEW_DEVICE_STATE_BOOTING"},"lifecycle":{"mode":"hooks","phase":"LIFECYCLE_PHASE_SETUP_FAILED"}}}`
+	var getCount int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet && r.URL.Path == "/v1/workspaces/ws-1/sessions/"+uuidSession {
+			getCount++
+		}
+		_, _ = io.WriteString(w, body)
+	}))
+	defer srv.Close()
+
+	_, _, err := run(t, newCreateCmd(), srv.URL, "ws-1",
+		[]string{"ios-check", "--device-platform", "ios", "--wait", "--wait-timeout", "2s"}, output.Human)
+	if err == nil || !strings.Contains(err.Error(), "On create hook failed") {
+		t.Fatalf("expected the hook failure, got %v", err)
+	}
+	if getCount != 1 {
+		t.Errorf("the device wait must not poll after a hook failed, got %d GETs", getCount)
+	}
+}
+
 // TestCreateCmd_WaitLifecycleReadyIsSuccess: a hooks session whose phase is
 // ready exits 0 like a legacy running session.
 func TestCreateCmd_WaitLifecycleReadyIsSuccess(t *testing.T) {

@@ -930,6 +930,15 @@ func LifecycleFailure(sess Session) error {
 		what, stage = "its On create hook failed", LogStageOnCreate
 	case "personalization_failed":
 		what, stage = "its system setup or On claim hook failed", LogStageOnClaim
+		// The phase covers both steps; the last run that ended badly says
+		// which one, and so which log holds its output.
+		if run, ok := lastFailedRun(sess.Lifecycle.Runs, "personalize", "on_claim"); ok {
+			if run.Hook == "personalize" {
+				what, stage = "its system setup step failed", LogStagePersonalize
+			} else {
+				what = "its On claim hook failed"
+			}
+		}
 	case "restore_failed":
 		what, stage = "its On restore hook failed", LogStageOnRestore
 	default:
@@ -937,6 +946,23 @@ func LifecycleFailure(sess Session) error {
 	}
 	return fmt.Errorf("session %s is running but %s (lifecycle phase %q); see 'rde session logs %s --stage %s' and 'rde session view %s'",
 		sess.ID, what, sess.Lifecycle.Phase, sess.ID, stage, sess.ID)
+}
+
+// lastFailedRun returns the newest failed or interrupted run of one of the
+// given hooks.
+func lastFailedRun(runs []HookRun, hooks ...string) (HookRun, bool) {
+	for i := len(runs) - 1; i >= 0; i-- {
+		r := runs[i]
+		if r.State != "failed" && r.State != "interrupted" {
+			continue
+		}
+		for _, h := range hooks {
+			if r.Hook == h {
+				return r, true
+			}
+		}
+	}
+	return HookRun{}, false
 }
 
 // WaitForSSHReady polls GetSession until the session's SSH endpoint is usable

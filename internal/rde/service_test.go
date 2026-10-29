@@ -626,6 +626,41 @@ func TestWaitForReady_HooksSessionSettlesOnFailureAndUnknownPhases(t *testing.T)
 	}
 }
 
+// personalization_failed covers both System setup and On claim; the hint
+// points at the log of the one that failed.
+func TestLifecycleFailure_PersonalizationNamesTheFailedStep(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		runs      []HookRun
+		wantErr   string
+		wantStage string
+	}{
+		{"system setup failed", []HookRun{
+			{Hook: "on_create", State: "succeeded"},
+			{Hook: "personalize", State: "failed"},
+			{Hook: "on_claim", State: "skipped"},
+		}, "system setup step failed", "personalize"},
+		{"On claim failed", []HookRun{
+			{Hook: "personalize", State: "succeeded"},
+			{Hook: "on_claim", State: "failed"},
+		}, "On claim hook failed", "on-claim"},
+		{"newest failure wins", []HookRun{
+			{Hook: "personalize", State: "failed", Attempt: 1},
+			{Hook: "personalize", State: "succeeded", Attempt: 2},
+			{Hook: "on_claim", State: "interrupted"},
+		}, "On claim hook failed", "on-claim"},
+		{"no runs reported", nil, "system setup or On claim", "on-claim"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			sess := Session{ID: "s1", Lifecycle: &SessionLifecycle{Mode: "hooks", Phase: "personalization_failed", Runs: tc.runs}}
+			err := LifecycleFailure(sess)
+			if err == nil || !strings.Contains(err.Error(), tc.wantErr) || !strings.Contains(err.Error(), "--stage "+tc.wantStage+"'") {
+				t.Errorf("LifecycleFailure = %v, want it to name %q and --stage %s", err, tc.wantErr, tc.wantStage)
+			}
+		})
+	}
+}
+
 // A legacy session returns at "running", exactly as before — with no
 // lifecycle block (older backends) and with the one the backend sends today
 // (mode "legacy", no phase), which must not read as "setting up".
@@ -711,6 +746,22 @@ func TestSSHTargetForSession_RefusedOnUnclaimedWarmSession(t *testing.T) {
 	}
 	if _, err := sshTargetForSession(claimed); err != nil {
 		t.Fatalf("claimed: err = %v, want the dial target", err)
+	}
+}
+
+// VNC gets the same claim-first refusal, ahead of its "no VNC endpoint
+// … still provisioning" check.
+func TestVNCCredentialsFromSession_RefusedOnUnclaimedWarmSession(t *testing.T) {
+	for _, state := range []string{"warming", "ready", "retiring"} {
+		sess := Session{Status: "running", WarmPoolID: "pool-1", WarmState: state}
+		_, err := VNCCredentialsFromSession(sess)
+		if err == nil || !strings.Contains(err.Error(), "warm session held by warm pool pool-1") {
+			t.Errorf("%s: err = %v, want the claim-first refusal", state, err)
+		}
+	}
+	claimed := Session{Status: "running", VNCAddress: "vnc://h.example:5900", WarmPoolID: "pool-1", WarmState: WarmStateClaimed}
+	if _, err := VNCCredentialsFromSession(claimed); err != nil {
+		t.Fatalf("claimed: err = %v, want the credentials", err)
 	}
 }
 

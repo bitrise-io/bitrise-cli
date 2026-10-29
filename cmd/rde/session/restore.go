@@ -83,7 +83,9 @@ and then immediately use the session without hand-rolling a poll loop.`,
 					if renderErr := output.Render(cmd.OutOrStdout(), format, restored, renderSessionDetail); renderErr != nil {
 						return renderErr
 					}
-					cmdutil.SilenceRootErrors(cmd)
+					// No SilenceRootErrors: the rendered session doesn't say what
+					// went wrong or which log to read, so the error goes to stderr
+					// too — the only diagnostic with --output json.
 					if lifecycleErr != nil {
 						return lifecycleErr
 					}
