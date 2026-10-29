@@ -59,6 +59,9 @@ func (s *Service) SessionExposesVNC(ctx context.Context, workspaceID, sessionID 
 // loaded Session. Split from GetSessionVNC so callers that already hold a
 // Session (e.g. `session create --wait`) can reuse it without a second GET.
 func VNCCredentialsFromSession(sess Session) (VNCCredentials, error) {
+	if UnclaimedWarmState(sess.WarmState) {
+		return VNCCredentials{}, unclaimedWarmSessionError(sess)
+	}
 	if sess.VNCAddress == "" {
 		if sess.Status != "running" && sess.Status != "" {
 			return VNCCredentials{}, fmt.Errorf(

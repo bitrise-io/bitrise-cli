@@ -18,11 +18,18 @@ type Template struct {
 	StackID     string `json:"stackId,omitempty"`
 	// Image is retained only as a read fallback for templates created before
 	// stackId was populated.
-	Image             string             `json:"image,omitempty"`
-	MachineType       string             `json:"machineType,omitempty"`
-	WorkingDirectory  string             `json:"workingDirectory,omitempty"`
-	StartupScript     string             `json:"startupScript,omitempty"`
-	WarmupScript      string             `json:"warmupScript,omitempty"`
+	Image            string `json:"image,omitempty"`
+	MachineType      string `json:"machineType,omitempty"`
+	WorkingDirectory string `json:"workingDirectory,omitempty"`
+	StartupScript    string `json:"startupScript,omitempty"`
+	WarmupScript     string `json:"warmupScript,omitempty"`
+	// LifecycleMode says how the template's scripts are stored and run:
+	// "legacy" (StartupScript / WarmupScript, the platform's two boot
+	// stages) or "hooks" (Hooks, run on the booted machine by the RDE
+	// runner). On a "hooks" template StartupScript reads back as a
+	// generated, read-only equivalent of the hooks.
+	LifecycleMode     string             `json:"lifecycleMode,omitempty"`
+	Hooks             *TemplateHooks     `json:"hooks,omitempty"`
 	CreatedByEmail    string             `json:"createdByEmail,omitempty"`
 	TemplateVariables []TemplateVariable `json:"templateVariables,omitempty"`
 	SessionInputs     []SessionInputDef  `json:"sessionInputs,omitempty"`
@@ -36,6 +43,18 @@ type Template struct {
 	UpdatedAt  string      `json:"updatedAt,omitempty"`
 }
 
+// TemplateHooks are a template's lifecycle hook scripts (bash). On create
+// runs once when the session is created (on a warm pool: when the pool warms
+// the machine); On claim runs on every claim; On restore runs every time a
+// stopped session is restored. nil means the template does not have the
+// hook; an added hook runs even when its script is empty ("" finishes at
+// once, exit 0).
+type TemplateHooks struct {
+	OnCreate  *string `json:"onCreate,omitempty"`
+	OnClaim   *string `json:"onClaim,omitempty"`
+	OnRestore *string `json:"onRestore,omitempty"`
+}
+
 // TemplateVariable is a baked-in template variable.
 //
 // Secret values (IsSecret=true) are only returned by the backend when a
@@ -46,11 +65,23 @@ type Template struct {
 // empty for secret variables, and the mapper masks it again as
 // defense-in-depth in case the backend default ever changes.
 type TemplateVariable struct {
-	ID             string `json:"id,omitempty"`
-	Key            string `json:"key"`
-	Value          string `json:"value,omitempty"`
-	IsSecret       bool   `json:"isSecret,omitempty"`
-	ExposeAsEnvVar bool   `json:"exposeAsEnvVar,omitempty"`
+	ID       string `json:"id,omitempty"`
+	Key      string `json:"key"`
+	Value    string `json:"value,omitempty"`
+	IsSecret bool   `json:"isSecret,omitempty"`
+	// ExposeAsEnvVar ("Also in terminal"): the value is also written to the
+	// session's shell profile when its scope's step runs. Refused on a
+	// protected variable.
+	ExposeAsEnvVar bool `json:"exposeAsEnvVar,omitempty"`
+	// Hook is the scope that receives the variable: "" or "shared" reaches
+	// every hook; "on_create", "on_claim" or "on_restore" reach that hook
+	// only (templates with lifecycle hooks). Keys are unique per scope; the
+	// hook's own value wins over a shared value of the same key.
+	Hook string `json:"hook,omitempty"`
+	// Protected: write-only — the API never returns the value (reads give an
+	// empty Value with IsSecret true, whatever include_secrets says); an
+	// empty value on update keeps the stored one. Implies IsSecret.
+	Protected bool `json:"protected,omitempty"`
 }
 
 // SessionInputDef defines an input the template prompts for at session
@@ -63,6 +94,13 @@ type SessionInputDef struct {
 	Required       bool   `json:"required,omitempty"`
 	DefaultValue   string `json:"defaultValue,omitempty"`
 	ExposeAsEnvVar bool   `json:"exposeAsEnvVar,omitempty"`
+	// Hook is the scope that receives the input: "" or "shared" reaches
+	// every hook and is supplied when the session or the pool is created;
+	// "on_create" is supplied with the pool (or the direct create) and
+	// reaches On create only; "on_claim" and "on_restore" are supplied by
+	// whoever claims (or at a direct create) and reach that hook only.
+	// Keys are unique per scope; the same key may exist on several scopes.
+	Hook string `json:"hook,omitempty"`
 }
 
 // FeatureFlag is a toggleable feature on a template.
@@ -95,6 +133,12 @@ type TemplateVariableCreate struct {
 	Value          string `json:"value,omitempty"`
 	IsSecret       bool   `json:"isSecret,omitempty"`
 	ExposeAsEnvVar bool   `json:"exposeAsEnvVar,omitempty"`
+	// Hook: see TemplateVariable.Hook. Empty means shared; a per-hook scope
+	// needs a template with lifecycle hooks.
+	Hook string `json:"hook,omitempty"`
+	// Protected: see TemplateVariable.Protected. An empty Value on update
+	// keeps the stored one.
+	Protected bool `json:"protected,omitempty"`
 }
 
 // SessionInputCreate is the create-time shape of a session input definition.
@@ -104,6 +148,9 @@ type SessionInputCreate struct {
 	Required       bool   `json:"required,omitempty"`
 	DefaultValue   string `json:"defaultValue,omitempty"`
 	ExposeAsEnvVar bool   `json:"exposeAsEnvVar,omitempty"`
+	// Hook: see SessionInputDef.Hook. Empty means shared; a per-hook scope
+	// needs a template with lifecycle hooks.
+	Hook string `json:"hook,omitempty"`
 }
 
 // FeatureFlagCreate is the create-time shape of a feature flag.
@@ -132,6 +179,10 @@ type CreateTemplateRequest struct {
 	SessionInputs     []SessionInputCreate     `json:"sessionInputs,omitempty"`
 	FeatureFlags      []FeatureFlagCreate      `json:"featureFlags,omitempty"`
 	WorkspaceLinks    []WorkspaceLinkCreate    `json:"workspaceLinks,omitempty"`
+	// Hooks makes this a template with lifecycle hooks (cannot be combined
+	// with StartupScript / WarmupScript; requires lifecycle hooks to be
+	// available on the workspace).
+	Hooks *TemplateHooks `json:"hooks,omitempty"`
 	// DeviceSpec declares the device sessions created from the template boot
 	// by default (optional).
 	DeviceSpec *DeviceSpec `json:"deviceSpec,omitempty"`
@@ -160,6 +211,10 @@ type UpdateTemplateRequest struct {
 	UpdateWorkspaceLinks    bool                     `json:"updateWorkspaceLinks,omitempty"`
 	DeviceSpec              *DeviceSpec              `json:"deviceSpec,omitempty"`
 	UpdateDeviceSpec        bool                     `json:"updateDeviceSpec,omitempty"`
+	// Hooks replaces the template's lifecycle hooks as a whole when
+	// UpdateHooks is set (and turns a legacy template into a hooks template).
+	Hooks       *TemplateHooks `json:"hooks,omitempty"`
+	UpdateHooks bool           `json:"updateHooks,omitempty"`
 }
 
 // ListTemplates returns every template visible in the workspace.

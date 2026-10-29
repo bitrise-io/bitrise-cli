@@ -43,10 +43,12 @@ bitrise-cli rde session [flags]
 * [bitrise-cli rde session download](bitrise-cli_rde_session_download.md)	 - Download a file or directory from a session
 * [bitrise-cli rde session exec](bitrise-cli_rde_session_exec.md)	 - Run a command on a session over SSH
 * [bitrise-cli rde session list](bitrise-cli_rde_session_list.md)	 - List RDE sessions in the workspace
-* [bitrise-cli rde session logs](bitrise-cli_rde_session_logs.md)	 - Print a session's warmup or startup logs
+* [bitrise-cli rde session logs](bitrise-cli_rde_session_logs.md)	 - Print a session's warmup, startup or lifecycle-hook logs
 * [bitrise-cli rde session notifications](bitrise-cli_rde_session_notifications.md)	 - List notifications emitted by a session
 * [bitrise-cli rde session open-vnc](bitrise-cli_rde_session_open-vnc.md)	 - Open a session's VNC endpoint in the OS-default viewer
+* [bitrise-cli rde session rebuild](bitrise-cli_rde_session_rebuild.md)	 - Replace a session's machine and run its lifecycle hooks again from On create
 * [bitrise-cli rde session restore](bitrise-cli_rde_session_restore.md)	 - Restore a terminated session (re-provisions its VM from the persistent disk)
+* [bitrise-cli rde session run-hook](bitrise-cli_rde_session_run-hook.md)	 - Queue a lifecycle hook to run again on a session (keeps the machine)
 * [bitrise-cli rde session ssh](bitrise-cli_rde_session_ssh.md)	 - Print SSH connection details (command, host, port, user, password) for a session
 * [bitrise-cli rde session terminate](bitrise-cli_rde_session_terminate.md)	 - Terminate a running session but keep it for a later restore
 * [bitrise-cli rde session update](bitrise-cli_rde_session_update.md)	 - Update a session's name, description, auto-terminate duration, or labels

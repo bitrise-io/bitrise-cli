@@ -3,6 +3,7 @@ package template
 import (
 	"fmt"
 	"io"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -60,6 +61,9 @@ func renderDetail(w io.Writer, t internalrde.Template) error {
 	if t.WorkingDirectory != "" {
 		ew.F("%s%s\n", lbl("Working dir:"), t.WorkingDirectory)
 	}
+	if t.LifecycleMode != "" {
+		ew.F("%s%s\n", lbl("Lifecycle:"), lifecycleModeText(s, t))
+	}
 	if t.DeviceSpec != nil {
 		ew.F("%s%s\n", lbl("Device:"), t.DeviceSpec.Summary())
 	}
@@ -69,15 +73,33 @@ func renderDetail(w io.Writer, t internalrde.Template) error {
 	if t.UpdatedAt != nil {
 		ew.F("%s%s\n", lbl("Updated:"), t.UpdatedAt.UTC().Format("2006-01-02 15:04 UTC"))
 	}
+	if h := t.Hooks; h != nil {
+		ew.Ln()
+		ew.Ln(s.Dim.Render("Lifecycle hooks"))
+		for _, hook := range []struct {
+			name   string
+			script *string
+		}{
+			{"On create", h.OnCreate}, {"On claim", h.OnClaim}, {"On restore", h.OnRestore},
+		} {
+			ew.F("  %-12s%s\n", hook.name, hookScriptSummary(s, hook.script))
+		}
+	}
+	// Scopes matter on a hooks template only: a legacy template's values are
+	// all shared, so tagging them would be noise.
+	showScopes := t.LifecycleMode == "hooks"
 	if len(t.SessionInputs) > 0 {
 		ew.Ln()
 		ew.Ln(s.Dim.Render("Session inputs"))
 		for _, i := range t.SessionInputs {
-			req := ""
+			var tags []string
 			if i.Required {
-				req = " (required)"
+				tags = append(tags, "required")
 			}
-			ew.F("  %s%s\n", i.Key, req)
+			if showScopes {
+				tags = append(tags, scopeTag(i.Hook))
+			}
+			ew.F("  %s%s\n", i.Key, tagList(tags))
 			if i.Description != "" {
 				ew.F("    %s\n", s.Dim.Render(i.Description))
 			}
@@ -92,14 +114,63 @@ func renderDetail(w io.Writer, t internalrde.Template) error {
 	}
 	if len(t.TemplateVariables) > 0 {
 		ew.Ln()
-		ew.Ln(s.Dim.Render("Template variables"))
+		ew.Ln(s.Dim.Render("Variables"))
 		for _, v := range t.TemplateVariables {
-			label := v.Key
-			if v.IsSecret {
-				label += " (secret)"
+			var tags []string
+			switch {
+			case v.Protected:
+				tags = append(tags, "protected")
+			case v.IsSecret:
+				tags = append(tags, "secret")
 			}
-			ew.F("  %s\n", label)
+			if showScopes {
+				tags = append(tags, scopeTag(v.Hook))
+			}
+			ew.F("  %s%s\n", v.Key, tagList(tags))
 		}
 	}
 	return ew.Err
+}
+
+// scopeTag renders a value's scope for a listing: "shared", "on create",
+// "on claim" or "on restore".
+func scopeTag(hook string) string {
+	return strings.ToLower(internalrde.ScopeLabel(hook))
+}
+
+// tagList renders listing tags as " (a, b)", or "" when there are none.
+func tagList(tags []string) string {
+	if len(tags) == 0 {
+		return ""
+	}
+	return " (" + strings.Join(tags, ", ") + ")"
+}
+
+// lifecycleModeText renders how the template's scripts run. The mode is
+// passed through verbatim (a value added after this code was written
+// renders as-is).
+func lifecycleModeText(s style.Styles, t internalrde.Template) string {
+	switch t.LifecycleMode {
+	case "hooks":
+		return "hooks" + s.Dim.Render(" — On create / On claim / On restore run on the booted machine")
+	case "legacy":
+		return "legacy" + s.Dim.Render(" — warmup and startup scripts")
+	}
+	return t.LifecycleMode
+}
+
+// hookScriptSummary says whether a hook is set and how big it is; the text
+// itself is in --output json.
+func hookScriptSummary(s style.Styles, script *string) string {
+	if script == nil {
+		return s.Dim.Render("(not added)")
+	}
+	if strings.TrimSpace(*script) == "" {
+		return "empty (runs and finishes at once)"
+	}
+	lines := strings.Count(strings.TrimRight(*script, "\n"), "\n") + 1
+	if lines == 1 {
+		return "1 line"
+	}
+	return fmt.Sprintf("%d lines", lines)
 }

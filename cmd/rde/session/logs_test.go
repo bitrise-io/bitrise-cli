@@ -156,3 +156,21 @@ func TestLogsCmd_BadStageErrorsBeforeNetwork(t *testing.T) {
 		t.Errorf("stderr = %q, header should not print before validation fails", stderr)
 	}
 }
+
+func TestLogsCmd_HookStageMapsToEnum(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if want := "/v1/workspaces/ws-1/sessions/" + testSessionID + "/logs/3"; r.URL.Path != want { // on-create -> 3
+			t.Errorf("path = %s, want %s", r.URL.Path, want)
+		}
+		writeFrames(w, logFrame("cloning\n"))
+	}))
+	defer srv.Close()
+
+	stdout, _, err := run(t, logsCmd(), srv.URL, "ws-1", []string{testSessionID, "--stage", "on-create"}, output.Human)
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if stdout != "cloning\n" {
+		t.Errorf("stdout = %q", stdout)
+	}
+}

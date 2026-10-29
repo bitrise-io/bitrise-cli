@@ -78,11 +78,17 @@ and then immediately use the session without hand-rolling a poll loop.`,
 					return fmt.Errorf("waiting for session: %w", waitErr)
 				}
 				restored = ready
-				if ready.Status != "running" {
+				lifecycleErr := internalrde.LifecycleFailure(ready)
+				if ready.Status != "running" || lifecycleErr != nil {
 					if renderErr := output.Render(cmd.OutOrStdout(), format, restored, renderSessionDetail); renderErr != nil {
 						return renderErr
 					}
-					cmdutil.SilenceRootErrors(cmd)
+					// No SilenceRootErrors: the rendered session doesn't say what
+					// went wrong or which log to read, so the error goes to stderr
+					// too — the only diagnostic with --output json.
+					if lifecycleErr != nil {
+						return lifecycleErr
+					}
 					return fmt.Errorf("session ended provisioning with status %q (expected running)", ready.Status)
 				}
 			}
@@ -90,7 +96,7 @@ and then immediately use the session without hand-rolling a poll loop.`,
 			return output.Render(cmd.OutOrStdout(), format, restored, renderSessionDetail)
 		},
 	}
-	c.Flags().BoolVar(&wait, "wait", false, "wait until the session leaves provisioning (running, failed, …) before returning; exits 1 if the final status isn't running")
+	c.Flags().BoolVar(&wait, "wait", false, "wait until the session leaves provisioning (running, failed, …) and, on a lifecycle-hooks session, until its hooks are done before returning; exits 1 if the final status isn't running or a hook failed")
 	c.Flags().DurationVar(&waitTimeout, "wait-timeout", 10*time.Minute, "max time to wait when --wait is set (Go duration syntax: 30s, 5m, 1h)")
 	return c
 }

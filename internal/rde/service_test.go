@@ -536,3 +536,249 @@ func TestLegacyImageFallsBackToStackID(t *testing.T) {
 		t.Errorf("snapshot StackID = %q, want fallback to image osx-26-edge", got.StackID)
 	}
 }
+
+// A lifecycle-hooks session reports "running" as soon as the machine is up,
+// before On create (the migrated warmup) has finished: the wait must not stop
+// there, or a caller's next command races the setup.
+func TestWaitForReady_HooksSessionWaitsForLifecyclePhase(t *testing.T) {
+	var calls int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		calls++
+		switch calls {
+		case 1:
+			_, _ = io.WriteString(w, `{"session":{"id":"s1","status":"SESSION_STATUS_STARTING"}}`)
+		case 2:
+			// running, lifecycle not derived yet
+			_, _ = io.WriteString(w, `{"session":{"id":"s1","status":"SESSION_STATUS_RUNNING","lifecycle":{"mode":"hooks"}}}`)
+		case 3:
+			_, _ = io.WriteString(w, `{"session":{"id":"s1","status":"SESSION_STATUS_RUNNING","lifecycle":{"mode":"hooks","phase":"LIFECYCLE_PHASE_SETTING_UP"}}}`)
+		case 4:
+			_, _ = io.WriteString(w, `{"session":{"id":"s1","status":"SESSION_STATUS_RUNNING","lifecycle":{"mode":"hooks","phase":"LIFECYCLE_PHASE_PERSONALIZING"}}}`)
+		default:
+			_, _ = io.WriteString(w, `{"session":{"id":"s1","status":"SESSION_STATUS_RUNNING","lifecycle":{"mode":"hooks","phase":"LIFECYCLE_PHASE_READY"}}}`)
+		}
+	}))
+	t.Cleanup(srv.Close)
+
+	svc := NewService(rdeapi.New(srv.URL, "tok"))
+	var seen []string
+	sess, err := svc.WaitForReady(context.Background(), "ws-1", "s1", time.Millisecond, func(status string) {
+		seen = append(seen, status)
+	})
+	if err != nil {
+		t.Fatalf("WaitForReady: %v", err)
+	}
+	if calls < 5 {
+		t.Errorf("expected the wait to poll through the lifecycle phases (5 polls), got %d", calls)
+	}
+	if sess.Status != "running" || sess.Lifecycle == nil || sess.Lifecycle.Phase != "ready" {
+		t.Errorf("returned status=%q lifecycle=%+v, want running + phase ready", sess.Status, sess.Lifecycle)
+	}
+	want := []string{"starting", "running: setting up", "running: setting_up", "running: personalizing", "running"}
+	if strings.Join(seen, ",") != strings.Join(want, ",") {
+		t.Errorf("onPoll statuses = %v, want %v", seen, want)
+	}
+	if LifecycleFailure(sess) != nil {
+		t.Errorf("a ready session is not a lifecycle failure")
+	}
+}
+
+// A failure phase settles the wait (the caller turns it into an error via
+// LifecycleFailure); an unknown phase settles it too, so a newer backend
+// can't make the wait spin until its timeout.
+func TestWaitForReady_HooksSessionSettlesOnFailureAndUnknownPhases(t *testing.T) {
+	for _, tc := range []struct {
+		phase     string
+		wantErr   string
+		wantStage string
+	}{
+		{"LIFECYCLE_PHASE_SETUP_FAILED", "On create", "on-create"},
+		{"LIFECYCLE_PHASE_PERSONALIZATION_FAILED", "On claim", "on-claim"},
+		{"LIFECYCLE_PHASE_RESTORE_FAILED", "On restore", "on-restore"},
+		{"LIFECYCLE_PHASE_SOMETHING_NEW", "", ""},
+	} {
+		t.Run(tc.phase, func(t *testing.T) {
+			var calls int
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				calls++
+				_, _ = io.WriteString(w, `{"session":{"id":"s1","status":"SESSION_STATUS_RUNNING","lifecycle":{"mode":"hooks","phase":"`+tc.phase+`"}}}`)
+			}))
+			t.Cleanup(srv.Close)
+			svc := NewService(rdeapi.New(srv.URL, "tok"))
+			sess, err := svc.WaitForReady(context.Background(), "ws-1", "s1", time.Millisecond, nil)
+			if err != nil {
+				t.Fatalf("WaitForReady: %v", err)
+			}
+			if calls != 1 {
+				t.Errorf("a settled phase must return on the first poll, got %d polls", calls)
+			}
+			ferr := LifecycleFailure(sess)
+			if tc.wantErr == "" {
+				if ferr != nil {
+					t.Errorf("unexpected failure error: %v", ferr)
+				}
+				return
+			}
+			if ferr == nil || !strings.Contains(ferr.Error(), tc.wantErr) || !strings.Contains(ferr.Error(), "--stage "+tc.wantStage) {
+				t.Errorf("LifecycleFailure = %v, want it to name %q and --stage %s", ferr, tc.wantErr, tc.wantStage)
+			}
+		})
+	}
+}
+
+// personalization_failed covers both System setup and On claim; the hint
+// points at the log of the one that failed.
+func TestLifecycleFailure_PersonalizationNamesTheFailedStep(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		runs      []HookRun
+		wantErr   string
+		wantStage string
+	}{
+		{"system setup failed", []HookRun{
+			{Hook: "on_create", State: "succeeded"},
+			{Hook: "personalize", State: "failed"},
+			{Hook: "on_claim", State: "skipped"},
+		}, "system setup step failed", "personalize"},
+		{"On claim failed", []HookRun{
+			{Hook: "personalize", State: "succeeded"},
+			{Hook: "on_claim", State: "failed"},
+		}, "On claim hook failed", "on-claim"},
+		{"newest failure wins", []HookRun{
+			{Hook: "personalize", State: "failed", Attempt: 1},
+			{Hook: "personalize", State: "succeeded", Attempt: 2},
+			{Hook: "on_claim", State: "interrupted"},
+		}, "On claim hook failed", "on-claim"},
+		{"no runs reported", nil, "system setup or On claim", "on-claim"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			sess := Session{ID: "s1", Lifecycle: &SessionLifecycle{Mode: "hooks", Phase: "personalization_failed", Runs: tc.runs}}
+			err := LifecycleFailure(sess)
+			if err == nil || !strings.Contains(err.Error(), tc.wantErr) || !strings.Contains(err.Error(), "--stage "+tc.wantStage+"'") {
+				t.Errorf("LifecycleFailure = %v, want it to name %q and --stage %s", err, tc.wantErr, tc.wantStage)
+			}
+		})
+	}
+}
+
+// A legacy session returns at "running", exactly as before — with no
+// lifecycle block (older backends) and with the one the backend sends today
+// (mode "legacy", no phase), which must not read as "setting up".
+func TestWaitForReady_LegacySessionReturnsAtRunning(t *testing.T) {
+	for name, body := range map[string]string{
+		"no lifecycle":          `{"session":{"id":"s1","status":"SESSION_STATUS_RUNNING"}}`,
+		"legacy lifecycle mode": `{"session":{"id":"s1","status":"SESSION_STATUS_RUNNING","lifecycle":{"mode":"legacy","phase":"LIFECYCLE_PHASE_UNSPECIFIED","runs":[]}}}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			var calls int
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				calls++
+				_, _ = io.WriteString(w, body)
+			}))
+			t.Cleanup(srv.Close)
+			svc := NewService(rdeapi.New(srv.URL, "tok"))
+			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+			defer cancel()
+			sess, err := svc.WaitForReady(ctx, "ws-1", "s1", time.Millisecond, nil)
+			if err != nil {
+				t.Fatalf("WaitForReady: %v", err)
+			}
+			if calls != 1 || sess.Status != "running" {
+				t.Errorf("legacy session: calls=%d status=%q, want one poll, running", calls, sess.Status)
+			}
+			if LifecycleFailure(sess) != nil {
+				t.Errorf("a legacy session is never a lifecycle failure")
+			}
+		})
+	}
+}
+
+func TestOnCreateInFlight(t *testing.T) {
+	cases := []struct {
+		name string
+		lc   *SessionLifecycle
+		want bool
+	}{
+		{"legacy session", nil, false},
+		{"on create running", &SessionLifecycle{Phase: "setting_up", Runs: []HookRun{{Hook: HookOnCreate, State: "running"}}}, true},
+		{"on create pending", &SessionLifecycle{Phase: "setting_up", Runs: []HookRun{{Hook: HookOnCreate, State: "pending"}}}, true},
+		{"on create done, on claim running", &SessionLifecycle{Phase: "personalizing", Runs: []HookRun{{Hook: HookOnCreate, State: "succeeded"}, {Hook: HookOnClaim, State: "running"}}}, false},
+		{"on create failed at the limit", &SessionLifecycle{Phase: "setup_failed", Runs: []HookRun{{Hook: HookOnCreate, State: "failed", ExitCode: HookExitCodeOnCreateLimit}}}, false},
+		{"rebuild queued a new on create", &SessionLifecycle{Phase: "setting_up", Runs: []HookRun{{Hook: HookOnCreate, State: "failed"}, {Hook: HookOnCreate, State: "pending", Attempt: 2}}}, true},
+	}
+	for _, tc := range cases {
+		if got := OnCreateInFlight(tc.lc); got != tc.want {
+			t.Errorf("%s: OnCreateInFlight = %v, want %v", tc.name, got, tc.want)
+		}
+	}
+}
+
+// The SSH pre-flight shared by exec and ssh applies the backend's access
+// gate: no dial while On create is pending or running, in the backend's words.
+func TestSSHTargetForSession_GatedDuringOnCreate(t *testing.T) {
+	sess := Session{
+		Status: "running", SSHAddress: "ssh vagrant@h.example -p 2222", SSHPassword: "pw", SSHConnectionOpen: true,
+		Lifecycle: &SessionLifecycle{Phase: "setting_up", Runs: []HookRun{{Hook: HookOnCreate, State: "running"}}},
+	}
+	if _, err := sshTargetForSession(sess); err == nil || err.Error() != ErrSessionSettingUp {
+		t.Fatalf("err = %v, want %q", err, ErrSessionSettingUp)
+	}
+	sess.Lifecycle.Phase, sess.Lifecycle.Runs[0].State = "ready", "succeeded"
+	if _, err := sshTargetForSession(sess); err != nil {
+		t.Fatalf("err = %v, want the dial target once On create is done", err)
+	}
+}
+
+// An unclaimed warm session never shows its connection details: the
+// pre-flight says it has to be claimed first instead of "retry", which
+// would never succeed.
+func TestSSHTargetForSession_RefusedOnUnclaimedWarmSession(t *testing.T) {
+	for _, state := range []string{"warming", "ready", "retiring"} {
+		sess := Session{Status: "running", WarmPoolID: "pool-1", WarmState: state}
+		_, err := sshTargetForSession(sess)
+		if err == nil || !strings.Contains(err.Error(), "warm session held by warm pool pool-1") || !strings.Contains(err.Error(), "--warm-pool pool-1") {
+			t.Errorf("%s: err = %v, want the claim-first refusal", state, err)
+		}
+	}
+	claimed := Session{
+		Status: "running", SSHAddress: "ssh ubuntu@h.example -p 2222", SSHPassword: "pw", SSHConnectionOpen: true,
+		WarmPoolID: "pool-1", WarmState: WarmStateClaimed,
+	}
+	if _, err := sshTargetForSession(claimed); err != nil {
+		t.Fatalf("claimed: err = %v, want the dial target", err)
+	}
+}
+
+// VNC gets the same claim-first refusal, ahead of its "no VNC endpoint
+// … still provisioning" check.
+func TestVNCCredentialsFromSession_RefusedOnUnclaimedWarmSession(t *testing.T) {
+	for _, state := range []string{"warming", "ready", "retiring"} {
+		sess := Session{Status: "running", WarmPoolID: "pool-1", WarmState: state}
+		_, err := VNCCredentialsFromSession(sess)
+		if err == nil || !strings.Contains(err.Error(), "warm session held by warm pool pool-1") {
+			t.Errorf("%s: err = %v, want the claim-first refusal", state, err)
+		}
+	}
+	claimed := Session{Status: "running", VNCAddress: "vnc://h.example:5900", WarmPoolID: "pool-1", WarmState: WarmStateClaimed}
+	if _, err := VNCCredentialsFromSession(claimed); err != nil {
+		t.Fatalf("claimed: err = %v, want the credentials", err)
+	}
+}
+
+func TestRunSessionHook_RefusesOnCreate(t *testing.T) {
+	rs := newRecordingServer(t, `{"run":{"id":"r-2","hook":"on_claim","attempt":2,"state":"HOOK_RUN_STATE_PENDING"}}`)
+	_, err := rs.service().RunSessionHook(context.Background(), "ws-1", "s-1", HookOnCreate)
+	if err == nil || err.Error() != ErrOnCreateNotRunnable {
+		t.Fatalf("err = %v, want %q", err, ErrOnCreateNotRunnable)
+	}
+	if rs.lastPath != "" {
+		t.Errorf("backend was called (%s) for a refused hook", rs.lastPath)
+	}
+	run, err := rs.service().RunSessionHook(context.Background(), "ws-1", "s-1", HookOnClaim)
+	if err != nil {
+		t.Fatalf("RunSessionHook: %v", err)
+	}
+	if run.Hook != "on_claim" || run.State != "pending" {
+		t.Errorf("run = %+v", run)
+	}
+}

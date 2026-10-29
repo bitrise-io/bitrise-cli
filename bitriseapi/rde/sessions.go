@@ -53,8 +53,40 @@ type Session struct {
 	// available). Empty when the session has no pool.
 	WarmPoolID string `json:"warmPoolId,omitempty"`
 	WarmState  string `json:"warmState,omitempty"`
-	CreatedAt  string `json:"createdAt,omitempty"`
-	UpdatedAt  string `json:"updatedAt,omitempty"`
+	// Lifecycle is the session's lifecycle-hook state (phase and hook
+	// runs); absent on a session that runs the legacy warmup/startup
+	// scripts.
+	Lifecycle *SessionLifecycle `json:"lifecycle,omitempty"`
+	CreatedAt string            `json:"createdAt,omitempty"`
+	UpdatedAt string            `json:"updatedAt,omitempty"`
+}
+
+// SessionLifecycle is the wire shape of Session.lifecycle: the hook-aware
+// phase (a LIFECYCLE_PHASE_* enum name) derived from the runs, and the runs
+// themselves, oldest first.
+type SessionLifecycle struct {
+	Mode             string    `json:"mode,omitempty"`
+	Phase            string    `json:"phase,omitempty"`
+	Runs             []HookRun `json:"runs,omitempty"`
+	HasOnClaimHook   bool      `json:"hasOnClaimHook,omitempty"`
+	HasOnRestoreHook bool      `json:"hasOnRestoreHook,omitempty"`
+}
+
+// HookRun is one run of a lifecycle hook on a session. State is a
+// HOOK_RUN_STATE_* enum name; the timestamps are RFC3339 strings. ExitCode
+// 124 means RDE ended the run because On create did not finish within its
+// limit.
+type HookRun struct {
+	ID          string `json:"id,omitempty"`
+	Hook        string `json:"hook,omitempty"`
+	Attempt     int    `json:"attempt,omitempty"`
+	State       string `json:"state,omitempty"`
+	ExitCode    int    `json:"exitCode,omitempty"`
+	TriggeredBy string `json:"triggeredBy,omitempty"`
+	RanIn       string `json:"ranIn,omitempty"`
+	QueuedAt    string `json:"queuedAt,omitempty"`
+	StartedAt   string `json:"startedAt,omitempty"`
+	FinishedAt  string `json:"finishedAt,omitempty"`
 }
 
 // SessionTemplateSnapshot is the template config snapshotted at session
@@ -65,11 +97,18 @@ type SessionTemplateSnapshot struct {
 	StackID      string `json:"stackId,omitempty"`
 	// Image is the resolved image id, retained only as a read fallback for
 	// snapshots taken before stackId was populated.
-	Image            string          `json:"image,omitempty"`
-	MachineType      string          `json:"machineType,omitempty"`
-	WorkingDirectory string          `json:"workingDirectory,omitempty"`
-	HasStartupScript bool            `json:"hasStartupScript,omitempty"`
-	HasWarmupScript  bool            `json:"hasWarmupScript,omitempty"`
+	Image            string `json:"image,omitempty"`
+	MachineType      string `json:"machineType,omitempty"`
+	WorkingDirectory string `json:"workingDirectory,omitempty"`
+	HasStartupScript bool   `json:"hasStartupScript,omitempty"`
+	HasWarmupScript  bool   `json:"hasWarmupScript,omitempty"`
+	// LifecycleMode is "hooks" when the session runs lifecycle hooks (its
+	// creation-time template copy has the hooks the Has*Hook flags say);
+	// empty on the legacy warmup/startup path.
+	LifecycleMode    string          `json:"lifecycleMode,omitempty"`
+	HasOnCreateHook  bool            `json:"hasOnCreateHook,omitempty"`
+	HasOnClaimHook   bool            `json:"hasOnClaimHook,omitempty"`
+	HasOnRestoreHook bool            `json:"hasOnRestoreHook,omitempty"`
 	SessionInputs    []SnapshotInput `json:"sessionInputs,omitempty"`
 	FeatureFlags     []SnapshotFlag  `json:"featureFlags,omitempty"`
 	WorkspaceLinks   []SnapshotLink  `json:"workspaceLinks,omitempty"`
@@ -91,6 +130,13 @@ type SnapshotInput struct {
 	Value          string `json:"value,omitempty"`
 	IsSecret       bool   `json:"isSecret,omitempty"`
 	ExposeAsEnvVar bool   `json:"exposeAsEnvVar,omitempty"`
+	// Hook is the scope the value belongs to: "shared" (also the meaning of
+	// empty), "on_create", "on_claim" or "on_restore".
+	Hook string `json:"hook,omitempty"`
+	// SuppliedByPool is set on a session a warm pool handed out for a value
+	// the pool supplied and the claimer never receives (the On create
+	// scope): Value is then always empty, whatever include_secrets says.
+	SuppliedByPool bool `json:"suppliedByPool,omitempty"`
 }
 
 // SnapshotFlag is a feature-flag state captured at session creation.
@@ -113,6 +159,9 @@ type SessionInputValue struct {
 	Value        string `json:"value,omitempty"`
 	IsSecret     bool   `json:"isSecret,omitempty"`
 	SavedInputID string `json:"savedInputId,omitempty"`
+	// Hook is the scope the value is for ("shared", "on_create", "on_claim"
+	// or "on_restore"); empty applies it to every scope that defines the key.
+	Hook string `json:"hook,omitempty"`
 }
 
 // AutoMappedInput records a template session input that was auto-filled
@@ -252,11 +301,17 @@ type TemplateConfig struct {
 	StackID      string `json:"stackId,omitempty"`
 	// Image is retained only as a read fallback for configs from before
 	// stackId was populated.
-	Image             string                   `json:"image,omitempty"`
-	MachineType       string                   `json:"machineType,omitempty"`
-	WorkingDirectory  string                   `json:"workingDirectory,omitempty"`
-	StartupScript     string                   `json:"startupScript,omitempty"`
-	WarmupScript      string                   `json:"warmupScript,omitempty"`
+	Image            string `json:"image,omitempty"`
+	MachineType      string `json:"machineType,omitempty"`
+	WorkingDirectory string `json:"workingDirectory,omitempty"`
+	StartupScript    string `json:"startupScript,omitempty"`
+	WarmupScript     string `json:"warmupScript,omitempty"`
+	// LifecycleMode ("legacy" or "hooks") and Hooks: the session's
+	// creation-time hooks on the snapshot side (mapped from the legacy
+	// scripts when a legacy template created the session with lifecycle
+	// hooks enabled), the template's current hooks on the current side.
+	LifecycleMode     string                   `json:"lifecycleMode,omitempty"`
+	Hooks             *TemplateHooks           `json:"hooks,omitempty"`
 	SessionInputs     []TemplateConfigInput    `json:"sessionInputs,omitempty"`
 	FeatureFlags      []TemplateConfigFlag     `json:"featureFlags,omitempty"`
 	TemplateVariables []TemplateConfigVariable `json:"templateVariables,omitempty"`
@@ -273,6 +328,7 @@ type TemplateConfigInput struct {
 	DefaultValue   string `json:"defaultValue,omitempty"`
 	ExposeAsEnvVar bool   `json:"exposeAsEnvVar,omitempty"`
 	IsSecret       bool   `json:"isSecret,omitempty"`
+	Hook           string `json:"hook,omitempty"`
 }
 
 // TemplateConfigFlag is a feature flag with its default state.
@@ -282,11 +338,15 @@ type TemplateConfigFlag struct {
 	Enabled     bool   `json:"enabled,omitempty"`
 }
 
-// TemplateConfigVariable is a template variable's metadata (no value).
+// TemplateConfigVariable is a variable's metadata (no value).
 type TemplateConfigVariable struct {
 	Key            string `json:"key"`
 	IsSecret       bool   `json:"isSecret,omitempty"`
 	ExposeAsEnvVar bool   `json:"exposeAsEnvVar,omitempty"`
+	// Hook is the scope that receives it (see TemplateVariable.Hook).
+	Hook string `json:"hook,omitempty"`
+	// Protected: write-only (see TemplateVariable.Protected).
+	Protected bool `json:"protected,omitempty"`
 }
 
 // CompareSessionTemplateResponse is the wire shape of /template-diff.
@@ -486,4 +546,49 @@ func (c *Client) DeleteTerminatedSessions(ctx context.Context, workspaceID, scop
 		return 0, err
 	}
 	return resp.DeletedCount, nil
+}
+
+// RunSessionHook queues one lifecycle hook (on_create, on_claim, on_restore)
+// or the platform's own "personalize" system setup step to run again on a
+// session that runs lifecycle hooks; the queued run is returned.
+// Endpoint: POST /v1/workspaces/{workspaceId}/sessions/{sessionId}/hook-runs.
+func (c *Client) RunSessionHook(ctx context.Context, workspaceID, sessionID, hook string) (HookRun, error) {
+	if workspaceID == "" {
+		return HookRun{}, fmt.Errorf("workspace ID is required")
+	}
+	if sessionID == "" {
+		return HookRun{}, fmt.Errorf("session ID is required")
+	}
+	if hook == "" {
+		return HookRun{}, fmt.Errorf("hook is required")
+	}
+	var resp struct {
+		Run HookRun `json:"run"`
+	}
+	p := wsPath(workspaceID, "/sessions/"+url.PathEscape(sessionID)+"/hook-runs")
+	if err := c.sendJSON(ctx, http.MethodPost, p, struct {
+		Hook string `json:"hook"`
+	}{Hook: hook}, &resp); err != nil {
+		return HookRun{}, err
+	}
+	return resp.Run, nil
+}
+
+// RebuildSession discards a session's machine and boots a fresh one for the
+// same session (same id and creation-time snapshot); its lifecycle hooks run
+// again from On create.
+// Endpoint: POST /v1/workspaces/{workspaceId}/sessions/{sessionId}/rebuild.
+func (c *Client) RebuildSession(ctx context.Context, workspaceID, sessionID string) (Session, error) {
+	if workspaceID == "" {
+		return Session{}, fmt.Errorf("workspace ID is required")
+	}
+	if sessionID == "" {
+		return Session{}, fmt.Errorf("session ID is required")
+	}
+	var resp sessionResp
+	p := wsPath(workspaceID, "/sessions/"+url.PathEscape(sessionID)+"/rebuild")
+	if err := c.sendJSON(ctx, http.MethodPost, p, struct{}{}, &resp); err != nil {
+		return Session{}, err
+	}
+	return resp.Session, nil
 }

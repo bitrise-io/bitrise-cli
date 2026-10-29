@@ -3,6 +3,7 @@ package session
 import (
 	"fmt"
 	"io"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -20,7 +21,7 @@ func newDiffCmd() *cobra.Command {
 creation time and the template's current config. Most useful when a session
 reports template_outdated=true.
 
-Lists which template variable keys changed (values are never exposed) and
+Lists which variable keys changed (values are never exposed) and
 the simple per-field differences (stack, machine type, scripts, working
 directory, declared device). When the template was deleted, only the
 snapshot is shown.`,
@@ -79,6 +80,9 @@ func renderDiff(w io.Writer, d internalrde.SessionTemplateDiff) error {
 		writeFieldDiff(ew, lbl, "Device", deviceDiffLabel(d.Snapshot.DeviceSpec), deviceDiffLabel(d.Current.DeviceSpec))
 		writeBoolDiff(ew, lbl, "Startup script set", d.Snapshot.StartupScript != "", d.Current.StartupScript != "")
 		writeBoolDiff(ew, lbl, "Warmup script set", d.Snapshot.WarmupScript != "", d.Current.WarmupScript != "")
+		if lifecycleDiffers(*d.Snapshot, *d.Current) {
+			writeFieldDiff(ew, lbl, "Lifecycle", lifecycleLabel(*d.Snapshot), lifecycleLabel(*d.Current))
+		}
 		writeIntDiff(ew, lbl, "Session inputs", len(d.Snapshot.SessionInputs), len(d.Current.SessionInputs))
 		writeIntDiff(ew, lbl, "Feature flags", len(d.Snapshot.FeatureFlags), len(d.Current.FeatureFlags))
 	}
@@ -127,6 +131,38 @@ func deviceDiffLabel(d *internalrde.DeviceSpec) string {
 	return out
 }
 
+// lifecycleLabel renders which scripts a template config runs: the legacy
+// pair, or lifecycle hooks with the hooks that are set.
+func lifecycleLabel(c internalrde.TemplateConfig) string {
+	if c.LifecycleMode != "hooks" || c.Hooks == nil {
+		return "legacy scripts"
+	}
+	var set []string
+	for _, h := range []struct {
+		name   string
+		script *string
+	}{
+		{"On create", c.Hooks.OnCreate}, {"On claim", c.Hooks.OnClaim}, {"On restore", c.Hooks.OnRestore},
+	} {
+		if h.script != nil {
+			set = append(set, h.name)
+		}
+	}
+	if len(set) == 0 {
+		return "hooks (none added)"
+	}
+	return "hooks (" + strings.Join(set, ", ") + ")"
+}
+
+// lifecycleDiffers reports whether the lifecycle hooks changed between the
+// snapshot and the current template. Only a current template with hooks can
+// differ: a legacy template's session may carry mapped hooks on the snapshot
+// side (the platform derives them from the legacy scripts at creation), and
+// that is not an edit of the template.
+func lifecycleDiffers(snapshot, current internalrde.TemplateConfig) bool {
+	return current.LifecycleMode == "hooks" && lifecycleLabel(snapshot) != lifecycleLabel(current)
+}
+
 func valueOrPlaceholder(v string) string {
 	if v == "" {
 		return "(unset)"
@@ -144,6 +180,7 @@ func configsEqual(a, b internalrde.TemplateConfig) bool {
 		deviceDiffLabel(a.DeviceSpec) == deviceDiffLabel(b.DeviceSpec) &&
 		(a.StartupScript != "") == (b.StartupScript != "") &&
 		(a.WarmupScript != "") == (b.WarmupScript != "") &&
+		!lifecycleDiffers(a, b) &&
 		len(a.SessionInputs) == len(b.SessionInputs) &&
 		len(a.FeatureFlags) == len(b.FeatureFlags)
 }

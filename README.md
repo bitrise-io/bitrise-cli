@@ -155,10 +155,12 @@ details) under [docs/cli](docs/cli/bitrise-cli.md).
 | [`rde session download`](docs/cli/bitrise-cli_rde_session_download.md) | Download a file or directory from a session |
 | [`rde session exec`](docs/cli/bitrise-cli_rde_session_exec.md) | Run a command on a session over SSH |
 | [`rde session list`](docs/cli/bitrise-cli_rde_session_list.md) | List RDE sessions in the workspace |
-| [`rde session logs`](docs/cli/bitrise-cli_rde_session_logs.md) | Print a session's warmup or startup logs |
+| [`rde session logs`](docs/cli/bitrise-cli_rde_session_logs.md) | Print a session's warmup, startup or lifecycle-hook logs |
 | [`rde session notifications`](docs/cli/bitrise-cli_rde_session_notifications.md) | List notifications emitted by a session |
 | [`rde session open-vnc`](docs/cli/bitrise-cli_rde_session_open-vnc.md) | Open a session's VNC endpoint in the OS-default viewer |
+| [`rde session rebuild`](docs/cli/bitrise-cli_rde_session_rebuild.md) | Replace a session's machine and run its lifecycle hooks again from On create |
 | [`rde session restore`](docs/cli/bitrise-cli_rde_session_restore.md) | Restore a terminated session (re-provisions its VM from the persistent disk) |
+| [`rde session run-hook`](docs/cli/bitrise-cli_rde_session_run-hook.md) | Queue a lifecycle hook to run again on a session (keeps the machine) |
 | [`rde session ssh`](docs/cli/bitrise-cli_rde_session_ssh.md) | Print SSH connection details (command, host, port, user, password) for a session |
 | [`rde session terminate`](docs/cli/bitrise-cli_rde_session_terminate.md) | Terminate a running session but keep it for a later restore |
 | [`rde session update`](docs/cli/bitrise-cli_rde_session_update.md) | Update a session's name, description, auto-terminate duration, or labels |
@@ -175,6 +177,7 @@ details) under [docs/cli](docs/cli/bitrise-cli.md).
 | [`rde warm-pool create`](docs/cli/bitrise-cli_rde_warm-pool_create.md) | Create a warm pool |
 | [`rde warm-pool delete`](docs/cli/bitrise-cli_rde_warm-pool_delete.md) | Delete a warm pool and terminate its warm sessions |
 | [`rde warm-pool list`](docs/cli/bitrise-cli_rde_warm-pool_list.md) | List warm pools in the workspace |
+| [`rde warm-pool retry`](docs/cli/bitrise-cli_rde_warm-pool_retry.md) | Resume a warm pool paused after repeated On create failures |
 | [`rde warm-pool set-size`](docs/cli/bitrise-cli_rde_warm-pool_set-size.md) | Set a pool's size: how many warm sessions it keeps booted |
 | [`rde warm-pool update`](docs/cli/bitrise-cli_rde_warm-pool_update.md) | Update a warm pool's name, count or configuration |
 | [`rde warm-pool view`](docs/cli/bitrise-cli_rde_warm-pool_view.md) | Show a warm pool's status, configuration and warm sessions |

@@ -154,12 +154,15 @@ of the template:
 (CLI: `rde session create --warm-pool <pool id>`.) When a warm session is
 available it is handed to you already running (`warm_state: "claimed"`);
 otherwise one is created from the pool's configuration (`"cold"`) — same
-result, just slower. The pool fixes the configuration: do not pass
-`template_id`, `image`, `session_inputs`, `map_saved_to_session_inputs`,
-feature flags, stack/machine/cluster, `device_spec`, `no_device` or
-`ai_prompt` alongside `warm_pool_id` (they are rejected, not ignored);
-`name`, `description`, `labels`, `auto_terminate_minutes` and `artifact`
-still apply. **A session claimed from a workspace pool is yours**: personal
+result, just slower. The pool fixes the environment: do not pass
+`template_id`, `image`, feature flags, stack/machine/cluster, `device_spec`
+or `no_device` alongside `warm_pool_id` (they are rejected, not ignored).
+On a template with lifecycle hooks, a claim supplies the template's On claim
+and On restore inputs in `session_inputs` (a Shared or On create key is
+rejected: those were set on the pool), and a personal claim may add
+`map_saved_to_session_inputs` and `ai_prompt`; a workspace-owned claim sends
+plain values only. `name`, `description`,
+`labels`, `auto_terminate_minutes` and `artifact` still apply. **A session claimed from a workspace pool is yours**: personal
 by default (`owner_type` omitted or `"user"`), or the workspace's if you pass
 `owner_type: "workspace"` (a session any member can see and manage; a
 workspace token always gets this). Either way the machine
@@ -230,7 +233,14 @@ before trusting the OS version, and when it matters ground-truth on the
 device: `adb shell getprop ro.build.version.release` /
 `xcrun simctl list devices booted` (the runtime is in the device's
 section header). The CLI's `session view` / `create --wait` flag a READY
-device with notes explicitly.
+device with notes explicitly. On a template with lifecycle hooks, "running"
+also precedes the setup: `create --wait` additionally waits for
+`lifecycle.phase` to reach ready (MCP callers poll `bitrise_devenv_get` for
+it) before the session is safe to drive. Until On create has exited, `execute`
+and every other interactive call (terminal, screenshot, input, upload,
+download, remote access) are refused with "Session is setting up: On create is
+still running" — poll `lifecycle.phase` instead of retrying. A hook is done
+only when its script process exits; there is no ready signal.
 
 ## 3. Connect
 

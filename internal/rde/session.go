@@ -68,6 +68,159 @@ type Session struct {
 	// pool.
 	WarmPoolID string `json:"warm_pool_id,omitempty"`
 	WarmState  string `json:"warm_state,omitempty"`
+	// Lifecycle is the session's lifecycle-hook state; nil on a session
+	// that runs the legacy warmup/startup scripts. Status "running" means
+	// the machine is up, NOT that its setup finished — read
+	// Lifecycle.Phase.
+	Lifecycle *SessionLifecycle `json:"lifecycle,omitempty"`
+}
+
+// SessionLifecycle is a session's lifecycle-hook state: the hook-aware
+// phase derived from its runs, and the runs themselves, oldest first.
+type SessionLifecycle struct {
+	// Mode is "hooks" for a session that runs lifecycle hooks.
+	Mode string `json:"mode,omitempty"`
+	// Phase is the hook-aware label next to the machine status, lowercased
+	// without the LIFECYCLE_PHASE_ prefix: warming / ready_to_claim (warm
+	// pool inventory), setting_up (On create running), personalizing (the
+	// system setup step or On claim running), restoring, ready (every
+	// queued hook done), setup_failed / personalization_failed /
+	// restore_failed (the last run failed or was interrupted). Passed
+	// through forward-compatibly: an unknown phase reaches callers too.
+	Phase string `json:"phase,omitempty"`
+	// Runs are every hook run so far, oldest first.
+	Runs []HookRun `json:"runs,omitempty"`
+	// HasOnClaimHook / HasOnRestoreHook say which optional hooks the
+	// session's creation-time template copy has.
+	HasOnClaimHook   bool `json:"has_on_claim_hook,omitempty"`
+	HasOnRestoreHook bool `json:"has_on_restore_hook,omitempty"`
+}
+
+// HookRun is one run of a lifecycle hook on a session.
+type HookRun struct {
+	ID string `json:"id,omitempty"`
+	// Hook: "on_create", "on_claim", "on_restore", or the platform's own
+	// "personalize" step (the platform's system setup queued before On claim).
+	Hook string `json:"hook"`
+	// Attempt numbers the hook's runs on this session from 1.
+	Attempt int `json:"attempt,omitempty"`
+	// State, lowercased without the HOOK_RUN_STATE_ prefix: pending,
+	// running, succeeded (the script exited with code 0; background
+	// processes it started may keep running), failed (a non-zero exit, or
+	// RDE ended it because On create did not finish within its limit),
+	// interrupted (the machine was stopped mid-run), skipped (an earlier run
+	// failed).
+	State string `json:"state,omitempty"`
+	// ExitCode of the script, once it exited. HookExitCodeOnCreateLimit (124)
+	// means RDE ended the run because On create did not finish within its
+	// limit.
+	ExitCode int `json:"exit_code,omitempty"`
+	// TriggeredBy: "create", "claim", "restore", "run_again" or "rebuild".
+	TriggeredBy string `json:"triggered_by,omitempty"`
+	// RanIn: "pool" (inside a warm pool, before any claim) or "session".
+	RanIn      string     `json:"ran_in,omitempty"`
+	QueuedAt   *time.Time `json:"queued_at,omitempty"`
+	StartedAt  *time.Time `json:"started_at,omitempty"`
+	FinishedAt *time.Time `json:"finished_at,omitempty"`
+}
+
+// HookExitCodeOnCreateLimit is the HookRun.ExitCode of an On create run RDE
+// ended because it did not finish within its limit (2 hours): the script
+// has to exit — long-running work belongs in the background.
+const HookExitCodeOnCreateLimit = 124
+
+// ErrSessionSettingUp is the backend's answer to any interactive action
+// (exec, ssh, upload, download, screenshot, the terminal) while the
+// session's On create run is pending or running — FailedPrecondition with
+// this message. The CLI's exec / ssh dial the machine directly, so they
+// apply the same gate client-side (see sshTargetForSession) and say the
+// same thing.
+const ErrSessionSettingUp = "Session is setting up: On create is still running. Access opens when it finishes."
+
+// lifecycleFromAPI maps the wire lifecycle, normalizing the enums the way
+// statusFromAPI does; nil stays nil.
+func lifecycleFromAPI(w *rdeapi.SessionLifecycle) *SessionLifecycle {
+	if w == nil {
+		return nil
+	}
+	out := &SessionLifecycle{
+		Mode:             w.Mode,
+		Phase:            enumFromAPI("LIFECYCLE_PHASE_", w.Phase),
+		HasOnClaimHook:   w.HasOnClaimHook,
+		HasOnRestoreHook: w.HasOnRestoreHook,
+	}
+	for _, r := range w.Runs {
+		out.Runs = append(out.Runs, hookRunFromAPI(r))
+	}
+	return out
+}
+
+func hookRunFromAPI(r rdeapi.HookRun) HookRun {
+	return HookRun{
+		ID:          r.ID,
+		Hook:        r.Hook,
+		Attempt:     r.Attempt,
+		State:       enumFromAPI("HOOK_RUN_STATE_", r.State),
+		ExitCode:    r.ExitCode,
+		TriggeredBy: r.TriggeredBy,
+		RanIn:       r.RanIn,
+		QueuedAt:    parseTime(r.QueuedAt),
+		StartedAt:   parseTime(r.StartedAt),
+		FinishedAt:  parseTime(r.FinishedAt),
+	}
+}
+
+// Hook names of a session's lifecycle runs: the template's three hooks and
+// the platform's own system setup step. RunSessionHook accepts all but
+// HookOnCreate (a fresh On create needs a fresh machine: RebuildSession).
+const (
+	HookOnCreate    = "on_create"
+	HookOnClaim     = "on_claim"
+	HookOnRestore   = "on_restore"
+	HookPersonalize = "personalize"
+)
+
+// ErrOnCreateNotRunnable is the backend's answer (FailedPrecondition) to
+// running On create again on a session: On create runs once per machine, so
+// a fresh attempt needs a fresh machine (RebuildSession). RunSessionHook
+// refuses it client-side with the same words.
+const ErrOnCreateNotRunnable = "On create cannot be run again on this machine. Use Rebuild to run it on a fresh one."
+
+// RunSessionHook queues one hook (or the platform's system setup step) to
+// run again on a session that runs lifecycle hooks and returns the queued
+// run (state pending, triggered_by "run_again"). On create is not accepted
+// (ErrOnCreateNotRunnable; use RebuildSession). The backend refuses the
+// rest while a run is pending or running, on warm pool inventory and on a
+// session that never ran the given hook.
+func (s *Service) RunSessionHook(ctx context.Context, workspaceID, sessionID, hook string) (HookRun, error) {
+	if s.client == nil {
+		return HookRun{}, errClient()
+	}
+	switch hook {
+	case HookOnClaim, HookOnRestore, HookPersonalize:
+	case HookOnCreate:
+		return HookRun{}, fmt.Errorf("%s", ErrOnCreateNotRunnable)
+	default:
+		return HookRun{}, fmt.Errorf("invalid hook %q (must be %s, %s or %s)", hook, HookOnClaim, HookOnRestore, HookPersonalize)
+	}
+	r, err := s.client.RunSessionHook(ctx, workspaceID, sessionID, hook)
+	if err != nil {
+		return HookRun{}, err
+	}
+	return hookRunFromAPI(r), nil
+}
+
+// RebuildSession discards the session's machine (VM and disk) and boots a
+// fresh one for the same session; its lifecycle runs again from On create.
+func (s *Service) RebuildSession(ctx context.Context, workspaceID, sessionID string) (Session, error) {
+	if s.client == nil {
+		return Session{}, errClient()
+	}
+	w, err := s.client.RebuildSession(ctx, workspaceID, sessionID)
+	if err != nil {
+		return Session{}, err
+	}
+	return sessionFromAPI(w), nil
 }
 
 // DeviceSpec describes a virtual device in the preview-link vocabulary:
@@ -217,12 +370,20 @@ func (s Session) Resumable() bool {
 // at session creation. Mirrors the wire type but with snake_case tags and
 // without the masked secret bag.
 type SessionTemplateSnapshot struct {
-	TemplateName     string          `json:"template_name,omitempty"`
-	StackID          string          `json:"stack_id,omitempty"`
-	MachineType      string          `json:"machine_type,omitempty"`
-	WorkingDirectory string          `json:"working_directory,omitempty"`
-	HasStartupScript bool            `json:"has_startup_script,omitempty"`
-	HasWarmupScript  bool            `json:"has_warmup_script,omitempty"`
+	TemplateName     string `json:"template_name,omitempty"`
+	StackID          string `json:"stack_id,omitempty"`
+	MachineType      string `json:"machine_type,omitempty"`
+	WorkingDirectory string `json:"working_directory,omitempty"`
+	HasStartupScript bool   `json:"has_startup_script,omitempty"`
+	HasWarmupScript  bool   `json:"has_warmup_script,omitempty"`
+	// LifecycleMode is "hooks" when the session runs lifecycle hooks (a
+	// template with hooks, or a legacy template mapped at creation); empty
+	// on the legacy path. The Has*Hook flags say which hooks the
+	// creation-time template copy has.
+	LifecycleMode    string          `json:"lifecycle_mode,omitempty"`
+	HasOnCreateHook  bool            `json:"has_on_create_hook,omitempty"`
+	HasOnClaimHook   bool            `json:"has_on_claim_hook,omitempty"`
+	HasOnRestoreHook bool            `json:"has_on_restore_hook,omitempty"`
 	SessionInputs    []SnapshotInput `json:"session_inputs,omitempty"`
 	FeatureFlags     []SnapshotFlag  `json:"feature_flags,omitempty"`
 	WorkspaceLinks   []SnapshotLink  `json:"workspace_links,omitempty"`
@@ -235,6 +396,13 @@ type SnapshotInput struct {
 	Value          string `json:"value,omitempty"`
 	IsSecret       bool   `json:"is_secret,omitempty"`
 	ExposeAsEnvVar bool   `json:"expose_as_env_var,omitempty"`
+	// Hook is the scope the value belongs to: "shared" (also the meaning
+	// of empty), "on_create", "on_claim" or "on_restore" (see Scopes).
+	Hook string `json:"hook,omitempty"`
+	// SuppliedByPool: the pool supplied this value and the claimer never
+	// receives it (On create scope on a session a pool handed out); Value
+	// is empty.
+	SuppliedByPool bool `json:"supplied_by_pool,omitempty"`
 }
 
 // SnapshotFlag is a captured feature-flag state.
@@ -256,6 +424,10 @@ type SessionInputValue struct {
 	Value        string
 	IsSecret     bool
 	SavedInputID string
+	// Hook is the scope the value is for (see Scopes); empty applies it to
+	// every scope that defines the key, and a scoped value wins over an
+	// unscoped one for its scope.
+	Hook string
 }
 
 // AutoMappedInput records keys auto-filled from saved inputs during create.
@@ -426,6 +598,7 @@ func (s *Service) CreateSession(ctx context.Context, workspaceID string, req Cre
 			Value:        i.Value,
 			IsSecret:     i.IsSecret,
 			SavedInputID: i.SavedInputID,
+			Hook:         i.Hook,
 		})
 	}
 	session, mapped, err := s.client.CreateSession(ctx, workspaceID, rdeapi.CreateSessionRequest{
@@ -509,12 +682,17 @@ func (s *Service) TerminateSession(ctx context.Context, workspaceID, sessionID s
 // TemplateConfig is the CLI shape of the template config on either side of
 // a session's template diff.
 type TemplateConfig struct {
-	TemplateName      string                   `json:"template_name,omitempty"`
-	StackID           string                   `json:"stack_id,omitempty"`
-	MachineType       string                   `json:"machine_type,omitempty"`
-	WorkingDirectory  string                   `json:"working_directory,omitempty"`
-	StartupScript     string                   `json:"startup_script,omitempty"`
-	WarmupScript      string                   `json:"warmup_script,omitempty"`
+	TemplateName     string `json:"template_name,omitempty"`
+	StackID          string `json:"stack_id,omitempty"`
+	MachineType      string `json:"machine_type,omitempty"`
+	WorkingDirectory string `json:"working_directory,omitempty"`
+	StartupScript    string `json:"startup_script,omitempty"`
+	WarmupScript     string `json:"warmup_script,omitempty"`
+	// LifecycleMode ("legacy" or "hooks") and Hooks: the session's
+	// creation-time hooks on the snapshot side, the template's current
+	// hooks on the current side; nil without hooks.
+	LifecycleMode     string                   `json:"lifecycle_mode,omitempty"`
+	Hooks             *TemplateHooks           `json:"hooks,omitempty"`
 	SessionInputs     []TemplateConfigInput    `json:"session_inputs,omitempty"`
 	FeatureFlags      []TemplateConfigFlag     `json:"feature_flags,omitempty"`
 	TemplateVariables []TemplateConfigVariable `json:"template_variables,omitempty"`
@@ -531,6 +709,7 @@ type TemplateConfigInput struct {
 	DefaultValue   string `json:"default_value,omitempty"`
 	ExposeAsEnvVar bool   `json:"expose_as_env_var,omitempty"`
 	IsSecret       bool   `json:"is_secret,omitempty"`
+	Hook           string `json:"hook,omitempty"`
 }
 
 // TemplateConfigFlag carries default-enabled state alongside name/description.
@@ -545,6 +724,10 @@ type TemplateConfigVariable struct {
 	Key            string `json:"key"`
 	IsSecret       bool   `json:"is_secret,omitempty"`
 	ExposeAsEnvVar bool   `json:"expose_as_env_var,omitempty"`
+	// Hook is the variable's scope (see Scopes).
+	Hook string `json:"hook,omitempty"`
+	// Protected: write-only (see TemplateVariable.Protected).
+	Protected bool `json:"protected,omitempty"`
 }
 
 // SessionTemplateDiff is the CLI shape of /template-diff.
@@ -584,6 +767,8 @@ func templateConfigFromAPI(w rdeapi.TemplateConfig) TemplateConfig {
 		WorkingDirectory: w.WorkingDirectory,
 		StartupScript:    w.StartupScript,
 		WarmupScript:     w.WarmupScript,
+		LifecycleMode:    w.LifecycleMode,
+		Hooks:            hooksFromAPI(w.Hooks),
 		DeviceSpec:       deviceSpecFromAPI(w.DeviceSpec),
 		UpdatedAt:        parseTime(w.UpdatedAt),
 	}
@@ -602,6 +787,7 @@ func templateConfigFromAPI(w rdeapi.TemplateConfig) TemplateConfig {
 			DefaultValue:   def,
 			ExposeAsEnvVar: i.ExposeAsEnvVar,
 			IsSecret:       i.IsSecret,
+			Hook:           i.Hook,
 		})
 	}
 	for _, f := range w.FeatureFlags {
@@ -614,8 +800,10 @@ func templateConfigFromAPI(w rdeapi.TemplateConfig) TemplateConfig {
 	for _, v := range w.TemplateVariables {
 		out.TemplateVariables = append(out.TemplateVariables, TemplateConfigVariable{
 			Key:            v.Key,
-			IsSecret:       v.IsSecret,
+			IsSecret:       v.IsSecret || v.Protected,
 			ExposeAsEnvVar: v.ExposeAsEnvVar,
+			Hook:           v.Hook,
+			Protected:      v.Protected,
 		})
 	}
 	for _, l := range w.WorkspaceLinks {
@@ -629,15 +817,26 @@ func templateConfigFromAPI(w rdeapi.TemplateConfig) TemplateConfig {
 }
 
 // WaitForReady polls GetSession until the session leaves the provisioning
-// states ("" / "pending" / "starting" / "unknown") and returns the resulting
-// Session. "unknown" means the backend can't currently determine the machine
-// state; it's expected to settle, so it's treated as still provisioning.
-// The caller decides whether the returned status counts as success.
+// states ("" / "pending" / "starting" / "unknown") and, on a session that
+// runs lifecycle hooks, until its lifecycle phase settles too, then returns
+// the resulting Session. "unknown" means the backend can't currently
+// determine the machine state; it's expected to settle, so it's treated as
+// still provisioning.
+//
+// On a lifecycle-hooks session "running" arrives as soon as the machine is
+// up, BEFORE On create (the migrated warmup) has finished — so a caller that
+// stopped there and ran a command would race the setup. The wait therefore
+// keeps polling a running hooks session while Lifecycle.Phase is in flight
+// (setting_up / personalizing / restoring, or not derived yet) and returns
+// once it is "ready" or a failure phase; LifecycleFailure turns the latter
+// into an error. A legacy session (no lifecycle) returns at "running" as
+// before. The caller decides whether the returned status counts as success.
 // Returns context.Canceled when ctx is cancelled.
 //
-// onPoll, when non-nil, is called with the session's status on every poll, so a
-// caller can surface the live provisioning state (e.g. in a progress spinner)
-// without polling separately. It must not block.
+// onPoll, when non-nil, is called with the session's status on every poll
+// ("running: setting_up" while a hooks session is settling), so a caller can
+// surface the live provisioning state (e.g. in a progress spinner) without
+// polling separately. It must not block.
 func (s *Service) WaitForReady(ctx context.Context, workspaceID, sessionID string, interval time.Duration, onPoll func(status string)) (Session, error) {
 	if s.client == nil {
 		return Session{}, errClient()
@@ -650,11 +849,18 @@ func (s *Service) WaitForReady(ctx context.Context, workspaceID, sessionID strin
 		if err != nil {
 			return Session{}, err
 		}
+		settling := sess.Status == "running" && lifecycleInFlight(sess.Lifecycle)
 		if onPoll != nil {
-			onPoll(sess.Status)
+			if settling {
+				onPoll(sess.Status + ": " + lifecyclePhaseOrPending(sess.Lifecycle))
+			} else {
+				onPoll(sess.Status)
+			}
 		}
-		switch sess.Status {
-		case "", "pending", "starting", "unknown":
+		switch {
+		case settling:
+			// machine up, lifecycle hooks still running — keep polling
+		case sess.Status == "", sess.Status == "pending", sess.Status == "starting", sess.Status == "unknown":
 			// still provisioning (or state not yet determinable) — keep polling
 		default:
 			return sess, nil
@@ -665,6 +871,98 @@ func (s *Service) WaitForReady(ctx context.Context, workspaceID, sessionID strin
 		case <-time.After(interval):
 		}
 	}
+}
+
+// lifecycleInFlight reports whether a session's lifecycle hooks are still
+// running (or not derived yet) on a session that runs them. nil (a legacy
+// session) is never in flight. Any phase this code doesn't know — ready, the
+// failure phases, pool inventory states, a value added later — counts as
+// settled, so a newer backend can't make the wait spin until its timeout.
+// OnCreateInFlight reports whether the session's On create run is pending
+// or running — the state in which the backend refuses every interactive
+// action with ErrSessionSettingUp. It reads the runs, not the phase, because
+// warm pool inventory warms under its own phase and a legacy session has no
+// lifecycle at all (false).
+func OnCreateInFlight(l *SessionLifecycle) bool {
+	if l == nil {
+		return false
+	}
+	for _, r := range l.Runs {
+		if r.Hook == HookOnCreate && (r.State == "pending" || r.State == "running") {
+			return true
+		}
+	}
+	return false
+}
+
+func lifecycleInFlight(l *SessionLifecycle) bool {
+	// A session that does not run lifecycle hooks has nothing to wait for:
+	// the backend sends it a lifecycle block too (mode "legacy", no phase).
+	if l == nil || l.Mode != "hooks" {
+		return false
+	}
+	switch l.Phase {
+	case "", "setting_up", "personalizing", "restoring":
+		return true
+	}
+	return false
+}
+
+func lifecyclePhaseOrPending(l *SessionLifecycle) string {
+	if l == nil || l.Phase == "" {
+		return "setting up"
+	}
+	return l.Phase
+}
+
+// LifecycleFailure is the error a wait ends with when the session's machine
+// is up but its lifecycle hooks did not get it ready: nil on a legacy
+// session, on a ready one, or while hooks are still in flight. The message
+// names the failed phase and the log stage that holds the output, because
+// that is what the caller needs next.
+func LifecycleFailure(sess Session) error {
+	if sess.Lifecycle == nil {
+		return nil
+	}
+	var what, stage string
+	switch sess.Lifecycle.Phase {
+	case "setup_failed":
+		what, stage = "its On create hook failed", LogStageOnCreate
+	case "personalization_failed":
+		what, stage = "its system setup or On claim hook failed", LogStageOnClaim
+		// The phase covers both steps; the last run that ended badly says
+		// which one, and so which log holds its output.
+		if run, ok := lastFailedRun(sess.Lifecycle.Runs, "personalize", "on_claim"); ok {
+			if run.Hook == "personalize" {
+				what, stage = "its system setup step failed", LogStagePersonalize
+			} else {
+				what = "its On claim hook failed"
+			}
+		}
+	case "restore_failed":
+		what, stage = "its On restore hook failed", LogStageOnRestore
+	default:
+		return nil
+	}
+	return fmt.Errorf("session %s is running but %s (lifecycle phase %q); see 'rde session logs %s --stage %s' and 'rde session view %s'",
+		sess.ID, what, sess.Lifecycle.Phase, sess.ID, stage, sess.ID)
+}
+
+// lastFailedRun returns the newest failed or interrupted run of one of the
+// given hooks.
+func lastFailedRun(runs []HookRun, hooks ...string) (HookRun, bool) {
+	for i := len(runs) - 1; i >= 0; i-- {
+		r := runs[i]
+		if r.State != "failed" && r.State != "interrupted" {
+			continue
+		}
+		for _, h := range hooks {
+			if r.Hook == h {
+				return r, true
+			}
+		}
+	}
+	return HookRun{}, false
 }
 
 // WaitForSSHReady polls GetSession until the session's SSH endpoint is usable
@@ -804,6 +1102,7 @@ func sessionFromAPI(w rdeapi.Session) Session {
 		Device:               deviceFromAPI(w.Device),
 		WarmPoolID:           w.WarmPoolID,
 		WarmState:            w.WarmState,
+		Lifecycle:            lifecycleFromAPI(w.Lifecycle),
 	}
 	out.AgentSessionStatusUpdatedAt = parseTime(w.AgentSessionStatusUpdatedAt)
 	out.AutoTerminateAt = parseTime(w.AutoTerminateAt)
@@ -825,6 +1124,10 @@ func snapshotFromAPI(w rdeapi.SessionTemplateSnapshot) SessionTemplateSnapshot {
 		WorkingDirectory: w.WorkingDirectory,
 		HasStartupScript: w.HasStartupScript,
 		HasWarmupScript:  w.HasWarmupScript,
+		LifecycleMode:    w.LifecycleMode,
+		HasOnCreateHook:  w.HasOnCreateHook,
+		HasOnClaimHook:   w.HasOnClaimHook,
+		HasOnRestoreHook: w.HasOnRestoreHook,
 		UpdatedAt:        parseTime(w.UpdatedAt),
 	}
 	for _, i := range w.SessionInputs {
@@ -844,6 +1147,8 @@ func snapshotFromAPI(w rdeapi.SessionTemplateSnapshot) SessionTemplateSnapshot {
 			Value:          val,
 			IsSecret:       i.IsSecret,
 			ExposeAsEnvVar: i.ExposeAsEnvVar,
+			Hook:           i.Hook,
+			SuppliedByPool: i.SuppliedByPool,
 		})
 	}
 	for _, f := range w.FeatureFlags {

@@ -55,11 +55,11 @@ bitrise-cli rde warm-pool update WARM_POOL_ID [flags]
       --device-system-image string   Android only: the API-level knob — sdkmanager system image package ("system-images;android-34;google_apis;x86_64"); default: the template's, else the platform default
       --feature-flag stringArray     feature flag to enable on the warm sessions (repeatable; replaces the enabled flags as a whole)
   -h, --help                         help for update
-      --input stringArray            session input as key=value (repeatable)
+      --input stringArray            session input as [scope:]key=value (repeatable); unscoped applies to every scope that defines the key, scope:key (shared, on_create) to that scope only
       --machine-type string          machine type override; "" removes the override
       --name string                  new name
       --no-device                    true: the warm sessions boot without the template's device; --no-device=false boots it again
-      --secret-input stringArray     session input as key=value, stored as a secret at rest (repeatable; the value is visible in shell history and process args)
+      --secret-input stringArray     session input as [scope:]key=value, stored as a secret at rest (repeatable; the value is visible in shell history and process args)
       --size int                     new pool size of warm sessions; 0 drains the pool but keeps it as a preset
       --stack string                 stack ID override; "" removes the override
 ```

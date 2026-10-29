@@ -72,3 +72,30 @@ func TestStreamSessionLogs_NilClient(t *testing.T) {
 		t.Error("expected error from nil client")
 	}
 }
+
+func TestLogStageToAPI_HookStages(t *testing.T) {
+	cases := map[string]string{
+		LogStageOnCreate:  "3",
+		LogStageOnClaim:   "4",
+		LogStageOnRestore: "5",
+		LogStageSystem:    "6",
+	}
+	for in, want := range cases {
+		got, err := logStageToAPI(in)
+		if err != nil {
+			t.Fatalf("logStageToAPI(%q): %v", in, err)
+		}
+		if got != want {
+			t.Errorf("logStageToAPI(%q) = %q, want %q", in, got, want)
+		}
+		if !ValidLogStage(in) {
+			t.Errorf("ValidLogStage(%q) = false", in)
+		}
+	}
+	if ValidLogStage("main") {
+		t.Error("ValidLogStage(main) = true, want false (the backend's internal name is not a CLI stage)")
+	}
+	if got := LogStageList(); got != "warmup, startup, on-create, on-claim, on-restore, system or personalize" {
+		t.Errorf("LogStageList() = %q", got)
+	}
+}

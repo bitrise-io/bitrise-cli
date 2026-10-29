@@ -21,6 +21,17 @@ Provide session input values via --input (one --input per key), --secret-input
 input by ID). Use --map-saved-inputs to auto-fill any session input key that
 matches a saved input the user already has.
 
+On a template with lifecycle hooks every input belongs to a scope — Shared,
+On create, On claim or On restore ('rde template view' shows it next to each
+input). A session created directly from the template needs every required
+input of every scope; what is missing is listed per scope. A value given
+here reaches every scope that defines its key, so one --input (or one saved
+input) fills the same key on several scopes; prefix the key with a scope
+(--input on_claim:GH_TOKEN=…) to give that scope its own value, which wins
+there over an unscoped one. --secret-input marks a typed value secret
+(encrypted at rest, hidden in 'session view') on a direct create and on a
+claim alike.
+
 For secret values, prefer storing them once with 'rde saved-input create
 --value-stdin --secret' and referencing them by ID via --saved-input. A value
 passed inline with --secret-input ends up in your shell history and in the
@@ -70,22 +81,39 @@ inline ends up in your shell history and in the process arguments (readable
 by other users via 'ps'). "running" does not mean the device is usable —
 'session view' shows the device state; wait for "ready" (--wait does so for
 you when a device was requested) and touch nothing on the VM while it is
-"booting". A "failed" device is not always unusable: 'session view' prints the
+"booting". On a template with lifecycle hooks "running" does not mean the
+setup is done either: the machine is up before On create (the old warmup)
+has finished, and exec, ssh, upload, download and the terminal are refused
+until On create has finished ("Session is setting up: On create is still
+running. Access opens when it finishes."). 'session view' shows the
+lifecycle phase; --wait returns only once it is "ready" (exit 1 on
+setup_failed / personalization_failed), so "create --wait && session exec"
+is safe on both kinds of template. A "failed" device is not always unusable: 'session view' prints the
 device notes, and the guide says which failures leave the device drivable.
 
 Warm pools: pass --warm-pool to claim a session from a warm pool ('rde
 warm-pool list') instead of describing one. A booted, idle warm session is
 handed out instantly (the session's warm state is "claimed"); when none is
 available one is created from the pool's stored configuration ("cold"). The
-pool fixes the configuration, so --template, --stack, --machine-type, the
-input flags, --feature-flag, --cluster, --ai-prompt, --map-saved-inputs and
-the device flags are rejected with it — change the pool instead. NAME,
---description, --label, --auto-terminate-minutes and (on a device pool) the
-artifact flags apply to the claimed session, which is yours by default;
---owner workspace keeps it the workspace's.
+pool fixes the environment, so --template, --stack, --machine-type,
+--feature-flag, --cluster and the device flags are rejected with it — change
+the pool instead. What a claim adds is personal: on a template with
+lifecycle hooks the input flags give the template's On claim and On restore
+inputs ('rde template view' marks them "(on claim)" / "(on restore)"; a
+Shared or On create key is refused — those were set on the pool),
+--map-saved-inputs fills them from your saved inputs, and --ai-prompt is
+accepted — the last two on a personal claim only; a claim kept for the
+workspace and a Workspace API Token send plain values, and a missing
+required On claim or On restore input fails the claim. NAME, --description,
+--label, --auto-terminate-minutes and (on a device pool) the artifact flags
+apply too. The claimed session is yours by default; --owner workspace keeps
+it the workspace's. It comes back with "Setup: personalizing" while the
+platform's System setup and On claim run with your inputs; the On restore
+values wait for the first restore.
 
 Example values:
   --input key=value
+  --input on_restore:key=value               # this scope only
   --saved-input session-key=SAVED_INPUT_ID   # secret stored ahead of time
   --secret-input api-key=VALUE               # inline; avoid for real secrets
 
@@ -136,19 +164,19 @@ bitrise-cli rde session create NAME [flags]
       --device-system-image string   Android only: the API-level knob — sdkmanager system image package ("system-images;android-34;google_apis;x86_64"); default: the template's, else the platform default
       --feature-flag stringArray     name of a feature flag to enable on the session (repeatable)
   -h, --help                         help for create
-      --input stringArray            session input as key=value (repeatable)
+      --input stringArray            session input as [scope:]key=value (repeatable); unscoped applies to every scope that defines the key, scope:key (shared, on_create, on_claim, on_restore) to that scope only
   -l, --label stringArray            label to attach to the session as key=value (repeatable; at most 32; keys use letters, digits, and . _ / -, values additionally : and +; the bitrise.io/ key prefix is reserved)
       --machine-type string          machine type name for a template-less session, or to override the template's machine type (see 'rde machine-type list --stack STACK_ID')
       --map-saved-inputs             auto-fill template session inputs from the user's saved inputs (matched by key)
       --no-device                    create without the template's device (ignored when the template declares none)
       --owner string                 who owns the session: user (default; a personal session) or workspace (owned by the workspace itself, visible to every member; session inputs as plain values only). A Workspace API Token always creates workspace sessions
-      --saved-input stringArray      session input as key=savedInputID — uses a stored saved-input value (repeatable)
-      --secret-input stringArray     session input as key=value, stored as a secret at rest (repeatable; the value is visible in shell history and process args — prefer --saved-input)
+      --saved-input stringArray      session input as [scope:]key=savedInputID — uses a stored saved-input value (repeatable)
+      --secret-input stringArray     session input as [scope:]key=value, stored as a secret at rest and hidden in 'session view' — on a direct create and on a claim alike (repeatable; the value is visible in shell history and process args — prefer --saved-input)
       --stack string                 stack ID for a template-less session, or to override the template's stack (see 'rde stack list')
       --template string              template ID or name to create the session from (omit to create a template-less session with --stack and --machine-type)
-      --wait                         wait until the session leaves provisioning (running, failed, …) — and, with --device-platform, until the device is ready or failed — before returning; exits 1 if the final status isn't running
+      --wait                         wait until the session leaves provisioning (running, failed, …) — with --device-platform until the device is ready or failed, on a lifecycle-hooks template until its hooks are done — before returning; exits 1 if the final status isn't running, the device failed or a hook failed
       --wait-timeout duration        max time to wait when --wait is set (uses Go duration syntax: 30s, 5m, 1h) (default 10m0s)
-      --warm-pool string             warm pool ID or name to claim the session from: a pre-booted warm session is handed out instantly, or one is created from the pool's configuration when none is available; the pool fixes the configuration, so --template, --stack, --machine-type, input, feature-flag, --cluster, --ai-prompt and device flags are rejected with it (see 'rde warm-pool list')
+      --warm-pool string             warm pool ID or name to claim the session from: a pre-booted warm session is handed out instantly, or one is created from the pool's configuration when none is available; the pool fixes the configuration, so --template, --stack, --machine-type, --feature-flag, --cluster and the device flags are rejected with it; the input flags give the template's On claim and On restore inputs (see 'rde warm-pool list')
 ```
 
 ### Options inherited from parent commands

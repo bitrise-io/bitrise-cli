@@ -64,6 +64,37 @@ func TestStreamSessionLogs_DeliversChunksAndSkipsHeartbeats(t *testing.T) {
 	}
 }
 
+// A frame over 1 MiB (a finished stage replayed in one piece) is delivered
+// whole, not refused with "token too long".
+func TestStreamSessionLogs_FrameLargerThanOneMiB(t *testing.T) {
+	big := strings.Repeat("x", 3<<20)
+	c, _ := streamingServer(t, []string{
+		`{"result":{"logContent":"` + big + `"}}`,
+		`{"result":{"logContent":"tail\n"}}`,
+	}, http.StatusOK, nil)
+
+	var got []string
+	err := c.StreamSessionLogs(context.Background(), "ws-1", "s1", "2", 0, func(chunk LogChunk) error {
+		got = append(got, chunk.LogContent)
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("StreamSessionLogs: %v", err)
+	}
+	if len(got) != 2 || got[0] != big || got[1] != "tail\n" {
+		t.Errorf("got %d chunks, want the 3 MiB frame and the tail", len(got))
+	}
+}
+
+// A malformed frame is a decode error, as before.
+func TestStreamSessionLogs_MalformedFrame(t *testing.T) {
+	c, _ := streamingServer(t, []string{`{"result":`, `nope`}, http.StatusOK, nil)
+	err := c.StreamSessionLogs(context.Background(), "ws-1", "s1", "2", 0, func(LogChunk) error { return nil })
+	if err == nil || !strings.Contains(err.Error(), "decode log frame") {
+		t.Fatalf("err = %v, want a decode error", err)
+	}
+}
+
 func TestStreamSessionLogs_NotReady404(t *testing.T) {
 	c, _ := streamingServer(t, []string{`{"code":5,"message":"logs not available yet for this stage"}`}, http.StatusNotFound, nil)
 

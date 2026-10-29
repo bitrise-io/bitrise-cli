@@ -1,13 +1,14 @@
 package rde
 
 import (
-	"bufio"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -30,10 +31,6 @@ type logStreamLine struct {
 	Error  *errorBody `json:"error"`
 }
 
-// maxLogLine caps the bufio.Scanner token size. Log lines can be long (stack
-// traces, base64 blobs); the default 64KiB is too small, so allow up to 1MiB.
-const maxLogLine = 1 << 20
-
 // StreamSessionLogs opens the server-streaming log endpoint for one stage of a
 // session and invokes fn for every non-empty content chunk, in order.
 //
@@ -54,6 +51,14 @@ const maxLogLine = 1 << 20
 // clean end of stream and returns nil. Pre-stream failures come back as
 // *APIError (e.g. 404 = "logs not available yet").
 func (c *Client) StreamSessionLogs(ctx context.Context, workspaceID, sessionID, stage string, idleTimeout time.Duration, fn func(LogChunk) error) error {
+	return c.StreamSessionLogsAttempt(ctx, workspaceID, sessionID, stage, 0, idleTimeout, fn)
+}
+
+// StreamSessionLogsAttempt is StreamSessionLogs narrowed to one attempt of a
+// hook stage (1-based; 0 = every attempt in order, the StreamSessionLogs
+// behaviour). The backend ignores attempt on the non-hook stages.
+// Endpoint: GET /v1/workspaces/{workspaceId}/sessions/{sessionId}/logs/{stage}?attempt=N.
+func (c *Client) StreamSessionLogsAttempt(ctx context.Context, workspaceID, sessionID, stage string, attempt int, idleTimeout time.Duration, fn func(LogChunk) error) error {
 	if workspaceID == "" {
 		return fmt.Errorf("workspace ID is required")
 	}
@@ -61,6 +66,9 @@ func (c *Client) StreamSessionLogs(ctx context.Context, workspaceID, sessionID, 
 		return fmt.Errorf("session ID is required")
 	}
 	p := wsPath(workspaceID, "/sessions/"+url.PathEscape(sessionID)+"/logs/"+url.PathEscape(stage))
+	if attempt > 0 {
+		p += "?attempt=" + strconv.Itoa(attempt)
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+p, nil)
 	if err != nil {
 		return fmt.Errorf("build request: %w", err)
@@ -84,8 +92,10 @@ func (c *Client) StreamSessionLogs(ctx context.Context, workspaceID, sessionID, 
 	defer close(stop) // unblocks the reader goroutine when we return early
 
 	go func() {
-		scanner := bufio.NewScanner(resp.Body)
-		scanner.Buffer(make([]byte, 0, 64*1024), maxLogLine)
+		// A json.Decoder rather than a line scanner: a frame has no size
+		// cap, and the replay of a finished stage can arrive as one frame
+		// far larger than any sensible line limit.
+		dec := json.NewDecoder(resp.Body)
 		send := func(f frame) bool {
 			select {
 			case frames <- f:
@@ -94,14 +104,19 @@ func (c *Client) StreamSessionLogs(ctx context.Context, workspaceID, sessionID, 
 				return false
 			}
 		}
-		for scanner.Scan() {
-			line := scanner.Bytes()
-			if len(strings.TrimSpace(string(line))) == 0 {
-				continue
-			}
+		for {
 			var ln logStreamLine
-			if jerr := json.Unmarshal(line, &ln); jerr != nil {
-				send(frame{err: fmt.Errorf("decode log frame: %w", jerr)})
+			if jerr := dec.Decode(&ln); jerr != nil {
+				if errors.Is(jerr, io.EOF) {
+					send(frame{done: true})
+					return
+				}
+				var syntaxErr *json.SyntaxError
+				var typeErr *json.UnmarshalTypeError
+				if errors.As(jerr, &syntaxErr) || errors.As(jerr, &typeErr) {
+					jerr = fmt.Errorf("decode log frame: %w", jerr)
+				}
+				send(frame{err: jerr})
 				return
 			}
 			if ln.Error != nil {
@@ -115,11 +130,6 @@ func (c *Client) StreamSessionLogs(ctx context.Context, workspaceID, sessionID, 
 				return
 			}
 		}
-		if serr := scanner.Err(); serr != nil {
-			send(frame{err: serr})
-			return
-		}
-		send(frame{done: true})
 	}()
 
 	// Idle timer: armed from the start and reset on every content chunk, so it

@@ -30,6 +30,11 @@ is just another literal token.
 If a local SSH agent is available ($SSH_AUTH_SOCK set), it's forwarded into
 the session — git-over-SSH inside the session uses the caller's local keys.
 
+On a session with lifecycle hooks the command is refused while On create is
+pending or running ("Session is setting up: On create is still running.
+Access opens when it finishes."): wait for 'session view' to show "Setup:
+ready" — 'session create --wait' and 'session rebuild --wait' do so for you.
+
 Local environment variables can be forwarded to the remote command with
 --env (repeatable, before '--'): --env NAME forwards the local value of
 NAME (an error if unset), --env NAME=VALUE sets a literal. A repo can pin

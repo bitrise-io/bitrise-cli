@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"strings"
 	"testing"
 )
 
@@ -373,5 +374,36 @@ func TestSessions_ValidationGuards(t *testing.T) {
 	}
 	if rs.hits != 0 {
 		t.Errorf("validation guards made %d HTTP call(s); should short-circuit", rs.hits)
+	}
+}
+
+func TestRunSessionHook_PathAndBody(t *testing.T) {
+	rs := newRecordingServer(t, `{"run":{"id":"r-2","hook":"on_create","attempt":2,"state":"HOOK_RUN_STATE_PENDING","triggeredBy":"run_again"}}`)
+	run, err := rs.client().RunSessionHook(context.Background(), "ws-1", "s1", "on_create")
+	if err != nil {
+		t.Fatalf("RunSessionHook: %v", err)
+	}
+	if rs.lastMethod != http.MethodPost || rs.lastPath != "/v1/workspaces/ws-1/sessions/s1/hook-runs" {
+		t.Errorf("request = %s %s", rs.lastMethod, rs.lastPath)
+	}
+	if !strings.Contains(string(rs.lastBody), `"hook":"on_create"`) {
+		t.Errorf("body = %s, want the hook", rs.lastBody)
+	}
+	if run.Attempt != 2 || run.TriggeredBy != "run_again" {
+		t.Errorf("run = %+v", run)
+	}
+}
+
+func TestRebuildSession_Path(t *testing.T) {
+	rs := newRecordingServer(t, `{"session":{"id":"s1","name":"dev","status":"SESSION_STATUS_STARTING"}}`)
+	sess, err := rs.client().RebuildSession(context.Background(), "ws-1", "s1")
+	if err != nil {
+		t.Fatalf("RebuildSession: %v", err)
+	}
+	if rs.lastMethod != http.MethodPost || rs.lastPath != "/v1/workspaces/ws-1/sessions/s1/rebuild" {
+		t.Errorf("request = %s %s", rs.lastMethod, rs.lastPath)
+	}
+	if sess.ID != "s1" {
+		t.Errorf("session id = %q", sess.ID)
 	}
 }

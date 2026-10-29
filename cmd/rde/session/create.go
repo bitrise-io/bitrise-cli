@@ -66,6 +66,17 @@ Provide session input values via --input (one --input per key), --secret-input
 input by ID). Use --map-saved-inputs to auto-fill any session input key that
 matches a saved input the user already has.
 
+On a template with lifecycle hooks every input belongs to a scope — Shared,
+On create, On claim or On restore ('rde template view' shows it next to each
+input). A session created directly from the template needs every required
+input of every scope; what is missing is listed per scope. A value given
+here reaches every scope that defines its key, so one --input (or one saved
+input) fills the same key on several scopes; prefix the key with a scope
+(--input on_claim:GH_TOKEN=…) to give that scope its own value, which wins
+there over an unscoped one. --secret-input marks a typed value secret
+(encrypted at rest, hidden in 'session view') on a direct create and on a
+claim alike.
+
 For secret values, prefer storing them once with 'rde saved-input create
 --value-stdin --secret' and referencing them by ID via --saved-input. A value
 passed inline with --secret-input ends up in your shell history and in the
@@ -115,22 +126,39 @@ inline ends up in your shell history and in the process arguments (readable
 by other users via 'ps'). "running" does not mean the device is usable —
 'session view' shows the device state; wait for "ready" (--wait does so for
 you when a device was requested) and touch nothing on the VM while it is
-"booting". A "failed" device is not always unusable: 'session view' prints the
+"booting". On a template with lifecycle hooks "running" does not mean the
+setup is done either: the machine is up before On create (the old warmup)
+has finished, and exec, ssh, upload, download and the terminal are refused
+until On create has finished ("Session is setting up: On create is still
+running. Access opens when it finishes."). 'session view' shows the
+lifecycle phase; --wait returns only once it is "ready" (exit 1 on
+setup_failed / personalization_failed), so "create --wait && session exec"
+is safe on both kinds of template. A "failed" device is not always unusable: 'session view' prints the
 device notes, and the guide says which failures leave the device drivable.
 
 Warm pools: pass --warm-pool to claim a session from a warm pool ('rde
 warm-pool list') instead of describing one. A booted, idle warm session is
 handed out instantly (the session's warm state is "claimed"); when none is
 available one is created from the pool's stored configuration ("cold"). The
-pool fixes the configuration, so --template, --stack, --machine-type, the
-input flags, --feature-flag, --cluster, --ai-prompt, --map-saved-inputs and
-the device flags are rejected with it — change the pool instead. NAME,
---description, --label, --auto-terminate-minutes and (on a device pool) the
-artifact flags apply to the claimed session, which is yours by default;
---owner workspace keeps it the workspace's.
+pool fixes the environment, so --template, --stack, --machine-type,
+--feature-flag, --cluster and the device flags are rejected with it — change
+the pool instead. What a claim adds is personal: on a template with
+lifecycle hooks the input flags give the template's On claim and On restore
+inputs ('rde template view' marks them "(on claim)" / "(on restore)"; a
+Shared or On create key is refused — those were set on the pool),
+--map-saved-inputs fills them from your saved inputs, and --ai-prompt is
+accepted — the last two on a personal claim only; a claim kept for the
+workspace and a Workspace API Token send plain values, and a missing
+required On claim or On restore input fails the claim. NAME, --description,
+--label, --auto-terminate-minutes and (on a device pool) the artifact flags
+apply too. The claimed session is yours by default; --owner workspace keeps
+it the workspace's. It comes back with "Setup: personalizing" while the
+platform's System setup and On claim run with your inputs; the On restore
+values wait for the first restore.
 
 Example values:
   --input key=value
+  --input on_restore:key=value               # this scope only
   --saved-input session-key=SAVED_INPUT_ID   # secret stored ahead of time
   --secret-input api-key=VALUE               # inline; avoid for real secrets`,
 		Example: `  bitrise-cli rde session create dev --template TEMPLATE_ID
@@ -161,22 +189,24 @@ Example values:
 			if name == "" {
 				return fmt.Errorf("NAME must not be empty")
 			}
-			// A warm pool fixes the session's configuration: the backend
-			// rejects (not ignores) every flag that would shape the VM, so
-			// name the offending flags here instead of relaying a 400.
+			// A warm pool fixes the session's environment: the backend rejects
+			// (not ignores) every flag that would shape the VM, so name the
+			// offending flags here instead of relaying a 400. The input flags,
+			// --map-saved-inputs and --ai-prompt pass through: a claim may
+			// carry the template's On claim and On restore inputs (the
+			// backend checks the keys against the pool's stored definitions).
 			if warmPool != "" {
 				var conflicting []string
 				for _, f := range []string{
-					"template", "stack", "machine-type", "cluster",
-					"input", "secret-input", "saved-input", "map-saved-inputs", "feature-flag",
-					"ai-prompt", "device-platform", "device-model", "device-os-version", "device-system-image", "no-device",
+					"template", "stack", "machine-type", "cluster", "feature-flag",
+					"device-platform", "device-model", "device-os-version", "device-system-image", "no-device",
 				} {
 					if cmd.Flags().Changed(f) {
 						conflicting = append(conflicting, "--"+f)
 					}
 				}
 				if len(conflicting) > 0 {
-					return fmt.Errorf("--warm-pool: the pool fixes the session's configuration, so %s cannot be combined with it — change the pool with 'rde warm-pool update' instead", strings.Join(conflicting, ", "))
+					return fmt.Errorf("--warm-pool: the pool fixes the session's environment, so %s cannot be combined with it — change the pool with 'rde warm-pool update' instead (a claim takes only the personal inputs: the template's On claim and On restore inputs, --map-saved-inputs and --ai-prompt)", strings.Join(conflicting, ", "))
 				}
 			}
 			// A session needs either a template or, for a template-less
@@ -307,6 +337,20 @@ Example values:
 					return err
 				}
 				req.TemplateID = resolvedID
+				// A direct create needs every required input of every
+				// scope. The backend reports the first missing one; list
+				// them all, grouped by scope, before the request goes out.
+				// Skipped with --map-saved-inputs: the backend fills keys
+				// from the user's saved inputs then, and only it knows which.
+				if !mapSavedInputs {
+					tmpl, err := svc.GetTemplate(cmd.Context(), workspaceID, resolvedID)
+					if err != nil {
+						return err
+					}
+					if missing := internalrde.MissingRequiredInputs(tmpl, sessionInputs); len(missing) > 0 {
+						return fmt.Errorf("%s", missingInputsMessage(templateID, missing))
+					}
+				}
 			}
 			// --warm-pool likewise takes a UUID or a pool name.
 			if warmPool != "" {
@@ -333,8 +377,10 @@ Example values:
 					return fmt.Errorf("waiting for session: %w", waitErr)
 				}
 				// A running VM is not a usable device: when one was requested,
-				// keep polling (same timeout budget) until it reports ready or failed.
-				for ready.Status == "running" && ready.Device != nil && (ready.Device.State == "" || ready.Device.State == "booting") {
+				// keep polling (same timeout budget) until it reports ready or
+				// failed — unless a hook failed, which is the answer already.
+				for ready.Status == "running" && internalrde.LifecycleFailure(ready) == nil &&
+					ready.Device != nil && (ready.Device.State == "" || ready.Device.State == "booting") {
 					select {
 					case <-waitCtx.Done():
 						return fmt.Errorf("waiting for device: %w", waitCtx.Err())
@@ -353,13 +399,19 @@ Example values:
 					_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "WARNING: the device booted with notes — what you got differs from what you asked for: %s\n", ready.Device.DeviceNotes)
 				}
 				deviceFailed := ready.Device != nil && ready.Device.State == "failed"
-				if ready.Status != "running" || deviceFailed {
+				lifecycleErr := internalrde.LifecycleFailure(ready)
+				if ready.Status != "running" || deviceFailed || lifecycleErr != nil {
 					if renderErr := output.Render(cmd.OutOrStdout(), format, res, renderCreateResult); renderErr != nil {
 						return renderErr
 					}
-					cmdutil.SilenceRootErrors(cmd)
+					// No SilenceRootErrors: the rendered session doesn't say what
+					// went wrong or which log to read, so the error goes to stderr
+					// too — the only diagnostic with --output json.
 					if deviceFailed {
 						return fmt.Errorf("session is running but its device failed to boot: %s", ready.Device.DeviceNotes)
+					}
+					if lifecycleErr != nil {
+						return lifecycleErr
 					}
 					return fmt.Errorf("session ended provisioning with status %q (expected running)", ready.Status)
 				}
@@ -373,9 +425,9 @@ Example values:
 	c.Flags().StringVar(&templateID, "template", "", "template ID or name to create the session from (omit to create a template-less session with --stack and --machine-type)")
 	c.Flags().StringVar(&stack, "stack", "", "stack ID for a template-less session, or to override the template's stack (see 'rde stack list')")
 	c.Flags().StringVar(&machineType, "machine-type", "", "machine type name for a template-less session, or to override the template's machine type (see 'rde machine-type list --stack STACK_ID')")
-	c.Flags().StringArrayVar(&inputs, "input", nil, "session input as key=value (repeatable)")
-	c.Flags().StringArrayVar(&secretInputs, "secret-input", nil, "session input as key=value, stored as a secret at rest (repeatable; the value is visible in shell history and process args — prefer --saved-input)")
-	c.Flags().StringArrayVar(&savedInputs, "saved-input", nil, "session input as key=savedInputID — uses a stored saved-input value (repeatable)")
+	c.Flags().StringArrayVar(&inputs, "input", nil, "session input as [scope:]key=value (repeatable); unscoped applies to every scope that defines the key, scope:key (shared, on_create, on_claim, on_restore) to that scope only")
+	c.Flags().StringArrayVar(&secretInputs, "secret-input", nil, "session input as [scope:]key=value, stored as a secret at rest and hidden in 'session view' — on a direct create and on a claim alike (repeatable; the value is visible in shell history and process args — prefer --saved-input)")
+	c.Flags().StringArrayVar(&savedInputs, "saved-input", nil, "session input as [scope:]key=savedInputID — uses a stored saved-input value (repeatable)")
 	c.Flags().StringArrayVarP(&labels, "label", "l", nil, "label to attach to the session as key=value (repeatable; at most 32; keys use letters, digits, and . _ / -, values additionally : and +; the bitrise.io/ key prefix is reserved)")
 	c.Flags().StringArrayVar(&featureFlags, "feature-flag", nil, "name of a feature flag to enable on the session (repeatable)")
 	c.Flags().StringVar(&cluster, "cluster", "", "target cluster name (use 'rde machine-type list --stack STACK_ID' to find candidates when the stack + machine type combo is ambiguous)")
@@ -383,7 +435,7 @@ Example values:
 	c.Flags().IntVar(&autoTerminateMinutes, "auto-terminate-minutes", 0, "minutes until auto-termination; 0 disables; omitted uses the backend default (~5 days)")
 	c.Flags().BoolVar(&mapSavedInputs, "map-saved-inputs", false, "auto-fill template session inputs from the user's saved inputs (matched by key)")
 	c.Flags().StringVar(&owner, "owner", "", "who owns the session: user (default; a personal session) or workspace (owned by the workspace itself, visible to every member; session inputs as plain values only). A Workspace API Token always creates workspace sessions")
-	c.Flags().StringVar(&warmPool, "warm-pool", "", "warm pool ID or name to claim the session from: a pre-booted warm session is handed out instantly, or one is created from the pool's configuration when none is available; the pool fixes the configuration, so --template, --stack, --machine-type, input, feature-flag, --cluster, --ai-prompt and device flags are rejected with it (see 'rde warm-pool list')")
+	c.Flags().StringVar(&warmPool, "warm-pool", "", "warm pool ID or name to claim the session from: a pre-booted warm session is handed out instantly, or one is created from the pool's configuration when none is available; the pool fixes the configuration, so --template, --stack, --machine-type, --feature-flag, --cluster and the device flags are rejected with it; the input flags give the template's On claim and On restore inputs (see 'rde warm-pool list')")
 	_ = c.RegisterFlagCompletionFunc("owner", func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
 		return []string{internalrde.SessionOwnerUser, internalrde.SessionOwnerWorkspace}, cobra.ShellCompDirectiveNoFileComp
 	})
@@ -395,7 +447,7 @@ Example values:
 	c.Flags().StringVar(&artifactURL, "artifact-url", "", "app build to install once the device is ready: absolute http(s) URL of a zipped simulator .app (iOS) or an .apk (Android); requires --device-platform or a --template that declares a device (a signed URL is visible in shell history and process args — prefer --artifact-url-stdin)")
 	c.Flags().BoolVar(&artifactURLStdin, "artifact-url-stdin", false, "read the --artifact-url value from stdin instead of the command line; keeps signed URLs out of shell history and process args; requires --device-platform")
 	c.Flags().StringVar(&artifactName, "artifact-name", "", "display name of the app installed from --artifact-url / --artifact-url-stdin")
-	c.Flags().BoolVar(&wait, "wait", false, "wait until the session leaves provisioning (running, failed, …) — and, with --device-platform, until the device is ready or failed — before returning; exits 1 if the final status isn't running")
+	c.Flags().BoolVar(&wait, "wait", false, "wait until the session leaves provisioning (running, failed, …) — with --device-platform until the device is ready or failed, on a lifecycle-hooks template until its hooks are done — before returning; exits 1 if the final status isn't running, the device failed or a hook failed")
 	c.Flags().DurationVar(&waitTimeout, "wait-timeout", 10*time.Minute, "max time to wait when --wait is set (uses Go duration syntax: 30s, 5m, 1h)")
 	c.MarkFlagsMutuallyExclusive("artifact-url", "artifact-url-stdin")
 	for _, f := range []string{"device-platform", "device-model", "device-os-version", "device-system-image", "artifact-url", "artifact-url-stdin", "artifact-name"} {
@@ -413,6 +465,24 @@ Example values:
 // deviceWaitPollInterval is how often --wait re-reads a device session while
 // its device is still booting (a variable so tests can shorten it).
 var deviceWaitPollInterval = 3 * time.Second
+
+// missingInputsMessage lists the required inputs a direct create still has
+// to give, one line per scope (Shared, On create, On claim, On restore), and
+// how to give them. When only shared inputs are missing (always the case on
+// a template without lifecycle hooks) the scope label is left out.
+func missingInputsMessage(template string, missing []internalrde.ScopeKeys) string {
+	var b strings.Builder
+	if len(missing) == 1 && missing[0].Scope == internalrde.ScopeShared {
+		fmt.Fprintf(&b, "missing required session inputs: %s\n", strings.Join(missing[0].Keys, ", "))
+	} else {
+		b.WriteString("missing required session inputs:\n")
+		for _, m := range missing {
+			fmt.Fprintf(&b, "  %-12s%s\n", internalrde.ScopeLabel(m.Scope)+":", strings.Join(m.Keys, ", "))
+		}
+	}
+	fmt.Fprintf(&b, "give each one with --input KEY=VALUE, --secret-input KEY=VALUE or --saved-input KEY=SAVED_INPUT_ID, or pass --map-saved-inputs to fill them from your saved inputs ('rde template view %s' describes them)", template)
+	return b.String()
+}
 
 func renderCreateResult(w io.Writer, res internalrde.CreateSessionResult) error {
 	s := style.New(w)

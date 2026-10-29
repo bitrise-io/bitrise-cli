@@ -31,25 +31,37 @@ var snapshotIdleTimeout = 2 * time.Second
 
 func newLogsCmd() *cobra.Command {
 	var (
-		stage  string
-		follow bool
+		stage   string
+		follow  bool
+		attempt int
 	)
 
 	c := &cobra.Command{
-		Use:   "logs SESSION_ID --stage warmup|startup",
-		Short: "Print a session's warmup or startup logs",
-		Long: `Print the warmup or startup script logs for a session — useful for debugging a
-session stuck provisioning or one that came up failed. The log replays from the
-start every time you connect.
+		Use:   "logs SESSION_ID --stage warmup|startup|on-create|on-claim|on-restore|system|personalize [--attempt N]",
+		Short: "Print a session's warmup, startup or lifecycle-hook logs",
+		Long: `Print the warmup or startup script logs for a session — or, on a session that
+runs lifecycle hooks, one hook's log — useful for debugging a session stuck
+provisioning or one whose setup failed. The log replays from the start every
+time you connect.
 
 By default this prints the log captured so far and exits, without waiting for
 more output. Pass --follow to keep streaming new output live until you stop it
 with Ctrl-C (the backend does not signal end-of-log, so --follow runs until
 interrupted).
 
-  --stage    which script's logs to show: warmup or startup (required). warmup
-             runs once at session creation; startup runs on every session
-             start/restart.
+  --stage    which log to show (required). warmup runs once at session
+             creation; startup runs on every session start/restart. On a
+             session that runs lifecycle hooks ('session view' shows a Setup
+             line): on-create, on-claim and on-restore are that hook's output,
+             every run in order; personalize is the platform's System setup
+             step alone (credentials, Claude Code — queued after On create);
+             system is the platform's own output (the warmup stage, then the
+             startup stage without the hooks' lines, the System setup
+             included); startup is then the combined log of the platform and
+             every hook.
+  --attempt  on a hook stage, show only this attempt of the hook (1-based,
+             the numbers 'session view' lists); default: every attempt in
+             order, each re-run preceded by an "── attempt N ──" marker.
   --follow   keep streaming new output until Ctrl-C, and wait for the stage to
              start if it hasn't produced any logs yet (instead of erroring).
 
@@ -59,6 +71,8 @@ is rejected (the feed is plain text, not a single object).`,
 		Example: `  bitrise-cli rde session logs SESSION_ID --stage startup
   bitrise-cli rde session logs SESSION_ID --stage warmup
   bitrise-cli rde session logs SESSION_ID --stage startup --follow
+  bitrise-cli rde session logs SESSION_ID --stage on-create
+  bitrise-cli rde session logs SESSION_ID --stage on-create --attempt 2
   bitrise-cli rde session logs SESSION_ID --stage startup > session.log`,
 		Args: cmdutil.RequireArgs("SESSION_ID"),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -68,10 +82,14 @@ is rejected (the feed is plain text, not a single object).`,
 			}
 			// Validate --stage up front so a typo errors before the stream
 			// header prints (mirrors notifications' --order validation).
-			switch stage {
-			case internalrde.LogStageWarmup, internalrde.LogStageStartup:
-			default:
-				return fmt.Errorf("--stage must be %s or %s", internalrde.LogStageWarmup, internalrde.LogStageStartup)
+			if !internalrde.ValidLogStage(stage) {
+				return fmt.Errorf("--stage must be %s", internalrde.LogStageList())
+			}
+			if attempt < 0 {
+				return fmt.Errorf("--attempt must be 1 or higher")
+			}
+			if attempt > 0 && !internalrde.HookLogStage(stage) {
+				return fmt.Errorf("--attempt applies to a hook's log only (on-create, on-claim, on-restore or personalize), not --stage %s", stage)
 			}
 
 			workspaceID, err := cmdutil.ResolveWorkspaceID(cmd)
@@ -100,20 +118,26 @@ is rejected (the feed is plain text, not a single object).`,
 			}
 
 			if follow {
-				return runFollow(ctx, cmd, svc, workspaceID, sessionID, stage, emit)
+				return runFollow(ctx, cmd, svc, workspaceID, sessionID, stage, attempt, emit)
 			}
-			return runSnapshot(ctx, cmd, svc, workspaceID, sessionID, stage, emit)
+			return runSnapshot(ctx, cmd, svc, workspaceID, sessionID, stage, attempt, emit)
 		},
 	}
 
-	c.Flags().StringVar(&stage, "stage", "", "which logs to show: warmup or startup (required)")
+	c.Flags().StringVar(&stage, "stage", "", "which log to show: "+internalrde.LogStageList()+" (required)")
 	c.Flags().BoolVarP(&follow, "follow", "f", false, "keep streaming until Ctrl-C, waiting for the stage to start if needed")
+	c.Flags().IntVar(&attempt, "attempt", 0, "on a hook stage, only this attempt of the hook (1-based); 0 = every attempt in order")
 	_ = c.MarkFlagRequired("stage")
 
 	_ = c.RegisterFlagCompletionFunc("stage", func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
 		return []string{
 			internalrde.LogStageWarmup + "\twarmup script (once at creation)",
-			internalrde.LogStageStartup + "\tstartup script (every start/restart)",
+			internalrde.LogStageStartup + "\tstartup script (every start/restart); with lifecycle hooks: platform + every hook",
+			internalrde.LogStageOnCreate + "\tthe On create hook (lifecycle hooks)",
+			internalrde.LogStageOnClaim + "\tthe On claim hook (lifecycle hooks)",
+			internalrde.LogStageOnRestore + "\tthe On restore hook (lifecycle hooks)",
+			internalrde.LogStageSystem + "\tthe platform's own output (lifecycle hooks)",
+			internalrde.LogStagePersonalize + "\tthe platform's System setup step alone (lifecycle hooks)",
 		}, cobra.ShellCompDirectiveNoFileComp
 	})
 	return c
@@ -125,8 +149,8 @@ is rejected (the feed is plain text, not a single object).`,
 // stream goes quiet and the command returns. A pre-stream 404 ("logs not
 // available yet") is turned into a friendly, actionable message and a non-zero
 // exit rather than a raw API error.
-func runSnapshot(ctx context.Context, cmd *cobra.Command, svc *internalrde.Service, workspaceID, sessionID, stage string, emit func(string) error) error {
-	err := svc.StreamSessionLogs(ctx, workspaceID, sessionID, stage, snapshotIdleTimeout, emit)
+func runSnapshot(ctx context.Context, cmd *cobra.Command, svc *internalrde.Service, workspaceID, sessionID, stage string, attempt int, emit func(string) error) error {
+	err := svc.StreamSessionLogsAttempt(ctx, workspaceID, sessionID, stage, attempt, snapshotIdleTimeout, emit)
 	if isLogsNotReady(err) {
 		cmdutil.SilenceRootErrors(cmd)
 		_, _ = fmt.Fprintf(cmd.ErrOrStderr(),
@@ -141,12 +165,12 @@ func runSnapshot(ctx context.Context, cmd *cobra.Command, svc *internalrde.Servi
 // — the dashboard does the same. The retry is safe because a 404 only ever
 // comes back pre-stream (nothing has been printed yet), so it can't duplicate
 // already-streamed output. idleTimeout is 0 here: follow never self-terminates.
-func runFollow(ctx context.Context, cmd *cobra.Command, svc *internalrde.Service, workspaceID, sessionID, stage string, emit func(string) error) error {
+func runFollow(ctx context.Context, cmd *cobra.Command, svc *internalrde.Service, workspaceID, sessionID, stage string, attempt int, emit func(string) error) error {
 	if !cmdutil.IsQuiet(cmd) {
 		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Streaming %s logs for session %s — Ctrl-C to stop…\n", stage, sessionID)
 	}
 	for {
-		err := svc.StreamSessionLogs(ctx, workspaceID, sessionID, stage, 0, emit)
+		err := svc.StreamSessionLogsAttempt(ctx, workspaceID, sessionID, stage, attempt, 0, emit)
 		if err == nil {
 			return nil
 		}

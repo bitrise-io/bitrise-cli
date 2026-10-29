@@ -20,7 +20,7 @@ bitrise-cli rde session restore SESSION_ID [flags]
 
 ```
   -h, --help                    help for restore
-      --wait                    wait until the session leaves provisioning (running, failed, …) before returning; exits 1 if the final status isn't running
+      --wait                    wait until the session leaves provisioning (running, failed, …) and, on a lifecycle-hooks session, until its hooks are done before returning; exits 1 if the final status isn't running or a hook failed
       --wait-timeout duration   max time to wait when --wait is set (Go duration syntax: 30s, 5m, 1h) (default 10m0s)
 ```
 

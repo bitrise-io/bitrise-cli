@@ -31,6 +31,15 @@ saved inputs are personal and never reach a pool. A session claimed from a
 pool is yours; pass '--owner workspace' to 'rde session create' to keep it
 the workspace's instead.
 
+On a template with lifecycle hooks a pool's inputs are the Shared and On
+create ones (set once, for everyone who claims); each claimant supplies the
+On claim and On restore inputs on 'rde session create --warm-pool'. A
+value marked secret (--secret-input) is encrypted at rest and hidden in
+output. A warm session is ready to claim once
+On create finished. When On create fails three times in a row the pool
+pauses with the last machine kept for inspection ('view' shows "Setup
+failed:"); fix the script, then 'rde warm-pool retry'.
+
 Warm sessions cost machine time while idle. Set the pool size to what
 demand needs and scale it with 'rde warm-pool set-size POOL N' — the
 intended way to warm a pool for business hours is a cron job that sets the
@@ -53,6 +62,7 @@ the command errors and lists the candidate IDs to pick from.`,
 		newCreateCmd(),
 		newUpdateCmd(),
 		newSetSizeCmd(),
+		newRetryCmd(),
 		newDeleteCmd(),
 	)
 	return c

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/bitrise-io/bitrise-cli/internal/output"
+	internalrde "github.com/bitrise-io/bitrise-cli/internal/rde"
 )
 
 // uuidTemplate is a UUID-shaped template arg so ResolveTemplateID
@@ -24,6 +25,12 @@ const uuidSession = "99999999-8888-7777-6666-555555555555"
 func TestCreateCmd_HappyPath(t *testing.T) {
 	var gotBody map[string]any
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// A direct create reads the template first (required inputs are
+		// checked per scope before the request goes out), then posts.
+		if r.Method == http.MethodGet && r.URL.Path == "/v1/workspaces/ws-1/templates/"+uuidTemplate {
+			_, _ = io.WriteString(w, `{"template":{"id":"`+uuidTemplate+`","name":"Dev","sessionInputs":[{"key":"repo","required":true}]}}`)
+			return
+		}
 		if r.Method != http.MethodPost || r.URL.Path != "/v1/workspaces/ws-1/sessions" {
 			t.Errorf("unexpected: %s %s", r.Method, r.URL.Path)
 		}
@@ -42,6 +49,81 @@ func TestCreateCmd_HappyPath(t *testing.T) {
 	}
 	if !strings.Contains(stdout, "Session created") || !strings.Contains(stdout, "s-new") {
 		t.Errorf("stdout missing create confirmation:\n%s", stdout)
+	}
+}
+
+// A direct create needs every required input of every scope: the missing
+// ones are listed per scope before anything is posted, a supplied key
+// covers every scope that defines it, and --map-saved-inputs skips the
+// check (the backend fills keys from saved inputs then).
+func TestCreateCmd_MissingRequiredInputsGroupedByScope(t *testing.T) {
+	var posted bool
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			_, _ = io.WriteString(w, `{"template":{"id":"`+uuidTemplate+`","name":"Hooks","lifecycleMode":"hooks",
+				"sessionInputs":[{"key":"REPO","required":true},{"key":"REGISTRY","required":true,"hook":"on_create"},{"key":"GH_TOKEN","required":true,"hook":"on_claim"},{"key":"GH_TOKEN","required":true,"hook":"on_restore"},{"key":"BRANCH","hook":"on_restore"},{"key":"NAME","required":true,"hook":"shared"}]}}`)
+			return
+		}
+		posted = true
+		_, _ = io.WriteString(w, `{"session":{"id":"s-new","name":"dev","status":"SESSION_STATUS_PENDING"}}`)
+	}))
+	defer srv.Close()
+
+	_, _, err := run(t, newCreateCmd(), srv.URL, "ws-1",
+		[]string{"dev", "--template", uuidTemplate, "--input", "REPO=org/app"}, output.Human)
+	if err == nil {
+		t.Fatal("expected the missing-inputs error")
+	}
+	if posted {
+		t.Error("nothing must be posted while required inputs are missing")
+	}
+	want := "missing required session inputs:\n" +
+		"  Shared:     NAME\n" +
+		"  On create:  REGISTRY\n" +
+		"  On claim:   GH_TOKEN\n" +
+		"  On restore: GH_TOKEN\n"
+	if !strings.HasPrefix(err.Error(), want) {
+		t.Errorf("error = %q, want prefix %q", err.Error(), want)
+	}
+	if !strings.Contains(err.Error(), "--map-saved-inputs") || !strings.Contains(err.Error(), "rde template view "+uuidTemplate) {
+		t.Errorf("error must say how to give the inputs: %q", err.Error())
+	}
+
+	// Only shared inputs missing (as on a template without hooks): no scope
+	// label.
+	if got, want := missingInputsMessage("t-1", []internalrde.ScopeKeys{{Scope: internalrde.ScopeShared, Keys: []string{"A", "B"}}}), "missing required session inputs: A, B\n"; !strings.HasPrefix(got, want) {
+		t.Errorf("shared only: got %q, want prefix %q", got, want)
+	}
+
+	// A scoped value covers its scope only: on_claim:GH_TOKEN leaves the
+	// On restore one missing.
+	if _, _, err := run(t, newCreateCmd(), srv.URL, "ws-1",
+		[]string{"dev", "--template", uuidTemplate, "--input", "REPO=org/app", "--input", "NAME=x", "--input", "REGISTRY=r", "--input", "on_claim:GH_TOKEN=a"}, output.Human); err == nil {
+		t.Fatal("expected the On restore GH_TOKEN to be missing")
+	} else if !strings.Contains(err.Error(), "On restore: GH_TOKEN") || strings.Contains(err.Error(), "On claim:") {
+		t.Errorf("error = %q, want only the On restore key missing", err.Error())
+	}
+	if posted {
+		t.Error("nothing must be posted while a scoped required input is missing")
+	}
+
+	// One value covers the key on every scope; --secret-input and
+	// --saved-input count too.
+	if _, _, err := run(t, newCreateCmd(), srv.URL, "ws-1",
+		[]string{"dev", "--template", uuidTemplate, "--input", "REPO=org/app", "--input", "NAME=x", "--secret-input", "REGISTRY=r", "--saved-input", "GH_TOKEN=" + uuidSession}, output.Human); err != nil {
+		t.Fatalf("every required input given: %v", err)
+	}
+	if !posted {
+		t.Error("the session must be posted once every required input is given")
+	}
+
+	posted = false
+	if _, _, err := run(t, newCreateCmd(), srv.URL, "ws-1",
+		[]string{"dev", "--template", uuidTemplate, "--map-saved-inputs"}, output.Human); err != nil {
+		t.Fatalf("--map-saved-inputs must leave the check to the backend: %v", err)
+	}
+	if !posted {
+		t.Error("the session must be posted with --map-saved-inputs")
 	}
 }
 
@@ -914,5 +996,89 @@ func TestCreateCmd_NoDevice(t *testing.T) {
 	}
 	if gotBody != nil {
 		t.Errorf("server must not be hit when the flags conflict")
+	}
+}
+
+// TestCreateCmd_WaitLifecycleFailedExitsNonZero: on a lifecycle-hooks
+// template the session is "running" while its hooks run; a failed On create
+// is a non-zero exit even though the machine is up, and the error points at
+// the hook's log.
+func TestCreateCmd_WaitLifecycleFailedExitsNonZero(t *testing.T) {
+	body := `{"session":{"id":"` + uuidSession + `","name":"hooks-check","status":"SESSION_STATUS_RUNNING","lifecycle":{"mode":"hooks","phase":"LIFECYCLE_PHASE_SETUP_FAILED","runs":[{"id":"r1","hook":"on_create","attempt":1,"state":"HOOK_RUN_STATE_FAILED","exitCode":2}]}}}`
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, body)
+	}))
+	defer srv.Close()
+
+	stdout, _, err := run(t, newCreateCmd(), srv.URL, "ws-1",
+		[]string{"hooks-check", "--template", uuidTemplate, "--wait"}, output.Human)
+	if err == nil || !strings.Contains(err.Error(), "On create hook failed") || !strings.Contains(err.Error(), "--stage on-create") {
+		t.Fatalf("expected a lifecycle-failure error pointing at the On create log, got %v", err)
+	}
+	if !strings.Contains(stdout, uuidSession) {
+		t.Errorf("the session should still be rendered so the caller has its id:\n%s", stdout)
+	}
+}
+
+// TestCreateCmd_WaitLifecycleFailedReportsOnStderr: the session goes to
+// stdout, and the failure with its log hint to stderr, so --output json
+// callers see why the command exited 1.
+func TestCreateCmd_WaitLifecycleFailedReportsOnStderr(t *testing.T) {
+	body := `{"session":{"id":"` + uuidSession + `","name":"hooks-check","status":"SESSION_STATUS_RUNNING","lifecycle":{"mode":"hooks","phase":"LIFECYCLE_PHASE_SETUP_FAILED"}}}`
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, body)
+	}))
+	defer srv.Close()
+
+	stdout, stderr, err := run(t, newCreateCmd(), srv.URL, "ws-1",
+		[]string{"hooks-check", "--template", uuidTemplate, "--wait"}, output.JSON)
+	if err == nil {
+		t.Fatal("expected a non-zero exit")
+	}
+	if !strings.Contains(stdout, uuidSession) {
+		t.Errorf("stdout should carry the session JSON:\n%s", stdout)
+	}
+	if !strings.Contains(stderr, "--stage on-create") {
+		t.Errorf("stderr should carry the failure and its log hint:\n%s", stderr)
+	}
+}
+
+// TestCreateCmd_WaitLifecycleFailedStopsDeviceWait: a failed hook ends the
+// wait even while the device still reports booting.
+func TestCreateCmd_WaitLifecycleFailedStopsDeviceWait(t *testing.T) {
+	deviceWaitPollInterval = time.Millisecond
+	t.Cleanup(func() { deviceWaitPollInterval = 3 * time.Second })
+	body := `{"session":{"id":"` + uuidSession + `","name":"ios-check","status":"SESSION_STATUS_RUNNING","device":{"spec":{"platform":"ios"},"state":"PREVIEW_DEVICE_STATE_BOOTING"},"lifecycle":{"mode":"hooks","phase":"LIFECYCLE_PHASE_SETUP_FAILED"}}}`
+	var getCount int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet && r.URL.Path == "/v1/workspaces/ws-1/sessions/"+uuidSession {
+			getCount++
+		}
+		_, _ = io.WriteString(w, body)
+	}))
+	defer srv.Close()
+
+	_, _, err := run(t, newCreateCmd(), srv.URL, "ws-1",
+		[]string{"ios-check", "--device-platform", "ios", "--wait", "--wait-timeout", "2s"}, output.Human)
+	if err == nil || !strings.Contains(err.Error(), "On create hook failed") {
+		t.Fatalf("expected the hook failure, got %v", err)
+	}
+	if getCount != 1 {
+		t.Errorf("the device wait must not poll after a hook failed, got %d GETs", getCount)
+	}
+}
+
+// TestCreateCmd_WaitLifecycleReadyIsSuccess: a hooks session whose phase is
+// ready exits 0 like a legacy running session.
+func TestCreateCmd_WaitLifecycleReadyIsSuccess(t *testing.T) {
+	body := `{"session":{"id":"` + uuidSession + `","name":"hooks-check","status":"SESSION_STATUS_RUNNING","lifecycle":{"mode":"hooks","phase":"LIFECYCLE_PHASE_READY"}}}`
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, body)
+	}))
+	defer srv.Close()
+
+	if _, _, err := run(t, newCreateCmd(), srv.URL, "ws-1",
+		[]string{"hooks-check", "--template", uuidTemplate, "--wait"}, output.Human); err != nil {
+		t.Fatalf("Execute: %v", err)
 	}
 }

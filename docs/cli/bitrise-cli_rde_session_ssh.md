@@ -22,6 +22,11 @@ SSH_ASKPASS helper without parsing:
 
 --output json emits {address, host, port, user, password, command}.
 
+On a session with lifecycle hooks the details are withheld while On create
+is pending or running ("Session is setting up: On create is still running.
+Access opens when it finishes."): wait for 'session view' to show "Setup:
+ready".
+
 ```
 bitrise-cli rde session ssh SESSION_ID [flags]
 ```

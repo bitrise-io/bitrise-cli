@@ -22,8 +22,8 @@ type inputFlags struct {
 }
 
 func (f *inputFlags) bind(c *cobra.Command) {
-	c.Flags().StringArrayVar(&f.plain, "input", nil, "session input as key=value (repeatable)")
-	c.Flags().StringArrayVar(&f.secret, "secret-input", nil, "session input as key=value, stored as a secret at rest (repeatable; the value is visible in shell history and process args)")
+	c.Flags().StringArrayVar(&f.plain, "input", nil, "session input as [scope:]key=value (repeatable); unscoped applies to every scope that defines the key, scope:key (shared, on_create) to that scope only")
+	c.Flags().StringArrayVar(&f.secret, "secret-input", nil, "session input as [scope:]key=value, stored as a secret at rest (repeatable; the value is visible in shell history and process args)")
 }
 
 // set reports whether any input flag was given.
@@ -76,7 +76,15 @@ personal and cannot be referenced from a pool.
 
 Provide session input values via --input (one --input per key) or
 --secret-input (stored as secret-at-rest). A value passed inline with
---secret-input ends up in your shell history and process arguments.
+--secret-input ends up in your shell history and process arguments. A value
+applies to every scope that defines its key; prefix the key with a scope
+(--input on_create:REGISTRY=…) to give that scope its own value.
+
+On a template with lifecycle hooks only the Shared and On create inputs go
+on the pool ('rde template view' marks each input's scope); an On claim or
+On restore key is rejected — each claimant supplies those on 'rde session
+create --warm-pool'. Exposed ("Also in terminal") Shared and On create
+values stay on the pool machine for whoever claims it.
 
 --stack, --machine-type and --cluster override the template's defaults for
 the warm sessions; omit them to use the template's.

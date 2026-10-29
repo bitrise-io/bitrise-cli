@@ -105,19 +105,16 @@ func TestCreateCmd_WarmPoolResolvesName(t *testing.T) {
 }
 
 // Every flag that would shape the VM is rejected locally with --warm-pool,
-// naming the offending flag, before any round trip.
+// naming the offending flag, before any round trip. The personal inputs
+// (--input/--secret-input/--saved-input, --map-saved-inputs, --ai-prompt)
+// are not among them: a claim carries the template's On claim inputs.
 func TestCreateCmd_WarmPoolRejectsConfiguration(t *testing.T) {
 	cases := map[string][]string{
 		"template":            {"dev", "--warm-pool", uuidPool, "--template", uuidTemplate},
 		"stack":               {"dev", "--warm-pool", uuidPool, "--stack", "osx-27-edge"},
 		"machine type":        {"dev", "--warm-pool", uuidPool, "--machine-type", "g2.mac"},
-		"input":               {"dev", "--warm-pool", uuidPool, "--input", "k=v"},
-		"secret input":        {"dev", "--warm-pool", uuidPool, "--secret-input", "k=v"},
-		"saved input":         {"dev", "--warm-pool", uuidPool, "--saved-input", "k=" + uuidSession},
-		"map saved inputs":    {"dev", "--warm-pool", uuidPool, "--map-saved-inputs"},
 		"feature flag":        {"dev", "--warm-pool", uuidPool, "--feature-flag", "beta"},
 		"cluster":             {"dev", "--warm-pool", uuidPool, "--cluster", "c1"},
-		"ai prompt":           {"dev", "--warm-pool", uuidPool, "--ai-prompt", "hi"},
 		"device platform":     {"dev", "--warm-pool", uuidPool, "--device-platform", "ios"},
 		"device model":        {"dev", "--warm-pool", uuidPool, "--device-model", "iPhone 16"},
 		"device os version":   {"dev", "--warm-pool", uuidPool, "--device-os-version", "18.2"},
@@ -256,5 +253,36 @@ func TestWarmPoolSession_DevicePage(t *testing.T) {
 	}
 	if !strings.Contains(stdout, "Device:") || strings.Contains(stdout, "Device page:") {
 		t.Errorf("inventory must show its device but no device page:\n%s", stdout)
+	}
+}
+
+// A claim forwards the personal inputs to the backend, which restricts them
+// to the template's On claim keys.
+func TestCreateCmd_WarmPoolForwardsPersonalInputs(t *testing.T) {
+	var gotBody map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/v1/workspaces/ws-1/warm-pools"):
+			_, _ = io.WriteString(w, `{"warm_pools":[{"id":"`+uuidPool+`","name":"ios-devs"}]}`)
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/workspaces/ws-1/sessions":
+			_ = json.NewDecoder(r.Body).Decode(&gotBody)
+			_, _ = io.WriteString(w, `{"session":{"id":"s-1","name":"dev","status":"SESSION_STATUS_RUNNING","warmState":"claimed"}}`)
+		default:
+			t.Errorf("unexpected: %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer srv.Close()
+	_, _, err := run(t, newCreateCmd(), srv.URL, "ws-1", []string{"dev", "--warm-pool", uuidPool, "--input", "GIT_TOKEN=t", "--map-saved-inputs", "--ai-prompt", "hi"}, output.JSON)
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if gotBody["warmPoolId"] != uuidPool {
+		t.Errorf("warmPoolId = %v", gotBody["warmPoolId"])
+	}
+	if _, ok := gotBody["sessionInputs"]; !ok {
+		t.Errorf("sessionInputs missing from the claim body: %v", gotBody)
+	}
+	if gotBody["mapSavedToSessionInputs"] != true || gotBody["aiPrompt"] != "hi" {
+		t.Errorf("personal fields missing from the claim body: %v", gotBody)
 	}
 }
