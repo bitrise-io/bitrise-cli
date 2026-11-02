@@ -138,7 +138,7 @@ way `stack_id` / `machine_type` do:
 - `no_device: true` (CLI `--no-device`) → the session boots no device.
 
 **From a warm pool — instant devices.** A cold device session takes minutes
-(VM boot, warmup, emulator/simulator boot). A **warm pool** keeps a number of
+(VM boot, the template's setup, emulator/simulator boot). A **warm pool** keeps a number of
 sessions of one configuration booted and idle so a create is instant: it is a
 stored session configuration (template + input values + flags + optional
 machine/device overrides) plus a `pool_size`, owned by the workspace so every
@@ -177,7 +177,7 @@ creates, and scale it with `pool_size` (`rde warm-pool set-size <id> N`;
 
 ## 2. Wait for the device — "running" is not "ready"
 
-The session turns `running` when its startup script begins; the device boots
+The session turns `running` as soon as its machine is up; the device boots
 in the background. **Typical** (measured): Android READY 60–150 s after
 `running` — but under load single boots of ~8 minutes have been observed, so
 budget by the ceiling, not the typical; iOS READY 40–80 s after `running`,
