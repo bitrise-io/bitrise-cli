@@ -37,9 +37,26 @@ type UserUsage struct {
 	Totals      UsageTotals `json:"totals"`
 }
 
+// ComputeQuota is the workspace's vCPU quota on one machine family and the
+// vCPUs its machines hold right now. Always dense: fields the backend omitted
+// are 0.
+//
+// UsedVCPU counts every active machine in the family, warm pool sessions
+// included. It is counted from machines rather than sessions, so it
+// can briefly differ from the session totals. QuotaVCPU 0 means the plan does
+// not include the family. A new session cannot start on a family once
+// UsedVCPU plus the new machine's vCPUs would exceed QuotaVCPU.
+type ComputeQuota struct {
+	Family      string `json:"family"`
+	DisplayName string `json:"display_name"`
+	UsedVCPU    int32  `json:"used_vcpu"`
+	QuotaVCPU   int32  `json:"quota_vcpu"`
+}
+
 // WorkspaceUsage is a point-in-time snapshot of the sessions currently
-// consuming resources in the workspace, split by OS and by user. It is not a
-// historical or billing-period report.
+// consuming resources in the workspace, split by OS and by user, plus the
+// workspace's vCPU quota per machine family. It is not a historical or
+// billing-period report.
 type WorkspaceUsage struct {
 	Totals UsageTotals `json:"totals"`
 	Users  []UserUsage `json:"users"`
@@ -47,6 +64,9 @@ type WorkspaceUsage struct {
 	// no resolvable vCPU/RAM spec; they contribute 0 to the sums, so totals
 	// may undercount when this is non-zero.
 	UnknownMachineTypeCount int32 `json:"unknown_machine_type_count"`
+	// ComputeQuotas is the vCPU quota per machine family, sorted by display
+	// name. Empty (never null) when the backend could not read the quota.
+	ComputeQuotas []ComputeQuota `json:"compute_quotas"`
 }
 
 // GetWorkspaceUsage returns the workspace's active-session usage snapshot.
@@ -71,6 +91,7 @@ func usageFromAPI(w rdeapi.WorkspaceUsage) WorkspaceUsage {
 		Totals:                  usageTotalsFromAPI(w.Totals),
 		Users:                   make([]UserUsage, 0, len(w.Users)),
 		UnknownMachineTypeCount: w.UnknownMachineTypeCount,
+		ComputeQuotas:           make([]ComputeQuota, 0, len(w.ComputeQuotas)),
 	}
 	for _, u := range w.Users {
 		out.Users = append(out.Users, UserUsage{
@@ -79,6 +100,18 @@ func usageFromAPI(w rdeapi.WorkspaceUsage) WorkspaceUsage {
 			Username:    u.Username,
 			IsWorkspace: u.IsWorkspace,
 			Totals:      usageTotalsFromAPI(u.Totals),
+		})
+	}
+	for _, q := range w.ComputeQuotas {
+		name := q.DisplayName
+		if name == "" {
+			name = q.Family
+		}
+		out.ComputeQuotas = append(out.ComputeQuotas, ComputeQuota{
+			Family:      q.Family,
+			DisplayName: name,
+			UsedVCPU:    q.UsedVCPU,
+			QuotaVCPU:   q.QuotaVCPU,
 		})
 	}
 	return out

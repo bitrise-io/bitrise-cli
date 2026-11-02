@@ -25,9 +25,14 @@ session counts and vCPU/memory totals split by OS, workspace-wide and per user.
 
 This reports sessions currently consuming resources; it is not a historical or
 billing-period report. Requires the workspace's billing-view permission
-(workspace owners and billing-managing custom roles).`,
+(workspace owners and billing-managing custom roles).
+
+It also shows the workspace's vCPU quota per machine family: the vCPUs in use
+(warm pool sessions included) out of the plan's quota. A new session cannot
+start on a family once its vCPUs would push the use over the quota.`,
 		Example: `  bitrise-cli rde usage
-  bitrise-cli rde usage --output json | jq '.totals'`,
+  bitrise-cli rde usage --output json | jq '.totals'
+  bitrise-cli rde usage --output json | jq '.compute_quotas'`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			workspaceID, err := cmdutil.ResolveWorkspaceID(cmd)
 			if err != nil {
@@ -60,13 +65,26 @@ billing-period report. Requires the workspace's billing-view permission
 }
 
 func renderUsage(w io.Writer, res internalrde.WorkspaceUsage) error {
+	s := style.New(w)
+	if err := renderSessions(w, s, res); err != nil {
+		return err
+	}
+	ew := cmdutil.NewErrWriter(w)
+	ew.F("\n")
+	if ew.Err != nil {
+		return ew.Err
+	}
+	return renderQuotas(w, s, res.ComputeQuotas)
+}
+
+// renderSessions prints the active-session totals and the per-user table.
+func renderSessions(w io.Writer, s style.Styles, res internalrde.WorkspaceUsage) error {
 	total := sumBuckets(res.Totals)
 	if total.SessionCount == 0 {
 		_, err := fmt.Fprintln(w, "No active sessions.")
 		return err
 	}
 
-	s := style.New(w)
 	ew := cmdutil.NewErrWriter(w)
 	lbl := func(label string) string {
 		return s.Label.Render(fmt.Sprintf("%-12s", label))
@@ -82,6 +100,52 @@ func renderUsage(w io.Writer, res internalrde.WorkspaceUsage) error {
 		}
 	}
 	return ew.Err
+}
+
+// renderQuotas prints the vCPU quota per machine family. Shown even with no
+// active sessions: warm pool machines hold quota too, and the quota itself is
+// what a user checks before starting a session.
+func renderQuotas(w io.Writer, s style.Styles, quotas []internalrde.ComputeQuota) error {
+	if len(quotas) == 0 {
+		_, err := fmt.Fprintln(w, s.Dim.Render("vCPU quota: could not be loaded."))
+		return err
+	}
+	const colStatus = 2
+	headers := []string{"MACHINE FAMILY", "VCPU USED / QUOTA", "STATUS"}
+	rows := make([][]string, 0, len(quotas))
+	for _, q := range quotas {
+		rows = append(rows, []string{
+			q.DisplayName,
+			fmt.Sprintf("%d / %d", q.UsedVCPU, q.QuotaVCPU),
+			quotaStatus(q),
+		})
+	}
+	styler := func(row, col int, content string) string {
+		if col != colStatus {
+			return content
+		}
+		if quotas[row].QuotaVCPU == 0 {
+			return s.Dim.Render(content)
+		}
+		if quotas[row].UsedVCPU >= quotas[row].QuotaVCPU {
+			return s.Warn.Render(content)
+		}
+		return content
+	}
+	return style.Table(w, headers, rows, s.Header, styler)
+}
+
+// quotaStatus names the state of one family's quota: "not in plan" when the
+// plan sets no quota, "full" once no vCPU is left, otherwise the vCPUs left.
+func quotaStatus(q internalrde.ComputeQuota) string {
+	switch {
+	case q.QuotaVCPU == 0:
+		return "not in plan"
+	case q.UsedVCPU >= q.QuotaVCPU:
+		return "full"
+	default:
+		return fmt.Sprintf("%d left", q.QuotaVCPU-q.UsedVCPU)
+	}
 }
 
 // sumBuckets folds the linux/macos/unknown buckets into one grand total.

@@ -32,8 +32,19 @@ type UserUsage struct {
 	Totals      *UsageTotals `json:"totals"`
 }
 
+// ComputeQuota is the workspace's vCPU quota on one machine family and the
+// vCPUs its machines hold right now. The backend omits zero-valued fields,
+// so absent means 0.
+type ComputeQuota struct {
+	Family      string `json:"family"`
+	DisplayName string `json:"displayName"`
+	UsedVCPU    int32  `json:"usedVcpu"`
+	QuotaVCPU   int32  `json:"quotaVcpu"`
+}
+
 // WorkspaceUsage is the workspace usage report: a point-in-time snapshot of
-// the sessions currently consuming resources, split by OS and by user.
+// the sessions currently consuming resources, split by OS and by user, plus
+// the workspace's vCPU quota per machine family.
 type WorkspaceUsage struct {
 	Totals *UsageTotals `json:"totals"`
 	Users  []UserUsage  `json:"users"`
@@ -41,6 +52,9 @@ type WorkspaceUsage struct {
 	// type had no resolvable vCPU/RAM spec; they contribute 0 to the sums, so
 	// totals may undercount when this is non-zero.
 	UnknownMachineTypeCount int32 `json:"unknownMachineTypeCount"`
+	// ComputeQuotas is the vCPU quota per machine family. Empty when the
+	// backend could not read the quota.
+	ComputeQuotas []ComputeQuota `json:"computeQuotas"`
 }
 
 // GetWorkspaceUsage returns the workspace's active-session usage snapshot.

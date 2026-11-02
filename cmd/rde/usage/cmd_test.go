@@ -68,7 +68,12 @@ const sparseReport = `{
 			"totals": {"unknown": {"sessionCount": 1}}
 		}
 	],
-	"unknownMachineTypeCount": 1
+	"unknownMachineTypeCount": 1,
+	"computeQuotas": [
+		{"family": "amd-zen4", "displayName": "AMD Zen 4", "usedVcpu": 2, "quotaVcpu": 64},
+		{"family": "gcp-c2"},
+		{"family": "m2pro", "displayName": "M2 Pro", "usedVcpu": 48, "quotaVcpu": 48}
+	]
 }`
 
 func TestUsageCmd_Human(t *testing.T) {
@@ -86,6 +91,9 @@ func TestUsageCmd_Human(t *testing.T) {
 		"alice@example.com", "(workspace)",
 		"2 / 8", "4 / 6",
 		"UNKNOWN VCPU/GB",
+		"MACHINE FAMILY", "AMD Zen 4", "2 / 64", "62 left",
+		"gcp-c2", "0 / 0", "not in plan",
+		"M2 Pro", "48 / 48", "full",
 	} {
 		if !strings.Contains(stdout, want) {
 			t.Errorf("stdout missing %q:\n%s", want, stdout)
@@ -144,6 +152,32 @@ func TestUsageCmd_JSON_Densified(t *testing.T) {
 	if got["unknown_machine_type_count"] != float64(1) {
 		t.Errorf("unknown_machine_type_count = %v, want 1", got["unknown_machine_type_count"])
 	}
+
+	quotas, ok := got["compute_quotas"].([]any)
+	if !ok || len(quotas) != 3 {
+		t.Fatalf("compute_quotas = %v, want 3 rows", got["compute_quotas"])
+	}
+	// The wire omitted every field but family on gcp-c2; the stable shape
+	// fills in zeros and falls back to the family id for the display name.
+	gcp := quotas[1].(map[string]any)
+	for key, want := range map[string]any{"family": "gcp-c2", "display_name": "gcp-c2", "used_vcpu": float64(0), "quota_vcpu": float64(0)} {
+		if gcp[key] != want {
+			t.Errorf("compute_quotas[1][%q] = %v, want %v", key, gcp[key], want)
+		}
+	}
+}
+
+func TestUsageCmd_JSON_EmptyQuotasIsArray(t *testing.T) {
+	srv := usageServer(t, http.StatusOK, `{}`)
+	defer srv.Close()
+
+	stdout, _, err := run(t, NewCmd(), srv.URL, "ws-1", output.JSON)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(stdout, `"compute_quotas": []`) {
+		t.Errorf("compute_quotas not an empty array:\n%s", stdout)
+	}
 }
 
 func TestUsageCmd_Human_NoUnknownColumnWhenAllKnown(t *testing.T) {
@@ -178,6 +212,26 @@ func TestUsageCmd_Empty(t *testing.T) {
 	}
 	if !strings.Contains(stdout, "No active sessions.") {
 		t.Errorf("stdout = %q, want the empty-report sentence", stdout)
+	}
+	if !strings.Contains(stdout, "vCPU quota: could not be loaded.") {
+		t.Errorf("stdout = %q, want the missing-quota sentence", stdout)
+	}
+}
+
+func TestUsageCmd_Human_QuotaWithoutSessions(t *testing.T) {
+	srv := usageServer(t, http.StatusOK, `{
+		"computeQuotas": [{"family": "m2pro", "displayName": "M2 Pro", "quotaVcpu": 48}]
+	}`)
+	defer srv.Close()
+
+	stdout, _, err := run(t, NewCmd(), srv.URL, "ws-1", output.Human)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	for _, want := range []string{"No active sessions.", "M2 Pro", "0 / 48", "48 left"} {
+		if !strings.Contains(stdout, want) {
+			t.Errorf("stdout missing %q:\n%s", want, stdout)
+		}
 	}
 }
 
