@@ -14,7 +14,7 @@ func TestGetWorkspaceUsage_PathAndParse(t *testing.T) {
 		}],
 		"unknownMachineTypeCount": 1,
 		"computeQuotas": [
-			{"family": "m2pro", "displayName": "M2 Pro", "usedVcpu": 12, "quotaVcpu": 48},
+			{"family": "m2pro", "displayName": "M2 Pro", "usedVcpu": 12, "quotaVcpu": 48, "os": "macos"},
 			{"family": "amd-zen4", "displayName": "AMD Zen 4"}
 		]
 	}`)
@@ -41,7 +41,7 @@ func TestGetWorkspaceUsage_PathAndParse(t *testing.T) {
 		t.Errorf("unknownMachineTypeCount = %d, want 1", usage.UnknownMachineTypeCount)
 	}
 	wantQuotas := []ComputeQuota{
-		{Family: "m2pro", DisplayName: "M2 Pro", UsedVCPU: 12, QuotaVCPU: 48},
+		{Family: "m2pro", DisplayName: "M2 Pro", UsedVCPU: 12, QuotaVCPU: 48, OS: "macos"},
 		{Family: "amd-zen4", DisplayName: "AMD Zen 4"},
 	}
 	if len(usage.ComputeQuotas) != len(wantQuotas) {

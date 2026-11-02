@@ -40,6 +40,8 @@ type ComputeQuota struct {
 	DisplayName string `json:"displayName"`
 	UsedVCPU    int32  `json:"usedVcpu"`
 	QuotaVCPU   int32  `json:"quotaVcpu"`
+	// OS is "linux" or "macos"; empty when the backend could not tell.
+	OS string `json:"os"`
 }
 
 // WorkspaceUsage is the workspace usage report: a point-in-time snapshot of

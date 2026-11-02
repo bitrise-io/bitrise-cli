@@ -70,9 +70,9 @@ const sparseReport = `{
 	],
 	"unknownMachineTypeCount": 1,
 	"computeQuotas": [
-		{"family": "amd-zen4", "displayName": "AMD Zen 4", "usedVcpu": 2, "quotaVcpu": 64},
+		{"family": "linux-lc01", "displayName": "x86 Linux", "usedVcpu": 2, "quotaVcpu": 64, "os": "linux"},
 		{"family": "gcp-c2"},
-		{"family": "m2pro", "displayName": "M2 Pro", "usedVcpu": 48, "quotaVcpu": 48}
+		{"family": "m2pro", "displayName": "M2 Pro", "usedVcpu": 48, "quotaVcpu": 48, "os": "macos"}
 	]
 }`
 
@@ -91,9 +91,9 @@ func TestUsageCmd_Human(t *testing.T) {
 		"alice@example.com", "(workspace)",
 		"2 / 8", "4 / 6",
 		"UNKNOWN VCPU/GB",
-		"MACHINE FAMILY", "AMD Zen 4", "2 / 64", "62 left",
+		"MACHINE FAMILY", "x86 Linux", "Linux", "2 / 64", "62 left",
 		"gcp-c2", "0 / 0", "not in plan",
-		"M2 Pro", "48 / 48", "full",
+		"M2 Pro", "macOS", "48 / 48", "full",
 	} {
 		if !strings.Contains(stdout, want) {
 			t.Errorf("stdout missing %q:\n%s", want, stdout)
@@ -160,7 +160,7 @@ func TestUsageCmd_JSON_Densified(t *testing.T) {
 	// The wire omitted every field but family on gcp-c2; the stable shape
 	// fills in zeros and falls back to the family id for the display name.
 	gcp := quotas[1].(map[string]any)
-	for key, want := range map[string]any{"family": "gcp-c2", "display_name": "gcp-c2", "used_vcpu": float64(0), "quota_vcpu": float64(0)} {
+	for key, want := range map[string]any{"family": "gcp-c2", "display_name": "gcp-c2", "used_vcpu": float64(0), "quota_vcpu": float64(0), "os": ""} {
 		if gcp[key] != want {
 			t.Errorf("compute_quotas[1][%q] = %v, want %v", key, gcp[key], want)
 		}

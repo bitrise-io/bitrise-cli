@@ -110,12 +110,13 @@ func renderQuotas(w io.Writer, s style.Styles, quotas []internalrde.ComputeQuota
 		_, err := fmt.Fprintln(w, s.Dim.Render("vCPU quota: could not be loaded."))
 		return err
 	}
-	const colStatus = 2
-	headers := []string{"MACHINE FAMILY", "VCPU USED / QUOTA", "STATUS"}
+	const colStatus = 3
+	headers := []string{"MACHINE FAMILY", "OS", "VCPU USED / QUOTA", "STATUS"}
 	rows := make([][]string, 0, len(quotas))
 	for _, q := range quotas {
 		rows = append(rows, []string{
 			q.DisplayName,
+			osLabel(q.OS),
 			fmt.Sprintf("%d / %d", q.UsedVCPU, q.QuotaVCPU),
 			quotaStatus(q),
 		})
@@ -133,6 +134,19 @@ func renderQuotas(w io.Writer, s style.Styles, quotas []internalrde.ComputeQuota
 		return content
 	}
 	return style.Table(w, headers, rows, s.Header, styler)
+}
+
+// osLabel renders a quota's OS the way the session totals name it; "-" when
+// the backend could not tell.
+func osLabel(os string) string {
+	switch os {
+	case "linux":
+		return "Linux"
+	case "macos":
+		return "macOS"
+	default:
+		return "-"
+	}
 }
 
 // quotaStatus names the state of one family's quota: "not in plan" when the

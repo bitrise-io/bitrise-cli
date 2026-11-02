@@ -44,13 +44,15 @@ type UserUsage struct {
 // UsedVCPU counts every active machine in the family, warm pool sessions
 // included. It is counted from machines rather than sessions, so it
 // can briefly differ from the session totals. QuotaVCPU 0 means the plan does
-// not include the family. A new session cannot start on a family once
+// not include the family. OS is "linux" or "macos", empty when the backend
+// could not tell. A new session cannot start on a family once
 // UsedVCPU plus the new machine's vCPUs would exceed QuotaVCPU.
 type ComputeQuota struct {
 	Family      string `json:"family"`
 	DisplayName string `json:"display_name"`
 	UsedVCPU    int32  `json:"used_vcpu"`
 	QuotaVCPU   int32  `json:"quota_vcpu"`
+	OS          string `json:"os"`
 }
 
 // WorkspaceUsage is a point-in-time snapshot of the sessions currently
@@ -112,6 +114,7 @@ func usageFromAPI(w rdeapi.WorkspaceUsage) WorkspaceUsage {
 			DisplayName: name,
 			UsedVCPU:    q.UsedVCPU,
 			QuotaVCPU:   q.QuotaVCPU,
+			OS:          q.OS,
 		})
 	}
 	return out
