@@ -5,8 +5,8 @@ Create a new RDE session
 ### Synopsis
 
 Create a new RDE session, either from a template or from a bare
-stack + machine type (a template-less session, with no warmup/startup scripts
-or other template configuration).
+stack + machine type (a template-less session, with no setup scripts or
+other template configuration).
 
 NAME is a human-readable label for the session; you can use it in place of the
 session ID in later commands (view, terminate, …) as long as it stays unique.
@@ -82,8 +82,7 @@ by other users via 'ps'). "running" does not mean the device is usable —
 'session view' shows the device state; wait for "ready" (--wait does so for
 you when a device was requested) and touch nothing on the VM while it is
 "booting". On a template with lifecycle hooks "running" does not mean the
-setup is done either: the machine is up before On create (the old warmup)
-has finished, and exec, ssh, upload, download and the terminal are refused
+setup is done either: the machine is up before On create has finished, and exec, ssh, upload, download and the terminal are refused
 until On create has finished ("Session is setting up: On create is still
 running. Access opens when it finishes."). 'session view' shows the
 lifecycle phase; --wait returns only once it is "ready" (exit 1 on

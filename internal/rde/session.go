@@ -824,7 +824,7 @@ func templateConfigFromAPI(w rdeapi.TemplateConfig) TemplateConfig {
 // still provisioning.
 //
 // On a lifecycle-hooks session "running" arrives as soon as the machine is
-// up, BEFORE On create (the migrated warmup) has finished — so a caller that
+// up, BEFORE On create has finished — so a caller that
 // stopped there and ran a command would race the setup. The wait therefore
 // keeps polling a running hooks session while Lifecycle.Phase is in flight
 // (setting_up / personalizing / restoring, or not derived yet) and returns

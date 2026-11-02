@@ -304,7 +304,7 @@ func halfCloseWrite(conn net.Conn) {
 // SSH session, without allocating a PTY. stdout and stderr are captured
 // separately. Context cancellation propagates by closing the session.
 //
-// `-i -l` is required because RDE warmup scripts commonly write PATH to
+// `-i -l` is required because RDE template setup scripts commonly write PATH to
 // ~/.bashrc, and .bashrc short-circuits on its `case $- in *i*)` guard
 // when the shell is non-interactive.
 //
@@ -503,7 +503,7 @@ func localTerminfoSource(ctx context.Context, termType string) ([]byte, error) {
 //
 // Unlike run, output is NOT captured and there is no timeout — this is meant
 // for long-lived interactive programs. The `-i -l` shell is used for the same
-// reason as run (RDE warmup writes PATH to ~/.bashrc); callers typically pass
+// reason as run (template setup scripts write PATH to ~/.bashrc); callers typically pass
 // `exec <program>` so bash replaces itself with the program rather than
 // leaving an interactive shell in front of it.
 //
