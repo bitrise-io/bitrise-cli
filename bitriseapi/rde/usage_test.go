@@ -12,7 +12,11 @@ func TestGetWorkspaceUsage_PathAndParse(t *testing.T) {
 			"userId": "u-1", "userSlug": "alice-slug", "email": "alice@example.com",
 			"totals": {"linux": {"sessionCount": 2, "vcpu": 4, "memoryGb": 16}}
 		}],
-		"unknownMachineTypeCount": 1
+		"unknownMachineTypeCount": 1,
+		"computeQuotas": [
+			{"family": "m2pro", "displayName": "M2 Pro", "usedVcpu": 12, "quotaVcpu": 48, "os": "macos"},
+			{"family": "amd-zen4", "displayName": "AMD Zen 4"}
+		]
 	}`)
 
 	usage, err := rs.client().GetWorkspaceUsage(context.Background(), "ws-1")
@@ -35,6 +39,18 @@ func TestGetWorkspaceUsage_PathAndParse(t *testing.T) {
 	}
 	if usage.UnknownMachineTypeCount != 1 {
 		t.Errorf("unknownMachineTypeCount = %d, want 1", usage.UnknownMachineTypeCount)
+	}
+	wantQuotas := []ComputeQuota{
+		{Family: "m2pro", DisplayName: "M2 Pro", UsedVCPU: 12, QuotaVCPU: 48, OS: "macos"},
+		{Family: "amd-zen4", DisplayName: "AMD Zen 4"},
+	}
+	if len(usage.ComputeQuotas) != len(wantQuotas) {
+		t.Fatalf("computeQuotas = %+v, want %+v", usage.ComputeQuotas, wantQuotas)
+	}
+	for i, want := range wantQuotas {
+		if usage.ComputeQuotas[i] != want {
+			t.Errorf("computeQuotas[%d] = %+v, want %+v", i, usage.ComputeQuotas[i], want)
+		}
 	}
 }
 
