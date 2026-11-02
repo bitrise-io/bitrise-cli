@@ -155,7 +155,7 @@ details) under [docs/cli](docs/cli/bitrise-cli.md).
 | [`rde session download`](docs/cli/bitrise-cli_rde_session_download.md) | Download a file or directory from a session |
 | [`rde session exec`](docs/cli/bitrise-cli_rde_session_exec.md) | Run a command on a session over SSH |
 | [`rde session list`](docs/cli/bitrise-cli_rde_session_list.md) | List RDE sessions in the workspace |
-| [`rde session logs`](docs/cli/bitrise-cli_rde_session_logs.md) | Print a session's warmup, startup or lifecycle-hook logs |
+| [`rde session logs`](docs/cli/bitrise-cli_rde_session_logs.md) | Print a session's setup logs: a lifecycle hook, or a legacy warmup or startup script |
 | [`rde session notifications`](docs/cli/bitrise-cli_rde_session_notifications.md) | List notifications emitted by a session |
 | [`rde session open-vnc`](docs/cli/bitrise-cli_rde_session_open-vnc.md) | Open a session's VNC endpoint in the OS-default viewer |
 | [`rde session rebuild`](docs/cli/bitrise-cli_rde_session_rebuild.md) | Replace a session's machine and run its lifecycle hooks again from On create |
