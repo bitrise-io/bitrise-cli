@@ -11,8 +11,8 @@ This reports sessions currently consuming resources; it is not a historical or
 billing-period report. Requires the workspace's billing-view permission
 (workspace owners and billing-managing custom roles).
 
-It also shows the workspace's vCPU quota per machine family: the vCPUs in use
-(warm pool sessions included) out of the plan's quota. A new session cannot
+It also shows the workspace's vCPU quota per machine family the plan includes:
+the vCPUs in use (warm pool sessions included) out of the plan's quota. A new session cannot
 start on a family once its vCPUs would push the use over the quota.
 
 ```

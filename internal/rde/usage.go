@@ -43,9 +43,9 @@ type UserUsage struct {
 //
 // UsedVCPU counts every active machine in the family, warm pool sessions
 // included. It is counted from machines rather than sessions, so it
-// can briefly differ from the session totals. QuotaVCPU 0 means the plan does
-// not include the family. OS is "linux" or "macos", empty when the backend
-// could not tell. A new session cannot start on a family once
+// can briefly differ from the session totals. Only families the plan gives a
+// quota are listed. OS is "linux" or "macos", empty when the backend could not
+// tell. A new session cannot start on a family once
 // UsedVCPU plus the new machine's vCPUs would exceed QuotaVCPU.
 type ComputeQuota struct {
 	Family      string `json:"family"`

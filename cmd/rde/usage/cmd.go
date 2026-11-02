@@ -27,8 +27,8 @@ This reports sessions currently consuming resources; it is not a historical or
 billing-period report. Requires the workspace's billing-view permission
 (workspace owners and billing-managing custom roles).
 
-It also shows the workspace's vCPU quota per machine family: the vCPUs in use
-(warm pool sessions included) out of the plan's quota. A new session cannot
+It also shows the workspace's vCPU quota per machine family the plan includes:
+the vCPUs in use (warm pool sessions included) out of the plan's quota. A new session cannot
 start on a family once its vCPUs would push the use over the quota.`,
 		Example: `  bitrise-cli rde usage
   bitrise-cli rde usage --output json | jq '.totals'
@@ -125,9 +125,6 @@ func renderQuotas(w io.Writer, s style.Styles, quotas []internalrde.ComputeQuota
 		if col != colStatus {
 			return content
 		}
-		if quotas[row].QuotaVCPU == 0 {
-			return s.Dim.Render(content)
-		}
 		if quotas[row].UsedVCPU >= quotas[row].QuotaVCPU {
 			return s.Warn.Render(content)
 		}
@@ -149,17 +146,13 @@ func osLabel(os string) string {
 	}
 }
 
-// quotaStatus names the state of one family's quota: "not in plan" when the
-// plan sets no quota, "full" once no vCPU is left, otherwise the vCPUs left.
+// quotaStatus names the state of one family's quota: "full" once no vCPU is
+// left, otherwise the vCPUs left.
 func quotaStatus(q internalrde.ComputeQuota) string {
-	switch {
-	case q.QuotaVCPU == 0:
-		return "not in plan"
-	case q.UsedVCPU >= q.QuotaVCPU:
+	if q.UsedVCPU >= q.QuotaVCPU {
 		return "full"
-	default:
-		return fmt.Sprintf("%d left", q.QuotaVCPU-q.UsedVCPU)
 	}
+	return fmt.Sprintf("%d left", q.QuotaVCPU-q.UsedVCPU)
 }
 
 // sumBuckets folds the linux/macos/unknown buckets into one grand total.
