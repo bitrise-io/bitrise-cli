@@ -137,11 +137,11 @@ way `stack_id` / `machine_type` do:
   what the web form sends, so what it shows is what boots);
 - `no_device: true` (CLI `--no-device`) → the session boots no device.
 
-**From a warm pool — instant devices.** A cold device session takes minutes
-(VM boot, the template's setup, emulator/simulator boot). A **warm pool** keeps a number of
-sessions of one configuration booted and idle so a create is instant: it is a
+**From a pool — instant devices.** A cold device session takes minutes
+(VM boot, the template's setup, emulator/simulator boot). A **pool** keeps a number of
+sessions of one configuration booted and idle ("warm sessions") so a create is instant: it is a
 stored session configuration (template + input values + flags + optional
-machine/device overrides) plus a `pool_size`, owned by the workspace so every
+machine/device overrides) plus a `warm_sessions` count, owned by the workspace so every
 member can claim from it. Create one
 with `bitrise_devenv_create_warm_pool` / `bitrise-cli rde warm-pool create
 NAME --template T --size N`, then create sessions **from the pool** instead
@@ -172,7 +172,7 @@ restarts the same machine), so put anything personal on it yourself with
 `bitrise_devenv_execute` / `rde session exec`. The pool refills after each
 claim. Read the pool (`bitrise_devenv_get_warm_pool`,
 `rde warm-pool view`) for `status.ready` / `status.warming` before a burst of
-creates, and scale it with `pool_size` (`rde warm-pool set-size <id> N`;
+creates, and scale it with `warm_sessions` (`rde warm-pool set-size <id> N`;
 0 drains it and keeps it as a preset).
 
 ## 2. Wait for the device — "running" is not "ready"
