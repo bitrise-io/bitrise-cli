@@ -394,7 +394,7 @@ enough sessions end. --size cannot be more than --max-sessions. Changing
 		},
 	}
 	c.Flags().StringVar(&name, "name", "", "new name")
-	c.Flags().IntVar(&count, "size", 0, "new pool size of warm sessions; 0 drains the pool but keeps it as a preset (requires the billing-data permission)")
+	c.Flags().IntVar(&count, "size", 0, "new number of warm sessions to keep booted; 0 drains the pool but keeps it as a preset (requires the billing-data permission)")
 	c.Flags().IntVar(&maxSessions, "max-sessions", 0, "new limit on sessions from the pool in use at once; 0 removes the limit (requires the billing-data permission)")
 	inputs.bind(c)
 	c.Flags().BoolVar(&clearInputs, "clear-inputs", false, "remove every stored session input")
@@ -415,9 +415,9 @@ enough sessions end. --size cannot be more than --max-sessions. Changing
 func newSetSizeCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "set-size WARM_POOL_ID SIZE",
-		Short: "Set a pool's size: how many warm sessions it keeps booted",
-		Long: `Set a warm pool's pool size — how many sessions of its configuration
-the RDE backend keeps booted and idle. Raising it boots sessions; lowering it
+		Short: "Set a pool's warm sessions: how many it keeps booted",
+		Long: `Set a warm pool's warm sessions — how many sessions of its configuration
+the RDE backend keeps booted and idle, ready to claim. Raising it boots sessions; lowering it
 terminates surplus warm sessions (claimed sessions are untouched). 0 drains
 the pool but keeps it usable as a configuration preset: 'rde session create
 --warm-pool' then creates sessions on demand from its configuration. The
@@ -480,7 +480,7 @@ pool stop working: every later open fails as an expired link would.
 
 This cannot be undone. Pass --yes to skip the confirmation prompt. To stop
 paying for idle machines while keeping the configuration and its links,
-set the pool size to 0 instead ('rde warm-pool set-size POOL 0').`,
+set the warm sessions to 0 instead ('rde warm-pool set-size POOL 0').`,
 		Example: `  bitrise-cli rde warm-pool delete WARM_POOL_ID
   bitrise-cli rde warm-pool delete ios-devs --yes`,
 		Args: cmdutil.RequireArgs("WARM_POOL_ID"),

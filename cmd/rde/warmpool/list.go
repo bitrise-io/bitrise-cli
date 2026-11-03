@@ -32,8 +32,8 @@ of one template (by ID or name).
 --all is the read-only cost view of the same pools, the one 'rde usage'
 shows; it requires the workspace's billing-data permission.
 
-READY and WARMING are the pool's current inventory; SIZE is the pool size —
-the count the backend keeps booted. IN USE/MAX is how many sessions from the
+READY and WARMING are the pool's current inventory; SIZE is the pool's warm
+sessions — the count the backend keeps booted. IN USE/MAX is how many sessions from the
 pool are in use right now against its max sessions ("3/10"; a bare count
 when the pool has no limit): "full" means a claim that finds no warm
 session, a restore or a start is refused until a session ends; "over max"

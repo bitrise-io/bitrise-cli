@@ -8,12 +8,12 @@ Keep pre-booted sessions ready to claim.
 
 A warm pool is a stored session configuration — a template, its session
 input values and feature flags, and optional stack / machine type / cluster
-overrides — plus a pool size, owned by the workspace. The RDE backend keeps that
+overrides — plus a warm sessions count, owned by the workspace. The RDE backend keeps that
 many sessions of the configuration booted and idle ("warm sessions"), so
 'rde session create --warm-pool POOL' hands one out instantly (the session's
 warm state is "claimed") instead of booting a VM. When none is available the
-session is created from the pool's configuration ("cold"), so a pool with a
-pool size of 0 still works as a configuration preset.
+session is created from the pool's configuration ("cold"), so a pool with
+0 warm sessions still works as a configuration preset.
 
 Every pool belongs to the workspace: every member sees, claims from and
 manages it, Workspace API Tokens reach it, and it can back preview links
@@ -31,7 +31,7 @@ On create finished. When On create fails three times in a row the pool
 pauses with the last machine kept for inspection ('view' shows "Setup
 failed:"); fix the script, then 'rde warm-pool retry'.
 
-Warm sessions cost machine time while idle. Set the pool size to what
+Warm sessions cost machine time while idle. Set the warm sessions to what
 demand needs and scale it with 'rde warm-pool set-size POOL N' — the
 intended way to warm a pool for business hours is a cron job that sets the
 size in the morning and back to 0 in the evening (a Workspace API Token
@@ -78,7 +78,7 @@ bitrise-cli rde warm-pool [flags]
 * [bitrise-cli rde warm-pool delete](bitrise-cli_rde_warm-pool_delete.md)	 - Delete a warm pool and terminate its warm sessions
 * [bitrise-cli rde warm-pool list](bitrise-cli_rde_warm-pool_list.md)	 - List warm pools in the workspace
 * [bitrise-cli rde warm-pool retry](bitrise-cli_rde_warm-pool_retry.md)	 - Resume a warm pool paused after repeated On create failures
-* [bitrise-cli rde warm-pool set-size](bitrise-cli_rde_warm-pool_set-size.md)	 - Set a pool's size: how many warm sessions it keeps booted
+* [bitrise-cli rde warm-pool set-size](bitrise-cli_rde_warm-pool_set-size.md)	 - Set a pool's warm sessions: how many it keeps booted
 * [bitrise-cli rde warm-pool update](bitrise-cli_rde_warm-pool_update.md)	 - Update a warm pool's name, limits or configuration
 * [bitrise-cli rde warm-pool view](bitrise-cli_rde_warm-pool_view.md)	 - Show a warm pool's status, limits, configuration and warm sessions
 

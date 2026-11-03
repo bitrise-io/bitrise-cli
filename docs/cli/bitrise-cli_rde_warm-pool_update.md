@@ -70,7 +70,7 @@ bitrise-cli rde warm-pool update WARM_POOL_ID [flags]
       --name string                  new name
       --no-device                    true: the warm sessions boot without the template's device; --no-device=false boots it again
       --secret-input stringArray     session input as [scope:]key=value, stored as a secret at rest (repeatable; the value is visible in shell history and process args)
-      --size int                     new pool size of warm sessions; 0 drains the pool but keeps it as a preset (requires the billing-data permission)
+      --size int                     new number of warm sessions to keep booted; 0 drains the pool but keeps it as a preset (requires the billing-data permission)
       --stack string                 stack ID override; "" removes the override
 ```
 

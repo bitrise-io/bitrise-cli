@@ -24,7 +24,7 @@ last 7 days, errors), the stored configuration with secret input values
 hidden, and the warm sessions currently in the pool.
 
 A growing cold count means sessions had to be created on demand because no
-warm session was available — the pool size is too low for the demand. A
+warm session was available — the warm sessions count is too low for the demand. A
 growing refused count means the pool was full more often than its users can
 bear — the max sessions is too low for the demand.`,
 		Example: `  bitrise-cli rde warm-pool view WARM_POOL_ID
@@ -74,7 +74,7 @@ func renderDetail(w io.Writer, p internalrde.WarmPool) error {
 	} else {
 		ew.F("%s%s\n", lbl("Created by:"), s.Dim.Render("workspace API token"))
 	}
-	ew.F("%s%d\n", lbl("Pool size:"), p.PoolSize)
+	ew.F("%s%d%s\n", lbl("Warm sessions:"), p.PoolSize, s.Dim.Render(" (kept booted and ready to claim)"))
 	if p.MaxSessions > 0 {
 		ew.F("%s%d%s\n", lbl("Max sessions:"), p.MaxSessions, s.Dim.Render(" (sessions from the pool in use at once, warm ones included)"))
 	} else {

@@ -13,9 +13,9 @@ import (
 //
 // A warm pool is a stored session configuration — template, session input
 // values, feature flags, optional stack / machine type / cluster and device
-// overrides — plus a pool size, owned by the workspace. The backend keeps
-// PoolSize sessions of that configuration booted and idle ("warm
-// sessions"); `session create --warm-pool` hands one out instantly, or
+// overrides — plus a warm sessions count and a max, owned by the
+// workspace. The backend keeps PoolSize sessions of that configuration
+// booted and idle ("warm sessions"); `session create --warm-pool` hands one out instantly, or
 // creates one from the configuration when none is available.
 type WarmPool struct {
 	ID           string `json:"id"`
@@ -28,9 +28,11 @@ type WarmPool struct {
 	OwnerType      string `json:"owner_type,omitempty"`
 	OwnerID        string `json:"owner_id,omitempty"`
 	CreatedByEmail string `json:"created_by_email,omitempty"`
-	// PoolSize is how many warm sessions the backend keeps booted.
-	// 0 drains the pool but keeps it usable as a configuration preset —
-	// always emitted, since 0 is a meaningful value.
+	// PoolSize is the pool's warm sessions: how many the backend keeps
+	// booted and ready to claim (the wire calls it warm_sessions; the JSON
+	// name here stays pool_size for `--output json` stability). 0 drains
+	// the pool but keeps it usable as a configuration preset — always
+	// emitted, since 0 is a meaningful value.
 	PoolSize int `json:"pool_size"`
 	// MaxSessions is the most sessions from the pool that may be in use at
 	// once (claimed or created cold; a session keeps its origin pool for
@@ -92,7 +94,7 @@ type WarmPoolStatus struct {
 	Ready   int `json:"ready"`
 	Warming int `json:"warming"`
 	// ClaimedTotal and ColdTotal are lifetime counters. A growing
-	// ColdTotal means the pool size is too low for the demand.
+	// ColdTotal means the warm sessions count is too low for the demand.
 	ClaimedTotal int `json:"claimed_total"`
 	ColdTotal    int `json:"cold_total"`
 	// LastError is the last machine-creation failure; ConfigError says
@@ -173,7 +175,8 @@ func unclaimedWarmSessionError(sess Session) error {
 type CreateWarmPoolRequest struct {
 	Name       string
 	TemplateID string
-	// PoolSize may be 0: an inert pool that still serves as a preset.
+	// PoolSize is the warm sessions count; 0 is an inert pool that still
+	// serves as a preset.
 	PoolSize int
 	// MaxSessions 0 means no limit.
 	MaxSessions             int
@@ -285,18 +288,18 @@ func (s *Service) CreateWarmPool(ctx context.Context, workspaceID string, req Cr
 		return WarmPool{}, fmt.Errorf("template is required")
 	}
 	if req.PoolSize < 0 {
-		return WarmPool{}, fmt.Errorf("pool size must not be negative")
+		return WarmPool{}, fmt.Errorf("warm sessions must not be negative")
 	}
 	if req.MaxSessions < 0 {
 		return WarmPool{}, fmt.Errorf("max sessions must not be negative")
 	}
 	if req.MaxSessions > 0 && req.PoolSize > req.MaxSessions {
-		return WarmPool{}, fmt.Errorf("pool size (%d) cannot be more than max sessions (%d)", req.PoolSize, req.MaxSessions)
+		return WarmPool{}, fmt.Errorf("warm sessions (%d) cannot be more than max sessions (%d)", req.PoolSize, req.MaxSessions)
 	}
 	w, err := s.client.CreateWarmPool(ctx, workspaceID, rdeapi.CreateWarmPoolRequest{
 		Name:                    req.Name,
 		TemplateID:              req.TemplateID,
-		PoolSize:                req.PoolSize,
+		WarmSessions:            req.PoolSize,
 		MaxSessions:             req.MaxSessions,
 		SessionInputs:           sessionInputsToAPI(req.SessionInputs),
 		EnabledFeatureFlagNames: req.EnabledFeatureFlagNames,
@@ -321,22 +324,22 @@ func (s *Service) UpdateWarmPool(ctx context.Context, workspaceID, warmPoolID st
 		return WarmPool{}, errClient()
 	}
 	if req.PoolSize != nil && *req.PoolSize < 0 {
-		return WarmPool{}, fmt.Errorf("pool size must not be negative")
+		return WarmPool{}, fmt.Errorf("warm sessions must not be negative")
 	}
 	if req.MaxSessions != nil && *req.MaxSessions < 0 {
 		return WarmPool{}, fmt.Errorf("max sessions must not be negative")
 	}
 	if req.PoolSize != nil && req.MaxSessions != nil && *req.MaxSessions > 0 && *req.PoolSize > *req.MaxSessions {
-		return WarmPool{}, fmt.Errorf("pool size (%d) cannot be more than max sessions (%d)", *req.PoolSize, *req.MaxSessions)
+		return WarmPool{}, fmt.Errorf("warm sessions (%d) cannot be more than max sessions (%d)", *req.PoolSize, *req.MaxSessions)
 	}
 	wire := rdeapi.UpdateWarmPoolRequest{
-		Name:        req.Name,
-		PoolSize:    req.PoolSize,
-		MaxSessions: req.MaxSessions,
-		StackID:     req.StackID,
-		MachineType: req.MachineType,
-		Cluster:     req.Cluster,
-		NoDevice:    req.NoDevice,
+		Name:         req.Name,
+		WarmSessions: req.PoolSize,
+		MaxSessions:  req.MaxSessions,
+		StackID:      req.StackID,
+		MachineType:  req.MachineType,
+		Cluster:      req.Cluster,
+		NoDevice:     req.NoDevice,
 	}
 	if req.SessionInputs != nil {
 		wire.SessionInputs = sessionInputsToAPI(*req.SessionInputs)
@@ -409,7 +412,7 @@ func warmPoolFromAPI(w rdeapi.WarmPool) WarmPool {
 		OwnerType:               w.OwnerType,
 		OwnerID:                 w.OwnerID,
 		CreatedByEmail:          w.CreatedByEmail,
-		PoolSize:                w.PoolSize,
+		PoolSize:                w.WarmSessions,
 		MaxSessions:             w.MaxSessions,
 		EnabledFeatureFlagNames: w.EnabledFeatureFlagNames,
 		StackID:                 w.StackID,

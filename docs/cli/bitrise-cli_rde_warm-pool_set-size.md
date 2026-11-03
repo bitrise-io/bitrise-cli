@@ -1,11 +1,11 @@
 ## bitrise-cli rde warm-pool set-size
 
-Set a pool's size: how many warm sessions it keeps booted
+Set a pool's warm sessions: how many it keeps booted
 
 ### Synopsis
 
-Set a warm pool's pool size — how many sessions of its configuration
-the RDE backend keeps booted and idle. Raising it boots sessions; lowering it
+Set a warm pool's warm sessions — how many sessions of its configuration
+the RDE backend keeps booted and idle, ready to claim. Raising it boots sessions; lowering it
 terminates surplus warm sessions (claimed sessions are untouched). 0 drains
 the pool but keeps it usable as a configuration preset: 'rde session create
 --warm-pool' then creates sessions on demand from its configuration. The

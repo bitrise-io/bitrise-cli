@@ -10,7 +10,7 @@ last 7 days, errors), the stored configuration with secret input values
 hidden, and the warm sessions currently in the pool.
 
 A growing cold count means sessions had to be created on demand because no
-warm session was available — the pool size is too low for the demand. A
+warm session was available — the warm sessions count is too low for the demand. A
 growing refused count means the pool was full more often than its users can
 bear — the max sessions is too low for the demand.
 

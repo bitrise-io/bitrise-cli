@@ -11,7 +11,7 @@ pool stop working: every later open fails as an expired link would.
 
 This cannot be undone. Pass --yes to skip the confirmation prompt. To stop
 paying for idle machines while keeping the configuration and its links,
-set the pool size to 0 instead ('rde warm-pool set-size POOL 0').
+set the warm sessions to 0 instead ('rde warm-pool set-size POOL 0').
 
 ```
 bitrise-cli rde warm-pool delete WARM_POOL_ID [flags]
