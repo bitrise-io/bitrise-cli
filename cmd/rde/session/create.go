@@ -135,7 +135,7 @@ setup_failed / personalization_failed), so "create --wait && session exec"
 is safe on both kinds of template. A "failed" device is not always unusable: 'session view' prints the
 device notes, and the guide says which failures leave the device drivable.
 
-Warm pools: pass --warm-pool to claim a session from a warm pool ('rde
+Pools: pass --warm-pool to claim a session from a pool ('rde
 warm-pool list') instead of describing one. A booted, idle warm session is
 handed out instantly (the session's warm state is "claimed"); when none is
 available one is created from the pool's stored configuration ("cold"). The
@@ -180,15 +180,15 @@ Example values:
   bitrise-cli rde session create no-sim --template TEMPLATE_ID --no-device
   # Keep a signed artifact URL out of shell history and process args: read it from a file.
   bitrise-cli rde session create android-check --device-platform android --artifact-url-stdin < artifact-url.txt
-  # Claim a pre-booted session from a warm pool (see 'rde warm-pool list').
-  bitrise-cli rde session create dev --warm-pool WARM_POOL_ID`,
+  # Claim a pre-booted session from a pool (see 'rde pool list').
+  bitrise-cli rde session create dev --warm-pool POOL_ID`,
 		Args: cmdutil.RequireArgs("NAME"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
 			if name == "" {
 				return fmt.Errorf("NAME must not be empty")
 			}
-			// A warm pool fixes the session's environment: the backend rejects
+			// A pool fixes the session's environment: the backend rejects
 			// (not ignores) every flag that would shape the VM, so name the
 			// offending flags here instead of relaying a 400. The input flags,
 			// --map-saved-inputs and --ai-prompt pass through: a claim may
@@ -205,13 +205,13 @@ Example values:
 					}
 				}
 				if len(conflicting) > 0 {
-					return fmt.Errorf("--warm-pool: the pool fixes the session's environment, so %s cannot be combined with it — change the pool with 'rde warm-pool update' instead (a claim takes only the personal inputs: the template's On claim and On restore inputs, --map-saved-inputs and --ai-prompt)", strings.Join(conflicting, ", "))
+					return fmt.Errorf("--warm-pool: the pool fixes the session's environment, so %s cannot be combined with it — change the pool with 'rde pool update' instead (a claim takes only the personal inputs: the template's On claim and On restore inputs, --map-saved-inputs and --ai-prompt)", strings.Join(conflicting, ", "))
 				}
 			}
 			// A session needs either a template or, for a template-less
 			// session, an explicit stack + machine type — unless a device is
 			// requested, in which case the backend fills whatever is missing
-			// from the platform's defaults, or a warm pool supplies the whole
+			// from the platform's defaults, or a pool supplies the whole
 			// configuration. (stack/machine type may also accompany a
 			// template to override its defaults.)
 			if warmPool == "" && templateID == "" && devicePlatform == "" && (stack == "" || machineType == "") {
@@ -247,7 +247,7 @@ Example values:
 				return fmt.Errorf("--device-model, --device-os-version and --device-system-image require --device-platform (or --template with a declared device)")
 			}
 			// An artifact needs a device to land on: one requested here, or the
-			// one a template or warm pool declares (the backend rejects a
+			// one a template or pool declares (the backend rejects a
 			// template or pool without one).
 			if devicePlatform == "" && templateID == "" && warmPool == "" && (artifactURL != "" || artifactURLStdin || artifactName != "") {
 				return fmt.Errorf("--artifact-url, --artifact-url-stdin and --artifact-name require --device-platform (or --template / --warm-pool with a configuration that declares a device)")
@@ -434,7 +434,7 @@ Example values:
 	c.Flags().IntVar(&autoTerminateMinutes, "auto-terminate-minutes", 0, "minutes until auto-termination; 0 disables; omitted uses the backend default (~5 days)")
 	c.Flags().BoolVar(&mapSavedInputs, "map-saved-inputs", false, "auto-fill template session inputs from the user's saved inputs (matched by key)")
 	c.Flags().StringVar(&owner, "owner", "", "who owns the session: user (default; a personal session) or workspace (owned by the workspace itself, visible to every member; session inputs as plain values only). A Workspace API Token always creates workspace sessions")
-	c.Flags().StringVar(&warmPool, "warm-pool", "", "warm pool ID or name to claim the session from: a pre-booted warm session is handed out instantly, or one is created from the pool's configuration when none is available — unless the pool is full (its max sessions reached), which refuses the claim and names your sessions in use from the pool; the pool fixes the configuration, so --template, --stack, --machine-type, --feature-flag, --cluster and the device flags are rejected with it; the input flags give the template's On claim and On restore inputs (see 'rde warm-pool list')")
+	c.Flags().StringVar(&warmPool, "warm-pool", "", "pool ID or name to claim the session from: a pre-booted warm session is handed out instantly, or one is created from the pool's configuration when none is available — unless the pool is full (its max sessions reached), which refuses the claim and names your sessions in use from the pool; the pool fixes the configuration, so --template, --stack, --machine-type, --feature-flag, --cluster and the device flags are rejected with it; the input flags give the template's On claim and On restore inputs (see 'rde pool list')")
 	_ = c.RegisterFlagCompletionFunc("owner", func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
 		return []string{internalrde.SessionOwnerUser, internalrde.SessionOwnerWorkspace}, cobra.ShellCompDirectiveNoFileComp
 	})

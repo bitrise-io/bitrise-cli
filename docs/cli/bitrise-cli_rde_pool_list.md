@@ -1,10 +1,10 @@
-## bitrise-cli rde warm-pool list
+## bitrise-cli rde pool list
 
-List warm pools in the workspace
+List pools in the workspace
 
 ### Synopsis
 
-List the workspace's warm pools. Pass --template to see only the pools
+List the workspace's pools. Pass --template to see only the pools
 of one template (by ID or name).
 
 --all is the read-only cost view of the same pools, the one 'rde usage'
@@ -21,15 +21,15 @@ nothing until it is fixed), "paused" (backing off after repeated failures)
 or "error" (the last machine creation failed).
 
 ```
-bitrise-cli rde warm-pool list [flags]
+bitrise-cli rde pool list [flags]
 ```
 
 ### Examples
 
 ```
-  bitrise-cli rde warm-pool list
-  bitrise-cli rde warm-pool list --template TEMPLATE_ID
-  bitrise-cli rde warm-pool list --all --output json | jq '.items[] | {name, pool_size, ready: .status.ready}'
+  bitrise-cli rde pool list
+  bitrise-cli rde pool list --template TEMPLATE_ID
+  bitrise-cli rde pool list --all --output json | jq '.items[] | {name, pool_size, ready: .status.ready}'
 ```
 
 ### Options
@@ -52,5 +52,5 @@ bitrise-cli rde warm-pool list [flags]
 
 ### SEE ALSO
 
-* [bitrise-cli rde warm-pool](bitrise-cli_rde_warm-pool.md)	 - Keep pre-booted sessions ready to claim (warm pools)
+* [bitrise-cli rde pool](bitrise-cli_rde_pool.md)	 - Keep pre-booted sessions ready to claim (pools)
 

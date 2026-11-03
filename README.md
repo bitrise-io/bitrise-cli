@@ -142,6 +142,13 @@ details) under [docs/cli](docs/cli/bitrise-cli.md).
 | [`rde claude`](docs/cli/bitrise-cli_rde_claude.md) | Create an RDE session and attach to Claude Code |
 | [`rde device-guide`](docs/cli/bitrise-cli_rde_device-guide.md) | Print the guide for driving a session's iOS simulator / Android emulator |
 | [`rde machine-type list`](docs/cli/bitrise-cli_rde_machine-type_list.md) | List machine types compatible with a given stack |
+| [`rde pool create`](docs/cli/bitrise-cli_rde_pool_create.md) | Create a pool |
+| [`rde pool delete`](docs/cli/bitrise-cli_rde_pool_delete.md) | Delete a pool and terminate its warm sessions |
+| [`rde pool list`](docs/cli/bitrise-cli_rde_pool_list.md) | List pools in the workspace |
+| [`rde pool retry`](docs/cli/bitrise-cli_rde_pool_retry.md) | Resume a pool paused after repeated On create failures |
+| [`rde pool set-size`](docs/cli/bitrise-cli_rde_pool_set-size.md) | Set a pool's warm sessions: how many it keeps booted |
+| [`rde pool update`](docs/cli/bitrise-cli_rde_pool_update.md) | Update a pool's name, limits or configuration |
+| [`rde pool view`](docs/cli/bitrise-cli_rde_pool_view.md) | Show a pool's status, limits, configuration and warm sessions |
 | [`rde preview-link create`](docs/cli/bitrise-cli_rde_preview-link_create.md) | Mint a shareable device preview link for an app build |
 | [`rde saved-input create`](docs/cli/bitrise-cli_rde_saved-input_create.md) | Create a new saved input |
 | [`rde saved-input delete`](docs/cli/bitrise-cli_rde_saved-input_delete.md) | Delete a saved input |
@@ -174,13 +181,6 @@ details) under [docs/cli](docs/cli/bitrise-cli.md).
 | [`rde template update`](docs/cli/bitrise-cli_rde_template_update.md) | Update an existing RDE template from a JSON spec file |
 | [`rde template view`](docs/cli/bitrise-cli_rde_template_view.md) | Show details of a single template |
 | [`rde usage`](docs/cli/bitrise-cli_rde_usage.md) | Show the workspace's active session and resource usage |
-| [`rde warm-pool create`](docs/cli/bitrise-cli_rde_warm-pool_create.md) | Create a warm pool |
-| [`rde warm-pool delete`](docs/cli/bitrise-cli_rde_warm-pool_delete.md) | Delete a warm pool and terminate its warm sessions |
-| [`rde warm-pool list`](docs/cli/bitrise-cli_rde_warm-pool_list.md) | List warm pools in the workspace |
-| [`rde warm-pool retry`](docs/cli/bitrise-cli_rde_warm-pool_retry.md) | Resume a warm pool paused after repeated On create failures |
-| [`rde warm-pool set-size`](docs/cli/bitrise-cli_rde_warm-pool_set-size.md) | Set a pool's warm sessions: how many it keeps booted |
-| [`rde warm-pool update`](docs/cli/bitrise-cli_rde_warm-pool_update.md) | Update a warm pool's name, limits or configuration |
-| [`rde warm-pool view`](docs/cli/bitrise-cli_rde_warm-pool_view.md) | Show a warm pool's status, limits, configuration and warm sessions |
 
 ### [`stack`](docs/cli/bitrise-cli_stack.md) — List available stacks
 

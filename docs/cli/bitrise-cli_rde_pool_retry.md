@@ -1,10 +1,10 @@
-## bitrise-cli rde warm-pool retry
+## bitrise-cli rde pool retry
 
-Resume a warm pool paused after repeated On create failures
+Resume a pool paused after repeated On create failures
 
 ### Synopsis
 
-Resume a warm pool that paused after three consecutive On create failures
+Resume a pool that paused after three consecutive On create failures
 ('warm-pool view' shows "Setup failed:" and 'list' says "setup failed"): the
 machine kept from the last failure is deleted, the failure streak is cleared
 and the pool starts warming again.
@@ -19,13 +19,13 @@ the same way, so 'retry' is for "the script was fine, the world was not".
 A pool that is not paused this way is returned unchanged.
 
 ```
-bitrise-cli rde warm-pool retry WARM_POOL_ID [flags]
+bitrise-cli rde pool retry POOL_ID [flags]
 ```
 
 ### Examples
 
 ```
-  bitrise-cli rde warm-pool retry ios-devs
+  bitrise-cli rde pool retry ios-devs
 ```
 
 ### Options
@@ -46,5 +46,5 @@ bitrise-cli rde warm-pool retry WARM_POOL_ID [flags]
 
 ### SEE ALSO
 
-* [bitrise-cli rde warm-pool](bitrise-cli_rde_warm-pool.md)	 - Keep pre-booted sessions ready to claim (warm pools)
+* [bitrise-cli rde pool](bitrise-cli_rde_pool.md)	 - Keep pre-booted sessions ready to claim (pools)
 

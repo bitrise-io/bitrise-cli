@@ -60,7 +60,7 @@ type Session struct {
 	// Status "running" does NOT mean the device is usable — read
 	// Device.State.
 	Device *SessionDevice `json:"device,omitempty"`
-	// WarmPoolID is the warm pool this session belongs to; empty when
+	// WarmPoolID is the pool this session belongs to; empty when
 	// none. WarmState is its relation to that pool — WarmStateClaimed or
 	// WarmStateCold for a session created with `--warm-pool`, "warming" /
 	// "ready" for pool inventory. Passed through verbatim so future states
@@ -117,7 +117,7 @@ type HookRun struct {
 	ExitCode int `json:"exit_code,omitempty"`
 	// TriggeredBy: "create", "claim", "restore", "run_again" or "rebuild".
 	TriggeredBy string `json:"triggered_by,omitempty"`
-	// RanIn: "pool" (inside a warm pool, before any claim) or "session".
+	// RanIn: "pool" (inside a pool, before any claim) or "session".
 	RanIn      string     `json:"ran_in,omitempty"`
 	QueuedAt   *time.Time `json:"queued_at,omitempty"`
 	StartedAt  *time.Time `json:"started_at,omitempty"`
@@ -190,7 +190,7 @@ const ErrOnCreateNotRunnable = "On create cannot be run again on this machine. U
 // run again on a session that runs lifecycle hooks and returns the queued
 // run (state pending, triggered_by "run_again"). On create is not accepted
 // (ErrOnCreateNotRunnable; use RebuildSession). The backend refuses the
-// rest while a run is pending or running, on warm pool inventory and on a
+// rest while a run is pending or running, on pool inventory and on a
 // session that never ran the given hook.
 func (s *Service) RunSessionHook(ctx context.Context, workspaceID, sessionID, hook string) (HookRun, error) {
 	if s.client == nil {
@@ -288,7 +288,7 @@ type SessionDevice struct {
 	CommitSHA     string      `json:"commit_sha,omitempty"`
 	// PageURL is the device's page in the RDE web UI, for a browser where
 	// the user is logged in to Bitrise (not a shareable link). Empty on
-	// unclaimed warm pool inventory; set once the session is claimed.
+	// unclaimed pool inventory; set once the session is claimed.
 	PageURL string `json:"page_url,omitempty"`
 }
 
@@ -465,7 +465,7 @@ type CreateSessionRequest struct {
 	// OwnerType is SessionOwnerUser (personal; the backend default when
 	// empty) or SessionOwnerWorkspace (owned by the workspace itself).
 	OwnerType string
-	// WarmPoolID claims a session from a warm pool instead of building one
+	// WarmPoolID claims a session from a pool instead of building one
 	// from this request. The pool fixes the configuration: TemplateID,
 	// StackID, MachineType, SessionInputs, EnabledFeatureFlagNames,
 	// Cluster, AIPrompt, MapSavedToSessionInputs, DeviceSpec and NoDevice
@@ -881,7 +881,7 @@ func (s *Service) WaitForReady(ctx context.Context, workspaceID, sessionID strin
 // OnCreateInFlight reports whether the session's On create run is pending
 // or running — the state in which the backend refuses every interactive
 // action with ErrSessionSettingUp. It reads the runs, not the phase, because
-// warm pool inventory warms under its own phase and a legacy session has no
+// pool inventory warms under its own phase and a legacy session has no
 // lifecycle at all (false).
 func OnCreateInFlight(l *SessionLifecycle) bool {
 	if l == nil {

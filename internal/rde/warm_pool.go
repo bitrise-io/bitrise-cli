@@ -8,10 +8,10 @@ import (
 	rdeapi "github.com/bitrise-io/bitrise-cli/bitriseapi/rde"
 )
 
-// WarmPool is the CLI-facing warm pool record. JSON tags define the stable
+// WarmPool is the CLI-facing pool record. JSON tags define the stable
 // `--output json` shape.
 //
-// A warm pool is a stored session configuration — template, session input
+// A pool is a stored session configuration — template, session input
 // values, feature flags, optional stack / machine type / cluster and device
 // overrides — plus a warm sessions count and a max, owned by the
 // workspace. The backend keeps PoolSize sessions of that configuration
@@ -66,7 +66,7 @@ type WarmPool struct {
 	UpdatedAt   *time.Time           `json:"updated_at,omitempty"`
 }
 
-// WarmPoolSetupFailed describes why a warm pool is paused after repeated
+// WarmPoolSetupFailed describes why a pool is paused after repeated
 // On create failures and which session was kept for inspection.
 type WarmPoolSetupFailed struct {
 	SessionID string     `json:"session_id"`
@@ -87,7 +87,7 @@ type WarmPoolInput struct {
 	Hook string `json:"hook,omitempty"`
 }
 
-// WarmPoolStatus is the live state of a warm pool. The counters are always
+// WarmPoolStatus is the live state of a pool. The counters are always
 // emitted: 0 ready is the number a caller acts on.
 type WarmPoolStatus struct {
 	// Ready and Warming count the current inventory.
@@ -164,7 +164,7 @@ func UnclaimedWarmState(state string) bool {
 // connection details, so "not ready yet, retry" would never clear.
 func unclaimedWarmSessionError(sess Session) error {
 	return fmt.Errorf("%s", fmt.Sprintf(
-		"This session is a warm session held by warm pool %s and cannot be used or changed until it is claimed — create a session with --warm-pool %s to claim it.",
+		"This session is a warm session held by pool %s and cannot be used or changed until it is claimed — create a session with --warm-pool %s to claim it.",
 		sess.WarmPoolID, sess.WarmPoolID,
 	))
 }
@@ -209,7 +209,7 @@ type UpdateWarmPoolRequest struct {
 	NoDevice                *bool
 }
 
-// ListWarmPools returns the warm pools visible to the caller — the
+// ListWarmPools returns the pools visible to the caller — the
 // workspace's pools plus the caller's own — optionally narrowed to one
 // template (templateID non-empty). all lists every pool in the workspace
 // read-only; the backend gates that on the billing-data permission.
@@ -228,7 +228,7 @@ func (s *Service) ListWarmPools(ctx context.Context, workspaceID, templateID str
 	return out, nil
 }
 
-// GetWarmPool returns a warm pool by ID, with its live status and inventory.
+// GetWarmPool returns a pool by ID, with its live status and inventory.
 func (s *Service) GetWarmPool(ctx context.Context, workspaceID, warmPoolID string) (WarmPool, error) {
 	if s.client == nil {
 		return WarmPool{}, errClient()
@@ -240,21 +240,21 @@ func (s *Service) GetWarmPool(ctx context.Context, workspaceID, warmPoolID strin
 	return warmPoolFromAPI(w), nil
 }
 
-// ResolveWarmPoolID maps `value` to a warm pool ID. UUID-shaped inputs
+// ResolveWarmPoolID maps `value` to a pool ID. UUID-shaped inputs
 // short-circuit (no network call); names trigger a ListWarmPools call over
 // the pools visible to the caller and an exact case-insensitive match.
 // Errors clearly when zero or multiple pools match the name. Mirrors
 // ResolveTemplateID.
 func (s *Service) ResolveWarmPoolID(ctx context.Context, workspaceID, value string) (string, error) {
 	if value == "" {
-		return "", fmt.Errorf("warm pool is required")
+		return "", fmt.Errorf("pool is required")
 	}
 	if looksLikeUUID(value) {
 		return value, nil
 	}
 	pools, err := s.ListWarmPools(ctx, workspaceID, "", false)
 	if err != nil {
-		return "", fmt.Errorf("list warm pools to resolve %q: %w", value, err)
+		return "", fmt.Errorf("list pools to resolve %q: %w", value, err)
 	}
 	var matches []WarmPool
 	for _, p := range pools {
@@ -264,7 +264,7 @@ func (s *Service) ResolveWarmPoolID(ctx context.Context, workspaceID, value stri
 	}
 	switch len(matches) {
 	case 0:
-		return "", fmt.Errorf("no warm pool named %q in workspace (try 'rde warm-pool list')", value)
+		return "", fmt.Errorf("no pool named %q in workspace (try 'rde pool list')", value)
 	case 1:
 		return matches[0].ID, nil
 	default:
@@ -272,11 +272,11 @@ func (s *Service) ResolveWarmPoolID(ctx context.Context, workspaceID, value stri
 		for _, m := range matches {
 			ids = append(ids, m.ID)
 		}
-		return "", fmt.Errorf("warm pool name %q is ambiguous (matches %d pools: %v) — pass a warm pool ID instead", value, len(matches), ids)
+		return "", fmt.Errorf("pool name %q is ambiguous (matches %d pools: %v) — pass a pool ID instead", value, len(matches), ids)
 	}
 }
 
-// CreateWarmPool creates a warm pool.
+// CreateWarmPool creates a pool.
 func (s *Service) CreateWarmPool(ctx context.Context, workspaceID string, req CreateWarmPoolRequest) (WarmPool, error) {
 	if s.client == nil {
 		return WarmPool{}, errClient()
@@ -315,7 +315,7 @@ func (s *Service) CreateWarmPool(ctx context.Context, workspaceID string, req Cr
 	return warmPoolFromAPI(w), nil
 }
 
-// UpdateWarmPool patches a warm pool. Pointer scalars are sent only when
+// UpdateWarmPool patches a pool. Pointer scalars are sent only when
 // non-nil; the list pointers trigger their update switch when non-nil
 // (even when empty — which clears the list); the device is replaced when
 // DeviceSpec is non-nil and removed when ClearDeviceSpec is set.
@@ -360,7 +360,7 @@ func (s *Service) UpdateWarmPool(ctx context.Context, workspaceID, warmPoolID st
 	return warmPoolFromAPI(w), nil
 }
 
-// DeleteWarmPool deletes a warm pool. Its warm sessions are terminated by
+// DeleteWarmPool deletes a pool. Its warm sessions are terminated by
 // the backend; sessions already claimed are untouched.
 func (s *Service) DeleteWarmPool(ctx context.Context, workspaceID, warmPoolID string) error {
 	if s.client == nil {

@@ -16,7 +16,7 @@ import (
 	"github.com/bitrise-io/bitrise-cli/internal/output"
 )
 
-// uuidPool is a UUID-shaped warm pool arg. Real pool IDs are UUIDs, so
+// uuidPool is a UUID-shaped pool arg. Real pool IDs are UUIDs, so
 // passing one exercises the ResolveWarmPoolID short-circuit (no extra
 // ListWarmPools call) — the path production hits when a user pastes an ID.
 const uuidPool = "33333333-4444-4444-8444-555555555555"
@@ -167,7 +167,7 @@ func TestListCmd_EmptyHuman(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
-	if !strings.Contains(stdout, "No warm pools found.") {
+	if !strings.Contains(stdout, "No pools found.") {
 		t.Errorf("expected empty-state message, got: %q", stdout)
 	}
 }
@@ -283,6 +283,6 @@ func TestViewCmd_ResolvesName(t *testing.T) {
 func TestViewCmd_RequiresArg(t *testing.T) {
 	_, _, err := run(t, newViewCmd(), "http://unused", "ws-1", nil, output.Human)
 	if err == nil {
-		t.Fatal("expected error when WARM_POOL_ID is missing")
+		t.Fatal("expected error when POOL_ID is missing")
 	}
 }

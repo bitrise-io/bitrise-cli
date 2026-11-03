@@ -86,8 +86,8 @@ perform. Pass it as BITRISE_TOKEN, which is used verbatim, and name the workspac
 workspace and cannot look up which workspaces an account has, so leaving it to
 be auto-detected fails.
 
-Warm pools: pass --warm-pool to serve the link's opens from a workspace-owned
-warm pool ('rde warm-pool list'). Each open claims one of the pool's
+Pools: pass --warm-pool to serve the link's opens from a workspace-owned
+pool ('rde pool list'). Each open claims one of the pool's
 pre-booted device sessions when one is available — the click-to-app time is
 the app download, not a VM boot — and creates a session from the pool's
 configuration otherwise. The pool fixes the device and the machine, so omit
@@ -102,8 +102,8 @@ but no longer boots the link's device degrades opens to the ordinary cold
 path instead, with a notice shown to the viewer.
 `,
 		Example: `  bitrise-cli rde preview-link create --device-platform android --artifact-url https://…/app.apk
-  # Serve opens from a warm pool's pre-booted devices (the pool fixes the device).
-  bitrise-cli rde preview-link create --warm-pool WARM_POOL_ID --artifact-url https://…/app.apk
+  # Serve opens from a pool's pre-booted devices (the pool fixes the device).
+  bitrise-cli rde preview-link create --warm-pool POOL_ID --artifact-url https://…/app.apk
   bitrise-cli rde preview-link create --device-platform ios --artifact-url https://…/App.zip --device-model "iPhone 16"
   bitrise-cli rde preview-link create --device-platform ios --artifact-url-stdin < artifact-url.txt
   bitrise-cli rde preview-link create --device-platform android --artifact-url https://…/app.apk --ttl 4h
@@ -227,7 +227,7 @@ path instead, with a notice shown to the viewer.
 	c.Flags().IntVar(&autoTerminateMins, "auto-terminate-minutes", 0, "minutes a device stays alive after its last viewer disconnects; 0 uses the default of 60; minimum 10, maximum 480")
 	c.Flags().StringVar(&stack, "stack", "", "stack the link's devices run on; omit for the platform default (see 'rde stack list')")
 	c.Flags().StringVar(&machineType, "machine-type", "", "machine type the link's devices run on; omit for the platform default (see 'rde machine-type list --stack STACK_ID')")
-	c.Flags().StringVar(&warmPool, "warm-pool", "", "workspace-owned warm pool (ID or name) whose pre-booted device sessions serve the link's opens; the pool fixes the device and the machine, so omit the --device-* flags, --stack and --machine-type (see 'rde warm-pool list')")
+	c.Flags().StringVar(&warmPool, "warm-pool", "", "workspace-owned pool (ID or name) whose pre-booted device sessions serve the link's opens; the pool fixes the device and the machine, so omit the --device-* flags, --stack and --machine-type (see 'rde pool list')")
 	c.MarkFlagsMutuallyExclusive("artifact-url", "artifact-url-stdin")
 	return c
 }

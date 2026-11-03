@@ -1,10 +1,10 @@
-## bitrise-cli rde warm-pool view
+## bitrise-cli rde pool view
 
-Show a warm pool's status, limits, configuration and warm sessions
+Show a pool's status, limits, configuration and warm sessions
 
 ### Synopsis
 
-Show a warm pool: its live status (ready / warming inventory, sessions in
+Show a pool: its live status (ready / warming inventory, sessions in
 use against its max, lifetime claimed and cold counters, refusals in the
 last 7 days, errors), the stored configuration with secret input values
 hidden, and the warm sessions currently in the pool.
@@ -15,14 +15,14 @@ growing refused count means the pool was full more often than its users can
 bear — the max sessions is too low for the demand.
 
 ```
-bitrise-cli rde warm-pool view WARM_POOL_ID [flags]
+bitrise-cli rde pool view POOL_ID [flags]
 ```
 
 ### Examples
 
 ```
-  bitrise-cli rde warm-pool view WARM_POOL_ID
-  bitrise-cli rde warm-pool view ios-devs --output json | jq .status
+  bitrise-cli rde pool view POOL_ID
+  bitrise-cli rde pool view ios-devs --output json | jq .status
 ```
 
 ### Options
@@ -43,5 +43,5 @@ bitrise-cli rde warm-pool view WARM_POOL_ID [flags]
 
 ### SEE ALSO
 
-* [bitrise-cli rde warm-pool](bitrise-cli_rde_warm-pool.md)	 - Keep pre-booted sessions ready to claim (warm pools)
+* [bitrise-cli rde pool](bitrise-cli_rde_pool.md)	 - Keep pre-booted sessions ready to claim (pools)
 

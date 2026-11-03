@@ -1,27 +1,27 @@
-## bitrise-cli rde warm-pool delete
+## bitrise-cli rde pool delete
 
-Delete a warm pool and terminate its warm sessions
+Delete a pool and terminate its warm sessions
 
 ### Synopsis
 
-Delete a warm pool. Its warm sessions — the booted, unclaimed ones — are
+Delete a pool. Its warm sessions — the booted, unclaimed ones — are
 terminated and removed by the backend; sessions already claimed from the
 pool are ordinary sessions and are untouched. Preview links minted with this
 pool stop working: every later open fails as an expired link would.
 
 This cannot be undone. Pass --yes to skip the confirmation prompt. To stop
 paying for idle machines while keeping the configuration and its links,
-set the warm sessions to 0 instead ('rde warm-pool set-size POOL 0').
+set the warm sessions to 0 instead ('rde pool set-size POOL 0').
 
 ```
-bitrise-cli rde warm-pool delete WARM_POOL_ID [flags]
+bitrise-cli rde pool delete POOL_ID [flags]
 ```
 
 ### Examples
 
 ```
-  bitrise-cli rde warm-pool delete WARM_POOL_ID
-  bitrise-cli rde warm-pool delete ios-devs --yes
+  bitrise-cli rde pool delete POOL_ID
+  bitrise-cli rde pool delete ios-devs --yes
 ```
 
 ### Options
@@ -43,5 +43,5 @@ bitrise-cli rde warm-pool delete WARM_POOL_ID [flags]
 
 ### SEE ALSO
 
-* [bitrise-cli rde warm-pool](bitrise-cli_rde_warm-pool.md)	 - Keep pre-booted sessions ready to claim (warm pools)
+* [bitrise-cli rde pool](bitrise-cli_rde_pool.md)	 - Keep pre-booted sessions ready to claim (pools)
 

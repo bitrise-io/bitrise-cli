@@ -25,8 +25,8 @@ func newListCmd() *cobra.Command {
 	)
 	c := &cobra.Command{
 		Use:   "list",
-		Short: "List warm pools in the workspace",
-		Long: `List the workspace's warm pools. Pass --template to see only the pools
+		Short: "List pools in the workspace",
+		Long: `List the workspace's pools. Pass --template to see only the pools
 of one template (by ID or name).
 
 --all is the read-only cost view of the same pools, the one 'rde usage'
@@ -41,9 +41,9 @@ means the max was lowered below the number in use. STATUS is "ok", or the proble
 "config error" (the stored configuration no longer builds — the pool creates
 nothing until it is fixed), "paused" (backing off after repeated failures)
 or "error" (the last machine creation failed).`,
-		Example: `  bitrise-cli rde warm-pool list
-  bitrise-cli rde warm-pool list --template TEMPLATE_ID
-  bitrise-cli rde warm-pool list --all --output json | jq '.items[] | {name, pool_size, ready: .status.ready}'`,
+		Example: `  bitrise-cli rde pool list
+  bitrise-cli rde pool list --template TEMPLATE_ID
+  bitrise-cli rde pool list --all --output json | jq '.items[] | {name, pool_size, ready: .status.ready}'`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			workspaceID, err := cmdutil.ResolveWorkspaceID(cmd)
 			if err != nil {
@@ -75,7 +75,7 @@ or "error" (the last machine creation failed).`,
 
 func renderList(w io.Writer, res listResult) error {
 	if len(res.Items) == 0 {
-		_, err := fmt.Fprintln(w, "No warm pools found.")
+		_, err := fmt.Fprintln(w, "No pools found.")
 		return err
 	}
 	s := style.New(w)

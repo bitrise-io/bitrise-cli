@@ -736,7 +736,7 @@ func TestSSHTargetForSession_RefusedOnUnclaimedWarmSession(t *testing.T) {
 	for _, state := range []string{"warming", "ready", "retiring"} {
 		sess := Session{Status: "running", WarmPoolID: "pool-1", WarmState: state}
 		_, err := sshTargetForSession(sess)
-		if err == nil || !strings.Contains(err.Error(), "warm session held by warm pool pool-1") || !strings.Contains(err.Error(), "--warm-pool pool-1") {
+		if err == nil || !strings.Contains(err.Error(), "warm session held by pool pool-1") || !strings.Contains(err.Error(), "--warm-pool pool-1") {
 			t.Errorf("%s: err = %v, want the claim-first refusal", state, err)
 		}
 	}
@@ -755,7 +755,7 @@ func TestVNCCredentialsFromSession_RefusedOnUnclaimedWarmSession(t *testing.T) {
 	for _, state := range []string{"warming", "ready", "retiring"} {
 		sess := Session{Status: "running", WarmPoolID: "pool-1", WarmState: state}
 		_, err := VNCCredentialsFromSession(sess)
-		if err == nil || !strings.Contains(err.Error(), "warm session held by warm pool pool-1") {
+		if err == nil || !strings.Contains(err.Error(), "warm session held by pool pool-1") {
 			t.Errorf("%s: err = %v, want the claim-first refusal", state, err)
 		}
 	}

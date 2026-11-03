@@ -38,7 +38,7 @@ Rebuild is asynchronous: by default the command returns while the session is
 exits non-zero if it ends in any state other than "running"); the hooks then
 still run — watch "Setup:" in 'session view' until it says ready.
 
-Refused on a warm pool's unclaimed sessions, on device preview sessions and
+Refused on a pool's unclaimed sessions, on device preview sessions and
 on sessions without lifecycle hooks.`,
 		Example: `  bitrise-cli rde session rebuild SESSION_ID
   bitrise-cli rde session rebuild SESSION_ID --wait`,

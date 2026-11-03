@@ -53,8 +53,8 @@ func newCreateCmd() *cobra.Command {
 	)
 	c := &cobra.Command{
 		Use:   "create NAME",
-		Short: "Create a warm pool",
-		Long: `Create a warm pool: a stored session configuration the RDE backend keeps
+		Short: "Create a pool",
+		Long: `Create a pool: a stored session configuration the RDE backend keeps
 --size sessions of booted and idle, ready to be claimed with 'rde session
 create --warm-pool NAME'.
 
@@ -66,7 +66,7 @@ same way — a pool can only store what a session request could send.
 
 --size is how many warm sessions to keep booted. It defaults to 0: the pool
 is created as an inert configuration preset and costs nothing until you
-raise the size with 'rde warm-pool set-size'. Every warm session costs
+raise the size with 'rde pool set-size'. Every warm session costs
 machine time while idle.
 
 --max-sessions caps how many sessions from the pool may be in use at once —
@@ -106,16 +106,16 @@ device flags to boot the template's declared device as is; --device-model,
 that device per field; with --device-platform the flags are the complete
 device to boot; --no-device boots none. A claimed session's app artifact is
 still given at claim time.`,
-		Example: `  bitrise-cli rde warm-pool create ios-devs --template TEMPLATE_ID --size 2
+		Example: `  bitrise-cli rde pool create ios-devs --template TEMPLATE_ID --size 2
   # Inputs as plain values; a feature flag enabled on every warm session.
-  bitrise-cli rde warm-pool create ci-devices --template TEMPLATE_ID --size 3 --secret-input GITHUB_TOKEN=ghp_xxx --feature-flag enable_beta_simulator
+  bitrise-cli rde pool create ci-devices --template TEMPLATE_ID --size 3 --secret-input GITHUB_TOKEN=ghp_xxx --feature-flag enable_beta_simulator
   # At most 20 sessions of this pool in use at once, 5 of them kept warm.
-  bitrise-cli rde warm-pool create agent-sessions --template TEMPLATE_ID --size 5 --max-sessions 20
+  bitrise-cli rde pool create agent-sessions --template TEMPLATE_ID --size 5 --max-sessions 20
   # A configuration preset: nothing booted until 'set-size' raises the count.
-  bitrise-cli rde warm-pool create preset --template TEMPLATE_ID --machine-type g2.mac.m2pro.6c-14g
+  bitrise-cli rde pool create preset --template TEMPLATE_ID --machine-type g2.mac.m2pro.6c-14g
   # The template's simulator, but an iPhone 15 on iOS 17.5; or no device at all.
-  bitrise-cli rde warm-pool create ios-17 --template TEMPLATE_ID --device-model "iPhone 15" --device-os-version 17.5
-  bitrise-cli rde warm-pool create headless --template TEMPLATE_ID --no-device`,
+  bitrise-cli rde pool create ios-17 --template TEMPLATE_ID --device-model "iPhone 15" --device-os-version 17.5
+  bitrise-cli rde pool create headless --template TEMPLATE_ID --no-device`,
 		Args: cmdutil.RequireArgs("NAME"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
@@ -246,9 +246,9 @@ func newUpdateCmd() *cobra.Command {
 		noDevice          bool
 	)
 	c := &cobra.Command{
-		Use:   "update WARM_POOL_ID",
-		Short: "Update a warm pool's name, limits or configuration",
-		Long: `Update a warm pool. Only the flags you pass are sent; everything else is
+		Use:   "update POOL_ID",
+		Short: "Update a pool's name, limits or configuration",
+		Long: `Update a pool. Only the flags you pass are sent; everything else is
 left as it is.
 
 Session inputs and feature flags are replaced as a whole: passing any
@@ -266,7 +266,7 @@ device.
 Changing the configuration invalidates the pool's current inventory: the
 backend terminates the existing warm sessions and boots new ones from the
 updated configuration. Changing only --name, --size or --max-sessions does
-not. For the count alone, 'rde warm-pool set-size' is the shorter spelling.
+not. For the count alone, 'rde pool set-size' is the shorter spelling.
 
 --max-sessions sets the pool's limit: the most sessions from it that may be
 in use at once; 0 removes the limit. Lowering it below the number in use
@@ -274,18 +274,18 @@ terminates nothing — the pool reads "over max" and refuses claims until
 enough sessions end. --size cannot be more than --max-sessions. Changing
 --size or --max-sessions requires the workspace's billing-data permission
 (the same gate as 'rde usage'); a Workspace API Token always may.`,
-		Example: `  bitrise-cli rde warm-pool update WARM_POOL_ID --name ios-devs-eu --size 4
+		Example: `  bitrise-cli rde pool update POOL_ID --name ios-devs-eu --size 4
   # Allow 48 sessions of the pool in use at once; --max-sessions 0 removes the limit.
-  bitrise-cli rde warm-pool update agent-sessions --max-sessions 48
+  bitrise-cli rde pool update agent-sessions --max-sessions 48
   # Replace the inputs (all of them) and switch to a bigger machine.
-  bitrise-cli rde warm-pool update ios-devs --secret-input GITHUB_TOKEN=ghp_yyy --machine-type g2.mac.m2pro.12c-32g
+  bitrise-cli rde pool update ios-devs --secret-input GITHUB_TOKEN=ghp_yyy --machine-type g2.mac.m2pro.12c-32g
   # Drop the stack override so the template's stack applies again.
-  bitrise-cli rde warm-pool update ios-devs --stack ""
-  bitrise-cli rde warm-pool update ios-devs --clear-feature-flags
+  bitrise-cli rde pool update ios-devs --stack ""
+  bitrise-cli rde pool update ios-devs --clear-feature-flags
   # Boot an iPhone 15 instead of the template's device; then go back to the template's.
-  bitrise-cli rde warm-pool update ios-devs --device-model "iPhone 15"
-  bitrise-cli rde warm-pool update ios-devs --clear-device`,
-		Args: cmdutil.RequireArgs("WARM_POOL_ID"),
+  bitrise-cli rde pool update ios-devs --device-model "iPhone 15"
+  bitrise-cli rde pool update ios-devs --clear-device`,
+		Args: cmdutil.RequireArgs("POOL_ID"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if inputs.set() && clearInputs {
 				return fmt.Errorf("--clear-inputs cannot be combined with --input or --secret-input")
@@ -414,25 +414,25 @@ enough sessions end. --size cannot be more than --max-sessions. Changing
 
 func newSetSizeCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "set-size WARM_POOL_ID SIZE",
+		Use:   "set-size POOL_ID SIZE",
 		Short: "Set a pool's warm sessions: how many it keeps booted",
-		Long: `Set a warm pool's warm sessions — how many sessions of its configuration
+		Long: `Set a pool's warm sessions — how many sessions of its configuration
 the RDE backend keeps booted and idle, ready to claim. Raising it boots sessions; lowering it
 terminates surplus warm sessions (claimed sessions are untouched). 0 drains
 the pool but keeps it usable as a configuration preset: 'rde session create
 --warm-pool' then creates sessions on demand from its configuration. The
-size cannot be more than the pool's max sessions ('rde warm-pool update
+size cannot be more than the pool's max sessions ('rde pool update
 --max-sessions'); changing it requires the workspace's billing-data
 permission, which a Workspace API Token always has.
 
 This is the knob for scaling a pool to business hours: run it from a cron job
 in the morning and again with 0 in the evening. A Workspace API Token works,
 so the job does not need a personal token.`,
-		Example: `  bitrise-cli rde warm-pool set-size ios-devs 3
+		Example: `  bitrise-cli rde pool set-size ios-devs 3
   # Cron: warm up at 08:00 on weekdays, drain at 19:00.
-  0 8  * * 1-5  BITRISE_TOKEN=bitwat_… bitrise-cli rde warm-pool set-size WARM_POOL_ID 3 --workspace WORKSPACE_ID -q
-  0 19 * * 1-5  BITRISE_TOKEN=bitwat_… bitrise-cli rde warm-pool set-size WARM_POOL_ID 0 --workspace WORKSPACE_ID -q`,
-		Args: cmdutil.RequireArgs("WARM_POOL_ID", "COUNT"),
+  0 8  * * 1-5  BITRISE_TOKEN=bitwat_… bitrise-cli rde pool set-size POOL_ID 3 --workspace WORKSPACE_ID -q
+  0 19 * * 1-5  BITRISE_TOKEN=bitwat_… bitrise-cli rde pool set-size POOL_ID 0 --workspace WORKSPACE_ID -q`,
+		Args: cmdutil.RequireArgs("POOL_ID", "COUNT"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			count, err := strconv.Atoi(args[1])
 			if err != nil || count < 0 {
@@ -460,7 +460,7 @@ so the job does not need a personal token.`,
 				return output.Render(cmd.OutOrStdout(), format, p, renderDetail)
 			}
 			if !cmdutil.IsQuiet(cmd) {
-				_, err := fmt.Fprintf(cmd.ErrOrStderr(), "Warm pool %s now keeps %d warm session(s)\n", p.Name, p.PoolSize)
+				_, err := fmt.Fprintf(cmd.ErrOrStderr(), "Pool %s now keeps %d warm session(s)\n", p.Name, p.PoolSize)
 				return err
 			}
 			return nil
@@ -471,19 +471,19 @@ so the job does not need a personal token.`,
 func newDeleteCmd() *cobra.Command {
 	var assumeYes bool
 	c := &cobra.Command{
-		Use:   "delete WARM_POOL_ID",
-		Short: "Delete a warm pool and terminate its warm sessions",
-		Long: `Delete a warm pool. Its warm sessions — the booted, unclaimed ones — are
+		Use:   "delete POOL_ID",
+		Short: "Delete a pool and terminate its warm sessions",
+		Long: `Delete a pool. Its warm sessions — the booted, unclaimed ones — are
 terminated and removed by the backend; sessions already claimed from the
 pool are ordinary sessions and are untouched. Preview links minted with this
 pool stop working: every later open fails as an expired link would.
 
 This cannot be undone. Pass --yes to skip the confirmation prompt. To stop
 paying for idle machines while keeping the configuration and its links,
-set the warm sessions to 0 instead ('rde warm-pool set-size POOL 0').`,
-		Example: `  bitrise-cli rde warm-pool delete WARM_POOL_ID
-  bitrise-cli rde warm-pool delete ios-devs --yes`,
-		Args: cmdutil.RequireArgs("WARM_POOL_ID"),
+set the warm sessions to 0 instead ('rde pool set-size POOL 0').`,
+		Example: `  bitrise-cli rde pool delete POOL_ID
+  bitrise-cli rde pool delete ios-devs --yes`,
+		Args: cmdutil.RequireArgs("POOL_ID"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			workspaceID, err := cmdutil.ResolveWorkspaceID(cmd)
 			if err != nil {
@@ -499,7 +499,7 @@ set the warm sessions to 0 instead ('rde warm-pool set-size POOL 0').`,
 				return err
 			}
 			if !assumeYes {
-				prompt := fmt.Sprintf("This will delete warm pool %s and terminate its warm sessions (sessions already claimed are not affected).\nProceed? [y/N]: ", warmPoolID)
+				prompt := fmt.Sprintf("This will delete pool %s and terminate its warm sessions (sessions already claimed are not affected).\nProceed? [y/N]: ", warmPoolID)
 				if _, err := fmt.Fprint(cmd.ErrOrStderr(), prompt); err != nil {
 					return err
 				}
@@ -515,7 +515,7 @@ set the warm sessions to 0 instead ('rde warm-pool set-size POOL 0').`,
 				return err
 			}
 			if !cmdutil.IsQuiet(cmd) {
-				_, err := fmt.Fprintf(cmd.ErrOrStderr(), "Deleted warm pool %s\n", warmPoolID)
+				_, err := fmt.Fprintf(cmd.ErrOrStderr(), "Deleted pool %s\n", warmPoolID)
 				return err
 			}
 			return nil

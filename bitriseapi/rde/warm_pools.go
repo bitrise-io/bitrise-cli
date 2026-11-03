@@ -7,7 +7,7 @@ import (
 	"net/url"
 )
 
-// WarmPool is the wire-format warm pool record. A pool is a stored
+// WarmPool is the wire-format pool record. A pool is a stored
 // session-create request — template, session input values, feature flags,
 // machine and device overrides — plus an owner and a warm sessions. The
 // backend keeps WarmSessions sessions of that configuration booted and idle
@@ -55,7 +55,7 @@ type WarmPool struct {
 	UpdatedAt   string               `json:"updatedAt,omitempty"`
 }
 
-// WarmPoolSetupFailed describes a warm pool paused after repeated On create
+// WarmPoolSetupFailed describes a pool paused after repeated On create
 // failures: the session kept for inspection and its last failure.
 type WarmPoolSetupFailed struct {
 	SessionID string `json:"sessionId,omitempty"`
@@ -64,7 +64,7 @@ type WarmPoolSetupFailed struct {
 	Message   string `json:"message,omitempty"`
 }
 
-// WarmPoolStatus is the live state of a warm pool.
+// WarmPoolStatus is the live state of a pool.
 type WarmPoolStatus struct {
 	// Ready and Warming count the pool's current inventory.
 	Ready   int `json:"ready,omitempty"`
@@ -103,7 +103,7 @@ type WarmPoolSession struct {
 	ReadyAt string `json:"readyAt,omitempty"`
 }
 
-// CreateWarmPoolRequest is the POST body for creating a warm pool. Apart
+// CreateWarmPoolRequest is the POST body for creating a pool. Apart
 // from Name, OwnerType and WarmSessions, the fields are those of
 // CreateSessionRequest that shape the VM, and the backend validates them
 // the same way.
@@ -161,7 +161,7 @@ type warmPoolResp struct {
 	WarmPool WarmPool `json:"warmPool"`
 }
 
-// ListWarmPools returns the warm pools visible to the caller: the
+// ListWarmPools returns the pools visible to the caller: the
 // workspace's pools plus the caller's own user pools. templateID, when
 // non-empty, narrows the list to pools of that template. all switches to
 // the read-only every-pool-in-the-workspace view, which the backend gates
@@ -189,7 +189,7 @@ func (c *Client) ListWarmPools(ctx context.Context, workspaceID, templateID stri
 	return resp.WarmPools, nil
 }
 
-// GetWarmPool returns a single warm pool with its live status, including
+// GetWarmPool returns a single pool with its live status, including
 // the inventory (Status.Sessions).
 // Endpoint: GET /v1/workspaces/{workspaceId}/warm-pools/{warmPoolId}.
 func (c *Client) GetWarmPool(ctx context.Context, workspaceID, warmPoolID string) (WarmPool, error) {
@@ -197,7 +197,7 @@ func (c *Client) GetWarmPool(ctx context.Context, workspaceID, warmPoolID string
 		return WarmPool{}, fmt.Errorf("workspace ID is required")
 	}
 	if warmPoolID == "" {
-		return WarmPool{}, fmt.Errorf("warm pool ID is required")
+		return WarmPool{}, fmt.Errorf("pool ID is required")
 	}
 	var resp warmPoolResp
 	p := wsPath(workspaceID, "/warm-pools/"+url.PathEscape(warmPoolID))
@@ -207,7 +207,7 @@ func (c *Client) GetWarmPool(ctx context.Context, workspaceID, warmPoolID string
 	return resp.WarmPool, nil
 }
 
-// CreateWarmPool creates a warm pool in the workspace.
+// CreateWarmPool creates a pool in the workspace.
 // Endpoint: POST /v1/workspaces/{workspaceId}/warm-pools.
 func (c *Client) CreateWarmPool(ctx context.Context, workspaceID string, req CreateWarmPoolRequest) (WarmPool, error) {
 	if workspaceID == "" {
@@ -220,7 +220,7 @@ func (c *Client) CreateWarmPool(ctx context.Context, workspaceID string, req Cre
 	return resp.WarmPool, nil
 }
 
-// UpdateWarmPool patches a warm pool. See UpdateWarmPoolRequest for the
+// UpdateWarmPool patches a pool. See UpdateWarmPoolRequest for the
 // UpdateXxx-switch semantics around the repeated fields.
 // Endpoint: PATCH /v1/workspaces/{workspaceId}/warm-pools/{warmPoolId}.
 func (c *Client) UpdateWarmPool(ctx context.Context, workspaceID, warmPoolID string, req UpdateWarmPoolRequest) (WarmPool, error) {
@@ -228,7 +228,7 @@ func (c *Client) UpdateWarmPool(ctx context.Context, workspaceID, warmPoolID str
 		return WarmPool{}, fmt.Errorf("workspace ID is required")
 	}
 	if warmPoolID == "" {
-		return WarmPool{}, fmt.Errorf("warm pool ID is required")
+		return WarmPool{}, fmt.Errorf("pool ID is required")
 	}
 	var resp warmPoolResp
 	p := wsPath(workspaceID, "/warm-pools/"+url.PathEscape(warmPoolID))
@@ -238,7 +238,7 @@ func (c *Client) UpdateWarmPool(ctx context.Context, workspaceID, warmPoolID str
 	return resp.WarmPool, nil
 }
 
-// DeleteWarmPool deletes a warm pool. Its warm sessions are terminated
+// DeleteWarmPool deletes a pool. Its warm sessions are terminated
 // and removed by the backend; sessions already claimed are untouched.
 // Endpoint: DELETE /v1/workspaces/{workspaceId}/warm-pools/{warmPoolId}.
 func (c *Client) DeleteWarmPool(ctx context.Context, workspaceID, warmPoolID string) error {
@@ -246,7 +246,7 @@ func (c *Client) DeleteWarmPool(ctx context.Context, workspaceID, warmPoolID str
 		return fmt.Errorf("workspace ID is required")
 	}
 	if warmPoolID == "" {
-		return fmt.Errorf("warm pool ID is required")
+		return fmt.Errorf("pool ID is required")
 	}
 	return c.del(ctx, wsPath(workspaceID, "/warm-pools/"+url.PathEscape(warmPoolID)))
 }
@@ -260,7 +260,7 @@ func (c *Client) RetryWarmPool(ctx context.Context, workspaceID, warmPoolID stri
 		return WarmPool{}, fmt.Errorf("workspace ID is required")
 	}
 	if warmPoolID == "" {
-		return WarmPool{}, fmt.Errorf("warm pool ID is required")
+		return WarmPool{}, fmt.Errorf("pool ID is required")
 	}
 	var resp warmPoolResp
 	p := wsPath(workspaceID, "/warm-pools/"+url.PathEscape(warmPoolID)+"/retry")

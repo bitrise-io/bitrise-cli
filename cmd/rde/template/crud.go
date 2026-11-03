@@ -71,7 +71,7 @@ Read 'bitrise-cli rde device-guide' before declaring one.
 Lifecycle hooks: instead of startup_script/warmup_script a template can
 carry hooks — bash scripts the platform runs on the booted machine as the
 session user, with the values of the hook's scope exported. Every hook is
-optional. on_create runs once when the session is created (on a warm pool:
+optional. on_create runs once when the session is created (on a pool:
 when the pool warms the machine). on_claim runs on every claim, when the
 session is assigned to its owner. on_restore runs every time a stopped
 session is restored — background processes do not survive a stop, so
@@ -101,7 +101,7 @@ make them shared); its own value wins over a shared one of the same key.
 Keys are unique within a scope, and the same key may exist on several
 scopes — one value, or one saved input, then fills all of them. Who
 supplies the inputs: a direct 'session create' asks for every required
-input of every scope; a warm pool is created with the shared and on_create
+input of every scope; a pool is created with the shared and on_create
 inputs; whoever claims supplies the on_claim and on_restore ones. Legacy
 templates, and specs without a hook key, keep every value shared — exactly
 the delivery they had.
@@ -111,7 +111,7 @@ Variables: is_secret encrypts the value at rest and hides it in output
 goes further — secret and write-only: the API never returns the value,
 'template view' shows the key only, and an empty value on update keeps the
 stored one (so the round-trip below keeps it). Use protected for secrets
-every warm pool of the template reuses, such as a registry credential. A
+every pool of the template reuses, such as a registry credential. A
 protected value is never written to the machine, so expose_as_env_var is
 refused with it.
 

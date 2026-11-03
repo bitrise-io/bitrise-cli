@@ -270,7 +270,7 @@ func TestResolveWarmPoolID(t *testing.T) {
 	if strings.Contains(rs.lastQuery, "SCOPE_ALL") {
 		t.Errorf("name resolution must use the visible scope, query = %q", rs.lastQuery)
 	}
-	if _, err := svc.ResolveWarmPoolID(ctx, "ws-1", "nope"); err == nil || !strings.Contains(err.Error(), "no warm pool named") {
+	if _, err := svc.ResolveWarmPoolID(ctx, "ws-1", "nope"); err == nil || !strings.Contains(err.Error(), "no pool named") {
 		t.Errorf("unknown name: err = %v", err)
 	}
 	if _, err := svc.ResolveWarmPoolID(ctx, "ws-1", "dup"); err == nil || !strings.Contains(err.Error(), "ambiguous") {

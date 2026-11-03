@@ -301,7 +301,7 @@ func TestUpdateCmd_RejectsBadFlags(t *testing.T) {
 func TestUpdateCmd_RequiresArg(t *testing.T) {
 	_, _, err := run(t, newUpdateCmd(), "http://unused", "ws-1", []string{"--size", "1"}, output.Human)
 	if err == nil {
-		t.Fatal("expected error when WARM_POOL_ID is missing")
+		t.Fatal("expected error when POOL_ID is missing")
 	}
 }
 
@@ -375,7 +375,7 @@ func TestDeleteCmd_HappyPath(t *testing.T) {
 		t.Fatalf("Execute: %v", err)
 	}
 	// Confirmation goes to stderr, never stdout.
-	if !strings.Contains(stderr, "Deleted warm pool "+uuidPool) {
+	if !strings.Contains(stderr, "Deleted pool "+uuidPool) {
 		t.Errorf("stderr missing confirmation: %q", stderr)
 	}
 	if stdout != "" {
@@ -442,7 +442,7 @@ func TestDeleteCmd_ResolvesName(t *testing.T) {
 	if deletedPath != "/v1/workspaces/ws-1/warm-pools/p-9" {
 		t.Errorf("deleted path = %q, want the resolved id p-9", deletedPath)
 	}
-	if !strings.Contains(stderr, "Deleted warm pool p-9") {
+	if !strings.Contains(stderr, "Deleted pool p-9") {
 		t.Errorf("stderr should confirm deletion of the resolved id: %q", stderr)
 	}
 }
@@ -450,7 +450,7 @@ func TestDeleteCmd_ResolvesName(t *testing.T) {
 func TestDeleteCmd_RequiresArg(t *testing.T) {
 	_, _, err := run(t, newDeleteCmd(), "http://unused", "ws-1", nil, output.Human)
 	if err == nil {
-		t.Fatal("expected error when WARM_POOL_ID is missing")
+		t.Fatal("expected error when POOL_ID is missing")
 	}
 }
 

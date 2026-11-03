@@ -1,4 +1,4 @@
-// Package warmpool wires `bitrise-cli rde warm-pool` subcommands.
+// Package warmpool wires `bitrise-cli rde pool` subcommands.
 package warmpool
 
 import (
@@ -7,15 +7,26 @@ import (
 	"github.com/bitrise-io/bitrise-cli/cmd/cmdutil"
 )
 
-// NewCmd returns the `rde warm-pool` parent command.
+// NewCmd returns the `rde pool` parent command.
 func NewCmd() *cobra.Command {
+	return newGroup("pool", []string{"pools"}, false)
+}
+
+// NewHiddenAliasCmd returns the same command group under its former name,
+// `rde warm-pool`, hidden from help so existing scripts keep working.
+func NewHiddenAliasCmd() *cobra.Command {
+	return newGroup("warm-pool", []string{"warm-pools"}, true)
+}
+
+func newGroup(use string, aliases []string, hidden bool) *cobra.Command {
 	c := &cobra.Command{
-		Use:     "warm-pool",
-		Aliases: []string{"warm-pools"},
-		Short:   "Keep pre-booted sessions ready to claim (warm pools)",
+		Use:     use,
+		Aliases: aliases,
+		Hidden:  hidden,
+		Short:   "Keep pre-booted sessions ready to claim (pools)",
 		Long: `Keep pre-booted sessions ready to claim.
 
-A warm pool is a stored session configuration — a template, its session
+A pool is a stored session configuration — a template, its session
 input values and feature flags, and optional stack / machine type / cluster
 overrides — plus a warm sessions count, owned by the workspace. The RDE backend keeps that
 many sessions of the configuration booted and idle ("warm sessions"), so
@@ -38,21 +49,25 @@ value marked secret (--secret-input) is encrypted at rest and hidden in
 output. A warm session is ready to claim once
 On create finished. When On create fails three times in a row the pool
 pauses with the last machine kept for inspection ('view' shows "Setup
-failed:"); fix the script, then 'rde warm-pool retry'.
+failed:"); fix the script, then 'rde pool retry'.
 
 Warm sessions cost machine time while idle. Set the warm sessions to what
-demand needs and scale it with 'rde warm-pool set-size POOL N' — the
+demand needs and scale it with 'rde pool set-size POOL N' — the
 intended way to warm a pool for business hours is a cron job that sets the
 size in the morning and back to 0 in the evening (a Workspace API Token
 works). Secret input values are never shown; 'view'
 reports each secret key as (hidden).
 
-Commands that take a WARM_POOL_ID also accept a pool name — it's resolved to
+Commands that take a POOL_ID also accept a pool name — it's resolved to
 an ID for you. Names aren't unique, so if more than one pool shares the name
-the command errors and lists the candidate IDs to pick from.`,
-		Example: `  bitrise-cli rde warm-pool list
-  bitrise-cli rde warm-pool create ios-devs --template TEMPLATE_ID --size 2 --secret-input GITHUB_TOKEN=ghp_xxx
-  bitrise-cli rde warm-pool set-size ios-devs 0     # drain for the night
+the command errors and lists the candidate IDs to pick from.
+
+'rde warm-pool' is the former name of this command group and keeps working;
+the API, the --warm-pool flag and the JSON field warm_pool_id keep the old
+spelling too.`,
+		Example: `  bitrise-cli rde pool list
+  bitrise-cli rde pool create ios-devs --template TEMPLATE_ID --size 2 --secret-input GITHUB_TOKEN=ghp_xxx
+  bitrise-cli rde pool set-size ios-devs 0     # drain for the night
   bitrise-cli rde session create dev --warm-pool ios-devs`,
 		RunE: cmdutil.DelegateToList,
 	}

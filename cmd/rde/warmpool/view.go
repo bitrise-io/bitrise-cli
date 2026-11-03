@@ -16,9 +16,9 @@ import (
 
 func newViewCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "view WARM_POOL_ID",
-		Short: "Show a warm pool's status, limits, configuration and warm sessions",
-		Long: `Show a warm pool: its live status (ready / warming inventory, sessions in
+		Use:   "view POOL_ID",
+		Short: "Show a pool's status, limits, configuration and warm sessions",
+		Long: `Show a pool: its live status (ready / warming inventory, sessions in
 use against its max, lifetime claimed and cold counters, refusals in the
 last 7 days, errors), the stored configuration with secret input values
 hidden, and the warm sessions currently in the pool.
@@ -27,9 +27,9 @@ A growing cold count means sessions had to be created on demand because no
 warm session was available — the warm sessions count is too low for the demand. A
 growing refused count means the pool was full more often than its users can
 bear — the max sessions is too low for the demand.`,
-		Example: `  bitrise-cli rde warm-pool view WARM_POOL_ID
-  bitrise-cli rde warm-pool view ios-devs --output json | jq .status`,
-		Args: cmdutil.RequireArgs("WARM_POOL_ID"),
+		Example: `  bitrise-cli rde pool view POOL_ID
+  bitrise-cli rde pool view ios-devs --output json | jq .status`,
+		Args: cmdutil.RequireArgs("POOL_ID"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			workspaceID, err := cmdutil.ResolveWorkspaceID(cmd)
 			if err != nil {
@@ -98,7 +98,7 @@ func renderDetail(w io.Writer, p internalrde.WarmPool) error {
 		ew.F("%s%d%s\n", lbl("Refused (7 days):"), st.Refused7d, s.Dim.Render(" (claims and restores refused because the pool was full)"))
 		if st.ConfigError != "" {
 			ew.F("%s%s\n", lbl("Config error:"), s.Failure.Render(st.ConfigError))
-			ew.F("%s%s\n", lbl(""), s.Dim.Render("the pool creates nothing until the configuration is fixed ('rde warm-pool update')"))
+			ew.F("%s%s\n", lbl(""), s.Dim.Render("the pool creates nothing until the configuration is fixed ('rde pool update')"))
 		}
 		if st.LastError != "" {
 			ew.F("%s%s\n", lbl("Last error:"), s.Warn.Render(st.LastError))
@@ -113,7 +113,7 @@ func renderDetail(w io.Writer, p internalrde.WarmPool) error {
 			msg = fmt.Sprintf("On create exited with code %d", sf.ExitCode)
 		}
 		ew.F("%s%s\n", lbl("Setup failed:"), s.Failure.Render(msg))
-		ew.F("%s%s\n", lbl(""), s.Dim.Render(fmt.Sprintf("paused after three failed On create runs (%s); the last machine is kept as session %s — inspect its logs, fix the template, then 'rde warm-pool retry'", formatTime(sf.FailedAt), sf.SessionID)))
+		ew.F("%s%s\n", lbl(""), s.Dim.Render(fmt.Sprintf("paused after three failed On create runs (%s); the last machine is kept as session %s — inspect its logs, fix the template, then 'rde pool retry'", formatTime(sf.FailedAt), sf.SessionID)))
 	}
 	if p.StackID != "" {
 		ew.F("%s%s\n", lbl("Stack:"), p.StackID)

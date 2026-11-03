@@ -41,7 +41,7 @@ type UserUsage struct {
 // vCPUs its machines hold right now. Always dense: fields the backend omitted
 // are 0.
 //
-// UsedVCPU counts every active machine in the family, warm pool sessions
+// UsedVCPU counts every active machine in the family, pool sessions
 // included. It is counted from machines rather than sessions, so it
 // can briefly differ from the session totals. Only families the plan gives a
 // quota are listed. OS is "linux" or "macos", empty when the backend could not
