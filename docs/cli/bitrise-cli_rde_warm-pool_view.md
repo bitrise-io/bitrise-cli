@@ -1,15 +1,18 @@
 ## bitrise-cli rde warm-pool view
 
-Show a warm pool's status, configuration and warm sessions
+Show a warm pool's status, limits, configuration and warm sessions
 
 ### Synopsis
 
-Show a warm pool: its live status (ready / warming inventory, lifetime
-claimed and cold counters, errors), the stored configuration with secret
-input values hidden, and the warm sessions currently in the pool.
+Show a warm pool: its live status (ready / warming inventory, sessions in
+use against its max, lifetime claimed and cold counters, refusals in the
+last 7 days, errors), the stored configuration with secret input values
+hidden, and the warm sessions currently in the pool.
 
 A growing cold count means sessions had to be created on demand because no
-warm session was available — the pool size is too low for the demand.
+warm session was available — the pool size is too low for the demand. A
+growing refused count means the pool was full more often than its users can
+bear — the max sessions is too low for the demand.
 
 ```
 bitrise-cli rde warm-pool view WARM_POOL_ID [flags]

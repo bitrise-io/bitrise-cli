@@ -79,6 +79,6 @@ bitrise-cli rde warm-pool [flags]
 * [bitrise-cli rde warm-pool list](bitrise-cli_rde_warm-pool_list.md)	 - List warm pools in the workspace
 * [bitrise-cli rde warm-pool retry](bitrise-cli_rde_warm-pool_retry.md)	 - Resume a warm pool paused after repeated On create failures
 * [bitrise-cli rde warm-pool set-size](bitrise-cli_rde_warm-pool_set-size.md)	 - Set a pool's size: how many warm sessions it keeps booted
-* [bitrise-cli rde warm-pool update](bitrise-cli_rde_warm-pool_update.md)	 - Update a warm pool's name, count or configuration
-* [bitrise-cli rde warm-pool view](bitrise-cli_rde_warm-pool_view.md)	 - Show a warm pool's status, configuration and warm sessions
+* [bitrise-cli rde warm-pool update](bitrise-cli_rde_warm-pool_update.md)	 - Update a warm pool's name, limits or configuration
+* [bitrise-cli rde warm-pool view](bitrise-cli_rde_warm-pool_view.md)	 - Show a warm pool's status, limits, configuration and warm sessions
 

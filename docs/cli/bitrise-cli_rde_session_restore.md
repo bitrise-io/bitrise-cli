@@ -12,6 +12,10 @@ still "starting". Pass --wait to block until the session finishes provisioning
 ends in any state other than "running". This lets an unattended caller restore
 and then immediately use the session without hand-rolling a poll loop.
 
+A session from a pool with a max sessions takes a place in the pool again:
+while the pool is full the restore is refused and the session stays
+terminated and intact; the refusal names your sessions in use from the pool.
+
 ```
 bitrise-cli rde session restore SESSION_ID [flags]
 ```

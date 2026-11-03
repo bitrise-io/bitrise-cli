@@ -11,7 +11,11 @@ of one template (by ID or name).
 shows; it requires the workspace's billing-data permission.
 
 READY and WARMING are the pool's current inventory; SIZE is the pool size —
-the count the backend keeps booted. STATUS is "ok", or the problem 'view' explains:
+the count the backend keeps booted. IN USE/MAX is how many sessions from the
+pool are in use right now against its max sessions ("3/10"; a bare count
+when the pool has no limit): "full" means a claim that finds no warm
+session, a restore or a start is refused until a session ends; "over max"
+means the max was lowered below the number in use. STATUS is "ok", or the problem 'view' explains:
 "config error" (the stored configuration no longer builds — the pool creates
 nothing until it is fixed), "paused" (backing off after repeated failures)
 or "error" (the last machine creation failed).

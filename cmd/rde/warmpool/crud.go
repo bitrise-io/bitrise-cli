@@ -39,6 +39,7 @@ func newCreateCmd() *cobra.Command {
 	var (
 		template          string
 		count             int
+		maxSessions       int
 		inputs            inputFlags
 		featureFlags      []string
 		stack             string
@@ -67,6 +68,16 @@ same way — a pool can only store what a session request could send.
 is created as an inert configuration preset and costs nothing until you
 raise the size with 'rde warm-pool set-size'. Every warm session costs
 machine time while idle.
+
+--max-sessions caps how many sessions from the pool may be in use at once —
+claimed or created cold; a session keeps its origin pool for life. When the
+pool is full, a claim that finds no warm session, a restore and a start are
+refused until one of the pool's sessions ends; the refusal names your own
+sessions in use from the pool. Warm sessions only fill the room the max
+leaves, so --size cannot be more than --max-sessions. 0 (the default) means
+no limit. A ceiling, not a reservation: the workspace's CPU quota still
+applies on top. Use it to keep one group — an agent fleet, preview-link
+viewers — from taking the CPUs the whole workspace shares.
 
 The pool belongs to the workspace: every member sees, claims from and
 manages it, a Workspace API Token can create and claim from it, and it can
@@ -98,6 +109,8 @@ still given at claim time.`,
 		Example: `  bitrise-cli rde warm-pool create ios-devs --template TEMPLATE_ID --size 2
   # Inputs as plain values; a feature flag enabled on every warm session.
   bitrise-cli rde warm-pool create ci-devices --template TEMPLATE_ID --size 3 --secret-input GITHUB_TOKEN=ghp_xxx --feature-flag enable_beta_simulator
+  # At most 20 sessions of this pool in use at once, 5 of them kept warm.
+  bitrise-cli rde warm-pool create agent-sessions --template TEMPLATE_ID --size 5 --max-sessions 20
   # A configuration preset: nothing booted until 'set-size' raises the count.
   bitrise-cli rde warm-pool create preset --template TEMPLATE_ID --machine-type g2.mac.m2pro.6c-14g
   # The template's simulator, but an iPhone 15 on iOS 17.5; or no device at all.
@@ -114,6 +127,12 @@ still given at claim time.`,
 			}
 			if count < 0 {
 				return fmt.Errorf("--size must not be negative")
+			}
+			if maxSessions < 0 {
+				return fmt.Errorf("--max-sessions must not be negative")
+			}
+			if maxSessions > 0 && count > maxSessions {
+				return fmt.Errorf("--size (%d) cannot be more than --max-sessions (%d): warm sessions only fill the room the max leaves", count, maxSessions)
 			}
 			sessionInputs, err := inputs.parse()
 			if err != nil {
@@ -141,6 +160,7 @@ still given at claim time.`,
 				Name:                    name,
 				TemplateID:              templateID,
 				PoolSize:                count,
+				MaxSessions:             maxSessions,
 				SessionInputs:           sessionInputs,
 				EnabledFeatureFlagNames: featureFlags,
 				StackID:                 stack,
@@ -157,6 +177,7 @@ still given at claim time.`,
 	}
 	c.Flags().StringVar(&template, "template", "", "template ID or name the warm sessions are created from (required)")
 	c.Flags().IntVar(&count, "size", 0, "how many warm sessions to keep booted; 0 (the default) creates an inert configuration preset")
+	c.Flags().IntVar(&maxSessions, "max-sessions", 0, "the most sessions from the pool that may be in use at once, warm ones included; a full pool refuses claims, restores and starts until a session ends. 0 (the default): no limit")
 	inputs.bind(c)
 	c.Flags().StringArrayVar(&featureFlags, "feature-flag", nil, "name of a template feature flag to enable on the warm sessions (repeatable)")
 	c.Flags().StringVar(&stack, "stack", "", "stack ID to override the template's (see 'rde stack list')")
@@ -209,6 +230,7 @@ func newUpdateCmd() *cobra.Command {
 	var (
 		name              string
 		count             int
+		maxSessions       int
 		inputs            inputFlags
 		clearInputs       bool
 		featureFlags      []string
@@ -225,7 +247,7 @@ func newUpdateCmd() *cobra.Command {
 	)
 	c := &cobra.Command{
 		Use:   "update WARM_POOL_ID",
-		Short: "Update a warm pool's name, count or configuration",
+		Short: "Update a warm pool's name, limits or configuration",
 		Long: `Update a warm pool. Only the flags you pass are sent; everything else is
 left as it is.
 
@@ -243,9 +265,18 @@ device.
 
 Changing the configuration invalidates the pool's current inventory: the
 backend terminates the existing warm sessions and boots new ones from the
-updated configuration. Changing only --name or --size does not. For the
-count alone, 'rde warm-pool set-size' is the shorter spelling.`,
+updated configuration. Changing only --name, --size or --max-sessions does
+not. For the count alone, 'rde warm-pool set-size' is the shorter spelling.
+
+--max-sessions sets the pool's limit: the most sessions from it that may be
+in use at once; 0 removes the limit. Lowering it below the number in use
+terminates nothing — the pool reads "over max" and refuses claims until
+enough sessions end. --size cannot be more than --max-sessions. Changing
+--size or --max-sessions requires the workspace's billing-data permission
+(the same gate as 'rde usage'); a Workspace API Token always may.`,
 		Example: `  bitrise-cli rde warm-pool update WARM_POOL_ID --name ios-devs-eu --size 4
+  # Allow 48 sessions of the pool in use at once; --max-sessions 0 removes the limit.
+  bitrise-cli rde warm-pool update agent-sessions --max-sessions 48
   # Replace the inputs (all of them) and switch to a bigger machine.
   bitrise-cli rde warm-pool update ios-devs --secret-input GITHUB_TOKEN=ghp_yyy --machine-type g2.mac.m2pro.12c-32g
   # Drop the stack override so the template's stack applies again.
@@ -265,6 +296,9 @@ count alone, 'rde warm-pool set-size' is the shorter spelling.`,
 			if count < 0 {
 				return fmt.Errorf("--size must not be negative")
 			}
+			if maxSessions < 0 {
+				return fmt.Errorf("--max-sessions must not be negative")
+			}
 			flags := cmd.Flags()
 			req := internalrde.UpdateWarmPoolRequest{}
 			changed := false
@@ -278,6 +312,11 @@ count alone, 'rde warm-pool set-size' is the shorter spelling.`,
 			if flags.Changed("size") {
 				n := count
 				req.PoolSize = &n
+				changed = true
+			}
+			if flags.Changed("max-sessions") {
+				n := maxSessions
+				req.MaxSessions = &n
 				changed = true
 			}
 			if inputs.set() || clearInputs {
@@ -331,7 +370,7 @@ count alone, 'rde warm-pool set-size' is the shorter spelling.`,
 				changed = true
 			}
 			if !changed {
-				return fmt.Errorf("nothing to update: pass at least one of --name, --size, --input, --secret-input, --clear-inputs, --feature-flag, --clear-feature-flags, --stack, --machine-type, --cluster, the --device-* flags, --clear-device or --no-device")
+				return fmt.Errorf("nothing to update: pass at least one of --name, --size, --max-sessions, --input, --secret-input, --clear-inputs, --feature-flag, --clear-feature-flags, --stack, --machine-type, --cluster, the --device-* flags, --clear-device or --no-device")
 			}
 			workspaceID, err := cmdutil.ResolveWorkspaceID(cmd)
 			if err != nil {
@@ -355,7 +394,8 @@ count alone, 'rde warm-pool set-size' is the shorter spelling.`,
 		},
 	}
 	c.Flags().StringVar(&name, "name", "", "new name")
-	c.Flags().IntVar(&count, "size", 0, "new pool size of warm sessions; 0 drains the pool but keeps it as a preset")
+	c.Flags().IntVar(&count, "size", 0, "new pool size of warm sessions; 0 drains the pool but keeps it as a preset (requires the billing-data permission)")
+	c.Flags().IntVar(&maxSessions, "max-sessions", 0, "new limit on sessions from the pool in use at once; 0 removes the limit (requires the billing-data permission)")
 	inputs.bind(c)
 	c.Flags().BoolVar(&clearInputs, "clear-inputs", false, "remove every stored session input")
 	c.Flags().StringArrayVar(&featureFlags, "feature-flag", nil, "feature flag to enable on the warm sessions (repeatable; replaces the enabled flags as a whole)")
@@ -380,7 +420,10 @@ func newSetSizeCmd() *cobra.Command {
 the RDE backend keeps booted and idle. Raising it boots sessions; lowering it
 terminates surplus warm sessions (claimed sessions are untouched). 0 drains
 the pool but keeps it usable as a configuration preset: 'rde session create
---warm-pool' then creates sessions on demand from its configuration.
+--warm-pool' then creates sessions on demand from its configuration. The
+size cannot be more than the pool's max sessions ('rde warm-pool update
+--max-sessions'); changing it requires the workspace's billing-data
+permission, which a Workspace API Token always has.
 
 This is the knob for scaling a pool to business hours: run it from a cron job
 in the morning and again with 0 in the evening. A Workspace API Token works,

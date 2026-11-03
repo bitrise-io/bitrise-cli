@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"strconv"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -32,7 +33,11 @@ of one template (by ID or name).
 shows; it requires the workspace's billing-data permission.
 
 READY and WARMING are the pool's current inventory; SIZE is the pool size —
-the count the backend keeps booted. STATUS is "ok", or the problem 'view' explains:
+the count the backend keeps booted. IN USE/MAX is how many sessions from the
+pool are in use right now against its max sessions ("3/10"; a bare count
+when the pool has no limit): "full" means a claim that finds no warm
+session, a restore or a start is refused until a session ends; "over max"
+means the max was lowered below the number in use. STATUS is "ok", or the problem 'view' explains:
 "config error" (the stored configuration no longer builds — the pool creates
 nothing until it is fixed), "paused" (backing off after repeated failures)
 or "error" (the last machine creation failed).`,
@@ -74,7 +79,7 @@ func renderList(w io.Writer, res listResult) error {
 		return err
 	}
 	s := style.New(w)
-	headers := []string{"NAME", "TEMPLATE", "CREATED BY", "SIZE", "READY", "WARMING", "STATUS", "ID"}
+	headers := []string{"NAME", "TEMPLATE", "CREATED BY", "SIZE", "READY", "WARMING", "IN USE/MAX", "STATUS", "ID"}
 	rows := make([][]string, 0, len(res.Items))
 	for _, p := range res.Items {
 		ready, warming := "", ""
@@ -84,17 +89,22 @@ func renderList(w io.Writer, res listResult) error {
 		}
 		rows = append(rows, []string{
 			p.Name, templateLabel(p), createdByLabel(p), strconv.Itoa(p.PoolSize),
-			ready, warming, poolStatusLabel(p), p.ID,
+			ready, warming, inUseLabel(p), poolStatusLabel(p), p.ID,
 		})
 	}
 	const (
-		colStatus = 6
-		colID     = 7
+		colInUse  = 6
+		colStatus = 7
+		colID     = 8
 	)
 	styler := func(_, col int, content string) string {
 		switch col {
 		case colID:
 			return s.Slug.Render(content)
+		case colInUse:
+			if strings.HasSuffix(content, limitSuffixFull) || strings.HasSuffix(content, limitSuffixOverMax) {
+				return s.Warn.Render(content)
+			}
 		case colStatus:
 			if content != "ok" {
 				return s.Warn.Render(content)
@@ -103,6 +113,33 @@ func renderList(w io.Writer, res listResult) error {
 		return content
 	}
 	return style.Table(w, headers, rows, s.Header, styler)
+}
+
+// Suffixes inUseLabel appends for the two states a pool shows besides
+// normal; text, never color alone.
+const (
+	limitSuffixFull    = " full"
+	limitSuffixOverMax = " over max"
+)
+
+// inUseLabel is the pool's sessions in use against its max: "3/10", a bare
+// "3" for a pool without a limit, and " full" / " over max" appended for
+// the states that refuse claims.
+func inUseLabel(p internalrde.WarmPool) string {
+	if p.Status == nil {
+		return ""
+	}
+	label := strconv.Itoa(p.Status.InUse)
+	if p.MaxSessions > 0 {
+		label += "/" + strconv.Itoa(p.MaxSessions)
+	}
+	switch p.Status.LimitState {
+	case internalrde.LimitFull:
+		label += limitSuffixFull
+	case internalrde.LimitOverMax:
+		label += limitSuffixOverMax
+	}
+	return label
 }
 
 // templateLabel prefers the template's name; a pool whose template was

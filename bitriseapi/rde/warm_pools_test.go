@@ -320,3 +320,49 @@ func TestWarmPool_SetupFailedDecodes(t *testing.T) {
 		t.Errorf("setupFailed = %+v, want session s-9 / exit 2", pool.SetupFailed)
 	}
 }
+
+// maxSessions rides along on create when set (0 is the wire default, no
+// limit, and drops out) and on update as a pointer, 0 included — that is
+// the "remove the limit" request. The status fields parse back.
+func TestWarmPools_MaxSessions(t *testing.T) {
+	rs := newRecordingServer(t, `{"warmPool":{"id":"p-new","name":"agents","poolSize":5,"maxSessions":20,"status":{"inUse":20,"limitState":"full","refused7d":3}}}`)
+	p, err := rs.client().CreateWarmPool(context.Background(), "ws-1", CreateWarmPoolRequest{Name: "agents", TemplateID: "t1", PoolSize: 5, MaxSessions: 20})
+	if err != nil {
+		t.Fatalf("CreateWarmPool: %v", err)
+	}
+	var sent map[string]any
+	if err := json.Unmarshal(rs.lastBody, &sent); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if sent["maxSessions"] != float64(20) {
+		t.Errorf("maxSessions = %v, want 20 (body %s)", sent["maxSessions"], rs.lastBody)
+	}
+	if p.MaxSessions != 20 || p.Status == nil || p.Status.InUse != 20 || p.Status.LimitState != "full" || p.Status.Refused7d != 3 {
+		t.Errorf("pool = %+v status = %+v", p, p.Status)
+	}
+
+	rs = newRecordingServer(t, `{"warmPool":{"id":"p-new","name":"preset"}}`)
+	if _, err := rs.client().CreateWarmPool(context.Background(), "ws-1", CreateWarmPoolRequest{Name: "preset", TemplateID: "t1"}); err != nil {
+		t.Fatalf("CreateWarmPool: %v", err)
+	}
+	sent = nil
+	if err := json.Unmarshal(rs.lastBody, &sent); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if _, ok := sent["maxSessions"]; ok {
+		t.Errorf("maxSessions 0 should be omitted, body = %s", rs.lastBody)
+	}
+
+	rs = newRecordingServer(t, `{"warmPool":{"id":"p1"}}`)
+	zero := 0
+	if _, err := rs.client().UpdateWarmPool(context.Background(), "ws-1", "p1", UpdateWarmPoolRequest{MaxSessions: &zero}); err != nil {
+		t.Fatalf("UpdateWarmPool: %v", err)
+	}
+	sent = nil
+	if err := json.Unmarshal(rs.lastBody, &sent); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if v, ok := sent["maxSessions"]; !ok || v != float64(0) || len(sent) != 1 {
+		t.Errorf("body = %s, want only maxSessions 0", rs.lastBody)
+	}
+}

@@ -28,6 +28,10 @@ type WarmPool struct {
 	// PoolSize is how many warm sessions the backend keeps booted; 0
 	// drains the pool but keeps it usable as a configuration preset.
 	PoolSize int `json:"poolSize,omitempty"`
+	// MaxSessions is the most handed-out sessions of the pool (claimed or
+	// created cold) that may be in use at once; 0 means no limit. A full
+	// pool refuses claims that find no warm session, restores and starts.
+	MaxSessions int `json:"maxSessions,omitempty"`
 	// SessionInputs are the values the warm sessions are created with.
 	// Secret values come back redacted (empty Value, IsSecret true) —
 	// the internal/rde mapper masks them again as defense-in-depth.
@@ -80,6 +84,13 @@ type WarmPoolStatus struct {
 	// Sessions is the inventory, oldest first. Filled by GetWarmPool
 	// only; empty on list responses.
 	Sessions []WarmPoolSession `json:"sessions,omitempty"`
+	// InUse is the pool's handed-out sessions in use right now — what
+	// WarmPool.MaxSessions caps. LimitState is "no_limit", "under_max",
+	// "full" or "over_max"; Refused7d counts the claims, restores and
+	// starts refused in the last 7 days.
+	InUse      int    `json:"inUse,omitempty"`
+	LimitState string `json:"limitState,omitempty"`
+	Refused7d  int    `json:"refused7d,omitempty"`
 }
 
 // WarmPoolSession is one warm session in a pool's inventory.
@@ -104,7 +115,9 @@ type CreateWarmPoolRequest struct {
 	// Sent only when set so the backend default applies otherwise.
 	OwnerType string `json:"ownerType,omitempty"`
 	// PoolSize may be 0: an inert pool that still serves as a preset.
-	PoolSize                int                 `json:"poolSize,omitempty"`
+	PoolSize int `json:"poolSize,omitempty"`
+	// MaxSessions 0 is the wire default too: no limit.
+	MaxSessions             int                 `json:"maxSessions,omitempty"`
 	SessionInputs           []SessionInputValue `json:"sessionInputs,omitempty"`
 	MapSavedToSessionInputs bool                `json:"mapSavedToSessionInputs,omitempty"`
 	EnabledFeatureFlagNames []string            `json:"enabledFeatureFlagNames,omitempty"`
@@ -123,6 +136,8 @@ type CreateWarmPoolRequest struct {
 type UpdateWarmPoolRequest struct {
 	Name     *string `json:"name,omitempty"`
 	PoolSize *int    `json:"poolSize,omitempty"`
+	// MaxSessions 0 removes the limit, so a pointer keeps "unset" apart.
+	MaxSessions *int `json:"maxSessions,omitempty"`
 
 	SessionInputs                 []SessionInputValue `json:"sessionInputs,omitempty"`
 	UpdateSessionInputs           bool                `json:"updateSessionInputs,omitempty"`

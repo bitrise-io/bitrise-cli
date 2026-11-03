@@ -3,6 +3,7 @@ package warmpool
 import (
 	"fmt"
 	"io"
+	"strconv"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -16,13 +17,16 @@ import (
 func newViewCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "view WARM_POOL_ID",
-		Short: "Show a warm pool's status, configuration and warm sessions",
-		Long: `Show a warm pool: its live status (ready / warming inventory, lifetime
-claimed and cold counters, errors), the stored configuration with secret
-input values hidden, and the warm sessions currently in the pool.
+		Short: "Show a warm pool's status, limits, configuration and warm sessions",
+		Long: `Show a warm pool: its live status (ready / warming inventory, sessions in
+use against its max, lifetime claimed and cold counters, refusals in the
+last 7 days, errors), the stored configuration with secret input values
+hidden, and the warm sessions currently in the pool.
 
 A growing cold count means sessions had to be created on demand because no
-warm session was available — the pool size is too low for the demand.`,
+warm session was available — the pool size is too low for the demand. A
+growing refused count means the pool was full more often than its users can
+bear — the max sessions is too low for the demand.`,
 		Example: `  bitrise-cli rde warm-pool view WARM_POOL_ID
   bitrise-cli rde warm-pool view ios-devs --output json | jq .status`,
 		Args: cmdutil.RequireArgs("WARM_POOL_ID"),
@@ -71,10 +75,27 @@ func renderDetail(w io.Writer, p internalrde.WarmPool) error {
 		ew.F("%s%s\n", lbl("Created by:"), s.Dim.Render("workspace API token"))
 	}
 	ew.F("%s%d\n", lbl("Pool size:"), p.PoolSize)
+	if p.MaxSessions > 0 {
+		ew.F("%s%d%s\n", lbl("Max sessions:"), p.MaxSessions, s.Dim.Render(" (sessions from the pool in use at once, warm ones included)"))
+	} else {
+		ew.F("%s%s\n", lbl("Max sessions:"), s.Dim.Render("no limit"))
+	}
 	if st := p.Status; st != nil {
 		ew.F("%s%d ready, %d warming\n", lbl("Inventory:"), st.Ready, st.Warming)
+		inUse := strconv.Itoa(st.InUse)
+		if p.MaxSessions > 0 {
+			inUse += " of " + strconv.Itoa(p.MaxSessions)
+		}
+		switch st.LimitState {
+		case internalrde.LimitFull:
+			inUse += s.Warn.Render(" — full: claims that find no warm session, restores and starts are refused until a session ends")
+		case internalrde.LimitOverMax:
+			inUse += s.Warn.Render(" — over max: nothing is terminated; claims are refused until enough sessions end")
+		}
+		ew.F("%s%s\n", lbl("In use:"), inUse)
 		ew.F("%s%d claimed, %d cold%s\n", lbl("Lifetime:"), st.ClaimedTotal, st.ColdTotal,
 			s.Dim.Render(" (cold = created on demand, no warm session was available)"))
+		ew.F("%s%d%s\n", lbl("Refused (7 days):"), st.Refused7d, s.Dim.Render(" (claims and restores refused because the pool was full)"))
 		if st.ConfigError != "" {
 			ew.F("%s%s\n", lbl("Config error:"), s.Failure.Render(st.ConfigError))
 			ew.F("%s%s\n", lbl(""), s.Dim.Render("the pool creates nothing until the configuration is fixed ('rde warm-pool update')"))

@@ -175,7 +175,7 @@ bitrise-cli rde session create NAME [flags]
       --template string              template ID or name to create the session from (omit to create a template-less session with --stack and --machine-type)
       --wait                         wait until the session leaves provisioning (running, failed, …) — with --device-platform until the device is ready or failed, on a lifecycle-hooks template until its hooks are done — before returning; exits 1 if the final status isn't running, the device failed or a hook failed
       --wait-timeout duration        max time to wait when --wait is set (uses Go duration syntax: 30s, 5m, 1h) (default 10m0s)
-      --warm-pool string             warm pool ID or name to claim the session from: a pre-booted warm session is handed out instantly, or one is created from the pool's configuration when none is available; the pool fixes the configuration, so --template, --stack, --machine-type, --feature-flag, --cluster and the device flags are rejected with it; the input flags give the template's On claim and On restore inputs (see 'rde warm-pool list')
+      --warm-pool string             warm pool ID or name to claim the session from: a pre-booted warm session is handed out instantly, or one is created from the pool's configuration when none is available — unless the pool is full (its max sessions reached), which refuses the claim and names your sessions in use from the pool; the pool fixes the configuration, so --template, --stack, --machine-type, --feature-flag, --cluster and the device flags are rejected with it; the input flags give the template's On claim and On restore inputs (see 'rde warm-pool list')
 ```
 
 ### Options inherited from parent commands

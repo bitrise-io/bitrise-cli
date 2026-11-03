@@ -32,6 +32,13 @@ type WarmPool struct {
 	// 0 drains the pool but keeps it usable as a configuration preset —
 	// always emitted, since 0 is a meaningful value.
 	PoolSize int `json:"pool_size"`
+	// MaxSessions is the most sessions from the pool that may be in use at
+	// once (claimed or created cold; a session keeps its origin pool for
+	// life). 0 means no limit — always emitted, like PoolSize. A full pool
+	// refuses claims that find no warm session, restores and starts with
+	// reason POOL_FULL until a session ends; warm sessions only fill the
+	// room the max leaves.
+	MaxSessions int `json:"max_sessions"`
 	// SessionInputs are the values the warm sessions are created with.
 	// Secret values are masked (empty Value, IsSecret true).
 	SessionInputs           []WarmPoolInput `json:"session_inputs,omitempty"`
@@ -99,7 +106,26 @@ type WarmPoolStatus struct {
 	// Sessions is the inventory, oldest first — filled by GetWarmPool
 	// only, empty on list responses.
 	Sessions []WarmPoolSession `json:"sessions,omitempty"`
+	// InUse is the pool's handed-out sessions in use right now, the number
+	// MaxSessions caps. LimitState says where it stands: LimitNoLimit,
+	// LimitUnderMax, LimitFull (claims that find no warm session, restores
+	// and starts are refused) or LimitOverMax (the max was lowered below
+	// the number in use; nothing is terminated, claims are refused until
+	// enough sessions end). Refused7d counts the claims, restores and
+	// starts refused in the last 7 days — a growing number means the max
+	// is too low for the demand.
+	InUse      int    `json:"in_use"`
+	LimitState string `json:"limit_state,omitempty"`
+	Refused7d  int    `json:"refused_7d"`
 }
+
+// WarmPoolStatus.LimitState values.
+const (
+	LimitNoLimit  = "no_limit"
+	LimitUnderMax = "under_max"
+	LimitFull     = "full"
+	LimitOverMax  = "over_max"
+)
 
 // WarmPoolSession is one warm session in a pool's inventory.
 type WarmPoolSession struct {
@@ -148,7 +174,9 @@ type CreateWarmPoolRequest struct {
 	Name       string
 	TemplateID string
 	// PoolSize may be 0: an inert pool that still serves as a preset.
-	PoolSize                int
+	PoolSize int
+	// MaxSessions 0 means no limit.
+	MaxSessions             int
 	SessionInputs           []SessionInputValue
 	EnabledFeatureFlagNames []string
 	StackID                 string
@@ -167,6 +195,7 @@ type CreateWarmPoolRequest struct {
 type UpdateWarmPoolRequest struct {
 	Name                    *string
 	PoolSize                *int
+	MaxSessions             *int
 	SessionInputs           *[]SessionInputValue
 	EnabledFeatureFlagNames *[]string
 	StackID                 *string
@@ -258,10 +287,17 @@ func (s *Service) CreateWarmPool(ctx context.Context, workspaceID string, req Cr
 	if req.PoolSize < 0 {
 		return WarmPool{}, fmt.Errorf("pool size must not be negative")
 	}
+	if req.MaxSessions < 0 {
+		return WarmPool{}, fmt.Errorf("max sessions must not be negative")
+	}
+	if req.MaxSessions > 0 && req.PoolSize > req.MaxSessions {
+		return WarmPool{}, fmt.Errorf("pool size (%d) cannot be more than max sessions (%d)", req.PoolSize, req.MaxSessions)
+	}
 	w, err := s.client.CreateWarmPool(ctx, workspaceID, rdeapi.CreateWarmPoolRequest{
 		Name:                    req.Name,
 		TemplateID:              req.TemplateID,
 		PoolSize:                req.PoolSize,
+		MaxSessions:             req.MaxSessions,
 		SessionInputs:           sessionInputsToAPI(req.SessionInputs),
 		EnabledFeatureFlagNames: req.EnabledFeatureFlagNames,
 		StackID:                 req.StackID,
@@ -287,9 +323,16 @@ func (s *Service) UpdateWarmPool(ctx context.Context, workspaceID, warmPoolID st
 	if req.PoolSize != nil && *req.PoolSize < 0 {
 		return WarmPool{}, fmt.Errorf("pool size must not be negative")
 	}
+	if req.MaxSessions != nil && *req.MaxSessions < 0 {
+		return WarmPool{}, fmt.Errorf("max sessions must not be negative")
+	}
+	if req.PoolSize != nil && req.MaxSessions != nil && *req.MaxSessions > 0 && *req.PoolSize > *req.MaxSessions {
+		return WarmPool{}, fmt.Errorf("pool size (%d) cannot be more than max sessions (%d)", *req.PoolSize, *req.MaxSessions)
+	}
 	wire := rdeapi.UpdateWarmPoolRequest{
 		Name:        req.Name,
 		PoolSize:    req.PoolSize,
+		MaxSessions: req.MaxSessions,
 		StackID:     req.StackID,
 		MachineType: req.MachineType,
 		Cluster:     req.Cluster,
@@ -367,6 +410,7 @@ func warmPoolFromAPI(w rdeapi.WarmPool) WarmPool {
 		OwnerID:                 w.OwnerID,
 		CreatedByEmail:          w.CreatedByEmail,
 		PoolSize:                w.PoolSize,
+		MaxSessions:             w.MaxSessions,
 		EnabledFeatureFlagNames: w.EnabledFeatureFlagNames,
 		StackID:                 w.StackID,
 		MachineType:             w.MachineType,
@@ -416,6 +460,9 @@ func warmPoolStatusFromAPI(w rdeapi.WarmPoolStatus) WarmPoolStatus {
 		LastError:    w.LastError,
 		ConfigError:  w.ConfigError,
 		PausedUntil:  parseTime(w.PausedUntil),
+		InUse:        w.InUse,
+		LimitState:   w.LimitState,
+		Refused7d:    w.Refused7d,
 	}
 	for _, sess := range w.Sessions {
 		out.Sessions = append(out.Sessions, WarmPoolSession{
