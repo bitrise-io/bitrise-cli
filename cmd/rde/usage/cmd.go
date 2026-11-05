@@ -28,7 +28,7 @@ billing-period report. Requires the workspace's billing-view permission
 (workspace owners and billing-managing custom roles).
 
 It also shows the workspace's vCPU quota per machine family the plan includes:
-the vCPUs in use (warm pool sessions included) out of the plan's quota. A new session cannot
+the vCPUs in use (pool sessions included) out of the plan's quota. A new session cannot
 start on a family once its vCPUs would push the use over the quota.`,
 		Example: `  bitrise-cli rde usage
   bitrise-cli rde usage --output json | jq '.totals'
@@ -103,7 +103,7 @@ func renderSessions(w io.Writer, s style.Styles, res internalrde.WorkspaceUsage)
 }
 
 // renderQuotas prints the vCPU quota per machine family. Shown even with no
-// active sessions: warm pool machines hold quota too, and the quota itself is
+// active sessions: pool machines hold quota too, and the quota itself is
 // what a user checks before starting a session.
 func renderQuotas(w io.Writer, s style.Styles, quotas []internalrde.ComputeQuota) error {
 	if len(quotas) == 0 {

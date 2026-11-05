@@ -28,7 +28,7 @@ lifecycle again from On create ("On create cannot be run again on this
 machine. Use Rebuild to run it on a fresh one.").
 
 The backend refuses the request while a run is already pending or running on
-the session (wait for the setup to settle), on a warm pool's unclaimed
+the session (wait for the setup to settle), on a pool's unclaimed
 sessions, on a session without lifecycle hooks and on a session without a
 machine (restore it first).
 

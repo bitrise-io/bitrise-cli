@@ -25,7 +25,7 @@ Preview links: to let someone WITHOUT a Bitrise login try an app build in
 their browser, mint a link with 'rde preview-link create' instead — typically
 from CI, authenticated with a Workspace API Token.
 
-Warm pools: 'rde warm-pool' keeps a number of sessions of one configuration
+Pools: 'rde pool' keeps a number of sessions of one configuration
 booted and idle so 'rde session create --warm-pool' (or a preview link minted
 with --warm-pool) hands one out instantly instead of booting a VM.
 
@@ -37,7 +37,7 @@ with --warm-pool) hands one out instantly instead of booting a VM.
   bitrise-cli rde template list
   bitrise-cli rde device-guide          # read before creating a session with a device
   bitrise-cli rde preview-link create --device-platform ios --artifact-url https://…/App.zip
-  bitrise-cli rde warm-pool list
+  bitrise-cli rde pool list
 ```
 
 ### Options
@@ -62,11 +62,11 @@ with --warm-pool) hands one out instantly instead of booting a VM.
 * [bitrise-cli rde claude](bitrise-cli_rde_claude.md)	 - Create an RDE session and attach to Claude Code
 * [bitrise-cli rde device-guide](bitrise-cli_rde_device-guide.md)	 - Print the guide for driving a session's iOS simulator / Android emulator
 * [bitrise-cli rde machine-type](bitrise-cli_rde_machine-type.md)	 - List machine types compatible with a given stack
+* [bitrise-cli rde pool](bitrise-cli_rde_pool.md)	 - Keep pre-booted sessions ready to claim (pools)
 * [bitrise-cli rde preview-link](bitrise-cli_rde_preview-link.md)	 - Create shareable device preview links for app builds
 * [bitrise-cli rde saved-input](bitrise-cli_rde_saved-input.md)	 - Manage saved inputs (reusable credentials/values)
 * [bitrise-cli rde session](bitrise-cli_rde_session.md)	 - Create, list, inspect, and manage RDE sessions
 * [bitrise-cli rde stack](bitrise-cli_rde_stack.md)	 - List machine stacks available to the workspace
 * [bitrise-cli rde template](bitrise-cli_rde_template.md)	 - List and inspect RDE templates
 * [bitrise-cli rde usage](bitrise-cli_rde_usage.md)	 - Show the workspace's active session and resource usage
-* [bitrise-cli rde warm-pool](bitrise-cli_rde_warm-pool.md)	 - Keep pre-booted sessions ready to claim (warm pools)
 

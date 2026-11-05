@@ -1,30 +1,33 @@
-## bitrise-cli rde warm-pool set-size
+## bitrise-cli rde pool set-size
 
-Set a pool's size: how many warm sessions it keeps booted
+Set a pool's warm sessions: how many it keeps booted
 
 ### Synopsis
 
-Set a warm pool's pool size — how many sessions of its configuration
-the RDE backend keeps booted and idle. Raising it boots sessions; lowering it
+Set a pool's warm sessions — how many sessions of its configuration
+the RDE backend keeps booted and idle, ready to claim. Raising it boots sessions; lowering it
 terminates surplus warm sessions (claimed sessions are untouched). 0 drains
 the pool but keeps it usable as a configuration preset: 'rde session create
---warm-pool' then creates sessions on demand from its configuration.
+--warm-pool' then creates sessions on demand from its configuration. The
+size cannot be more than the pool's max sessions ('rde pool update
+--max-sessions'); changing it requires the workspace's billing-data
+permission, which a Workspace API Token always has.
 
 This is the knob for scaling a pool to business hours: run it from a cron job
 in the morning and again with 0 in the evening. A Workspace API Token works,
 so the job does not need a personal token.
 
 ```
-bitrise-cli rde warm-pool set-size WARM_POOL_ID SIZE [flags]
+bitrise-cli rde pool set-size POOL_ID SIZE [flags]
 ```
 
 ### Examples
 
 ```
-  bitrise-cli rde warm-pool set-size ios-devs 3
+  bitrise-cli rde pool set-size ios-devs 3
   # Cron: warm up at 08:00 on weekdays, drain at 19:00.
-  0 8  * * 1-5  BITRISE_TOKEN=bitwat_… bitrise-cli rde warm-pool set-size WARM_POOL_ID 3 --workspace WORKSPACE_ID -q
-  0 19 * * 1-5  BITRISE_TOKEN=bitwat_… bitrise-cli rde warm-pool set-size WARM_POOL_ID 0 --workspace WORKSPACE_ID -q
+  0 8  * * 1-5  BITRISE_TOKEN=bitwat_… bitrise-cli rde pool set-size POOL_ID 3 --workspace WORKSPACE_ID -q
+  0 19 * * 1-5  BITRISE_TOKEN=bitwat_… bitrise-cli rde pool set-size POOL_ID 0 --workspace WORKSPACE_ID -q
 ```
 
 ### Options
@@ -45,5 +48,5 @@ bitrise-cli rde warm-pool set-size WARM_POOL_ID SIZE [flags]
 
 ### SEE ALSO
 
-* [bitrise-cli rde warm-pool](bitrise-cli_rde_warm-pool.md)	 - Keep pre-booted sessions ready to claim (warm pools)
+* [bitrise-cli rde pool](bitrise-cli_rde_pool.md)	 - Keep pre-booted sessions ready to claim (pools)
 

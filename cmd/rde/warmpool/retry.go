@@ -10,9 +10,9 @@ import (
 
 func newRetryCmd() *cobra.Command {
 	c := &cobra.Command{
-		Use:   "retry WARM_POOL_ID",
-		Short: "Resume a warm pool paused after repeated On create failures",
-		Long: `Resume a warm pool that paused after three consecutive On create failures
+		Use:   "retry POOL_ID",
+		Short: "Resume a pool paused after repeated On create failures",
+		Long: `Resume a pool that paused after three consecutive On create failures
 ('warm-pool view' shows "Setup failed:" and 'list' says "setup failed"): the
 machine kept from the last failure is deleted, the failure streak is cleared
 and the pool starts warming again.
@@ -25,8 +25,8 @@ work. Any configuration change to the pool or its template resumes warming
 the same way, so 'retry' is for "the script was fine, the world was not".
 
 A pool that is not paused this way is returned unchanged.`,
-		Example: `  bitrise-cli rde warm-pool retry ios-devs`,
-		Args:    cmdutil.RequireArgs("WARM_POOL_ID"),
+		Example: `  bitrise-cli rde pool retry ios-devs`,
+		Args:    cmdutil.RequireArgs("POOL_ID"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			workspaceID, err := cmdutil.ResolveWorkspaceID(cmd)
 			if err != nil {

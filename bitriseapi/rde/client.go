@@ -69,15 +69,55 @@ func New(baseURL, token string, opts ...Option) *Client {
 // the gRPC error details (details[].fieldViolations[]), which carry the
 // actionable "why" for 400s (e.g. "missing required input: BUILD_TOKEN");
 // Body is the raw response body, surfaced only when no structured field
-// was found.
+// was found. Refusal is set when the backend refused the request rather
+// than rejecting it — a full pool, a workspace out of CPUs — and the error
+// then renders as the refusal's message plus the caller's own sessions.
 type APIError struct {
 	StatusCode int
 	Message    string
 	Violations []string
 	Body       string
+	Refusal    *WarmPoolRefusal
 }
 
+// WarmPoolRefusal is the codespaces.v1.WarmPoolRefusal detail of a
+// RESOURCE_EXHAUSTED (HTTP 429) response: why a claim, restore or start
+// was refused, the numbers, the caller's own sessions in use from the pool
+// and the next steps. The status message is written to be read as is.
+type WarmPoolRefusal struct {
+	// Reason is "POOL_FULL" or "CPU_QUOTA_EXHAUSTED".
+	Reason string `json:"reason"`
+	// Action is "claim", "restore" or "create".
+	Action       string `json:"action"`
+	WarmPoolID   string `json:"warmPoolId"`
+	WarmPoolName string `json:"warmPoolName"`
+	// InUse and MaxSessions are the pool's numbers (POOL_FULL).
+	InUse       int `json:"inUse"`
+	MaxSessions int `json:"maxSessions"`
+	// Family, UsedVCPU and QuotaVCPU are the quota's (CPU_QUOTA_EXHAUSTED);
+	// UsedVCPU is nil when the backend does not know it.
+	Family       string                   `json:"family"`
+	UsedVCPU     *int                     `json:"usedVcpu"`
+	QuotaVCPU    int                      `json:"quotaVcpu"`
+	YourSessions []WarmPoolRefusalSession `json:"yourSessions"`
+	NextSteps    []string                 `json:"nextSteps"`
+}
+
+// WarmPoolRefusalSession is one of the caller's own sessions in use from
+// the pool a refusal names.
+type WarmPoolRefusalSession struct {
+	SessionID string `json:"sessionId"`
+	Name      string `json:"name"`
+	Status    string `json:"status"`
+}
+
+// warmPoolRefusalType is the @type of the refusal detail.
+const warmPoolRefusalType = "type.googleapis.com/codespaces.v1.WarmPoolRefusal"
+
 func (e *APIError) Error() string {
+	if e.Refusal != nil {
+		return e.refusalText()
+	}
 	msg := e.Message
 	if msg == "" {
 		msg = truncate(e.Body, 500)
@@ -95,6 +135,26 @@ func (e *APIError) Error() string {
 	return fmt.Sprintf("RDE API %d", e.StatusCode)
 }
 
+// refusalText is the refusal as plain text: the message (what happened,
+// your sessions, what to do, the admin — already in the order a person
+// reads it), then the caller's own sessions with their IDs, which the
+// message names without. No "error" wording: the pool is doing what it was
+// set up to do.
+func (e *APIError) refusalText() string {
+	var b strings.Builder
+	b.WriteString(e.Message)
+	if b.Len() == 0 {
+		b.WriteString("Refused: " + e.Refusal.Reason)
+	}
+	if len(e.Refusal.YourSessions) > 0 {
+		b.WriteString("\nYour sessions in this pool:")
+		for _, s := range e.Refusal.YourSessions {
+			fmt.Fprintf(&b, "\n  %s (%s)  %s", s.Name, s.Status, s.SessionID)
+		}
+	}
+	return b.String()
+}
+
 // errorBody covers the JSON error envelope RDE uses: a gRPC-gateway status
 // ({"code": int, "message": string, "details": [...]}). Each details entry
 // is a google.rpc.* message; BadRequest entries carry fieldViolations whose
@@ -105,12 +165,14 @@ type errorBody struct {
 	Details []errorDetail `json:"details"`
 }
 
-// errorDetail is one entry of the gRPC status details array. Only the
-// fieldViolations of google.rpc.BadRequest are consumed; other detail
-// types unmarshal with an empty FieldViolations and are ignored.
+// errorDetail is one entry of the gRPC status details array. The
+// fieldViolations of google.rpc.BadRequest and the fields of
+// codespaces.v1.WarmPoolRefusal are consumed; other detail types unmarshal
+// with both empty and are ignored.
 type errorDetail struct {
 	Type            string           `json:"@type"`
 	FieldViolations []fieldViolation `json:"fieldViolations"`
+	WarmPoolRefusal
 }
 
 // fieldViolation is a single google.rpc.BadRequest.FieldViolation.
@@ -187,6 +249,7 @@ func parseAPIError(statusCode int, body []byte) *APIError {
 		StatusCode: statusCode,
 		Message:    e.Message,
 		Violations: violationsFromDetails(e.Details),
+		Refusal:    refusalFromDetails(e.Details),
 	}
 	// Fall back to the raw body only when neither a message nor any field
 	// violation gave us something human-readable.
@@ -212,6 +275,18 @@ func violationsFromDetails(details []errorDetail) []string {
 		}
 	}
 	return out
+}
+
+// refusalFromDetails picks the codespaces.v1.WarmPoolRefusal detail out of
+// a gRPC status' details array; nil when there is none.
+func refusalFromDetails(details []errorDetail) *WarmPoolRefusal {
+	for _, d := range details {
+		if d.Type == warmPoolRefusalType && d.Reason != "" {
+			r := d.WarmPoolRefusal
+			return &r
+		}
+	}
+	return nil
 }
 
 // doStream executes req and, on a 2xx response, returns the live *http.Response

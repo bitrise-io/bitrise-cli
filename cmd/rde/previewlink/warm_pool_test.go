@@ -11,7 +11,7 @@ import (
 	"github.com/bitrise-io/bitrise-cli/internal/output"
 )
 
-// uuidPool is a UUID-shaped warm pool arg so ResolveWarmPoolID
+// uuidPool is a UUID-shaped pool arg so ResolveWarmPoolID
 // short-circuits without an extra ListWarmPools call.
 const uuidPool = "33333333-4444-4444-8444-555555555555"
 

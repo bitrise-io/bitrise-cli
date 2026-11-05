@@ -41,7 +41,7 @@ type Template struct {
 
 // TemplateHooks are a template's lifecycle hook scripts (bash), each run
 // on the booted machine as the session user. On create runs once when the
-// session is created (on a warm pool: when the pool warms the machine, with
+// session is created (on a pool: when the pool warms the machine, with
 // the pool's shared inputs); On claim runs on every claim, when the session
 // is assigned to its owner; On restore runs every time a stopped session
 // is restored. Empty means "no such hook". A hook is done when its script

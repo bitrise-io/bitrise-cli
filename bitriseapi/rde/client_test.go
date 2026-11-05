@@ -277,3 +277,66 @@ func TestUserPath(t *testing.T) {
 		t.Errorf("userPath (no leading slash) = %q", got)
 	}
 }
+
+// A refusal — HTTP 429 with a codespaces.v1.WarmPoolRefusal detail — is
+// kept structured and renders as the backend's message plus the caller's
+// own sessions with their IDs, never as "RDE API 429: …".
+func TestAPIError_RendersRefusalAsText(t *testing.T) {
+	rs := newRecordingServer(t, `{"code":8,"message":"The agents pool is full: 2 of 2 sessions are in use. Your sessions in this pool: \"migrate-auth\" (running). Use one of yours, end one you're done with, or try again when a session ends. A workspace admin can raise this pool's max sessions.","details":[`+
+		`{"@type":"type.googleapis.com/google.rpc.ErrorInfo","reason":"POOL_FULL","domain":"rde.bitrise.io","metadata":{"action":"claim"}},`+
+		`{"@type":"type.googleapis.com/codespaces.v1.WarmPoolRefusal","reason":"POOL_FULL","action":"claim","warmPoolId":"p-1","warmPoolName":"agents","inUse":2,"maxSessions":2,"family":"","quotaVcpu":0,`+
+		`"yourSessions":[{"sessionId":"s-1","name":"migrate-auth","status":"running"}],"nextSteps":["Use one of your sessions in use from this pool."]}]}`)
+	rs.status = http.StatusTooManyRequests
+
+	_, err := rs.client().ListSavedInputs(context.Background())
+	if err == nil {
+		t.Fatal("expected error on 429")
+	}
+	var apiErr *APIError
+	if !errors.As(err, &apiErr) {
+		t.Fatalf("error is not *APIError: %T", err)
+	}
+	if apiErr.Refusal == nil {
+		t.Fatalf("Refusal = nil, want the parsed detail (body=%q)", apiErr.Body)
+	}
+	if apiErr.Refusal.Reason != "POOL_FULL" || apiErr.Refusal.WarmPoolName != "agents" || apiErr.Refusal.InUse != 2 || apiErr.Refusal.MaxSessions != 2 {
+		t.Errorf("Refusal = %+v", apiErr.Refusal)
+	}
+	if len(apiErr.Refusal.NextSteps) != 1 || len(apiErr.Refusal.YourSessions) != 1 || apiErr.Refusal.YourSessions[0].SessionID != "s-1" {
+		t.Errorf("Refusal lists = %+v", apiErr.Refusal)
+	}
+	want := "The agents pool is full: 2 of 2 sessions are in use. Your sessions in this pool: \"migrate-auth\" (running). Use one of yours, end one you're done with, or try again when a session ends. A workspace admin can raise this pool's max sessions.\n" +
+		"Your sessions in this pool:\n  migrate-auth (running)  s-1"
+	if apiErr.Error() != want {
+		t.Errorf("Error() = %q\nwant      %q", apiErr.Error(), want)
+	}
+}
+
+// A CPU quota refusal without any session of the caller's is the message
+// alone; a 429 without the detail falls back to the usual rendering.
+func TestAPIError_RefusalWithoutSessionsAndWithoutDetail(t *testing.T) {
+	rs := newRecordingServer(t, `{"code":8,"message":"The workspace is out of m4pro CPUs: 60 of 60 vCPUs are in use. End a session you're done with or try again later. A workspace admin manages the workspace's CPUs.","details":[`+
+		`{"@type":"type.googleapis.com/codespaces.v1.WarmPoolRefusal","reason":"CPU_QUOTA_EXHAUSTED","action":"create","family":"m4pro","usedVcpu":60,"quotaVcpu":60,"yourSessions":[],"nextSteps":["Try again later."]}]}`)
+	rs.status = http.StatusTooManyRequests
+	_, err := rs.client().ListSavedInputs(context.Background())
+	var apiErr *APIError
+	if !errors.As(err, &apiErr) || apiErr.Refusal == nil {
+		t.Fatalf("err = %v, want a refusal", err)
+	}
+	if apiErr.Refusal.UsedVCPU == nil || *apiErr.Refusal.UsedVCPU != 60 || apiErr.Refusal.Family != "m4pro" {
+		t.Errorf("Refusal = %+v", apiErr.Refusal)
+	}
+	if want := "The workspace is out of m4pro CPUs: 60 of 60 vCPUs are in use. End a session you're done with or try again later. A workspace admin manages the workspace's CPUs."; apiErr.Error() != want {
+		t.Errorf("Error() = %q, want %q", apiErr.Error(), want)
+	}
+
+	rs = newRecordingServer(t, `{"code":8,"message":"Too many requests."}`)
+	rs.status = http.StatusTooManyRequests
+	_, err = rs.client().ListSavedInputs(context.Background())
+	if !errors.As(err, &apiErr) || apiErr.Refusal != nil {
+		t.Fatalf("err = %v, want a plain APIError without a refusal", err)
+	}
+	if want := "RDE API 429: Too many requests."; apiErr.Error() != want {
+		t.Errorf("Error() = %q, want %q", apiErr.Error(), want)
+	}
+}

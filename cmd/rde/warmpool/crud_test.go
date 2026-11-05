@@ -28,7 +28,7 @@ func mutationServer(t *testing.T, method, path, body string, got *map[string]any
 func TestCreateCmd_HappyPath(t *testing.T) {
 	var gotBody map[string]any
 	srv := mutationServer(t, http.MethodPost, "/v1/workspaces/ws-1/warm-pools",
-		`{"warmPool":{"id":"p-new","name":"ios-devs","templateName":"iOS Dev","ownerType":"workspace","poolSize":2,"status":{}}}`, &gotBody)
+		`{"warmPool":{"id":"p-new","name":"ios-devs","templateName":"iOS Dev","ownerType":"workspace","warmSessions":2,"status":{}}}`, &gotBody)
 	defer srv.Close()
 
 	stdout, _, err := run(t, newCreateCmd(), srv.URL, "ws-1", []string{
@@ -39,7 +39,7 @@ func TestCreateCmd_HappyPath(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
-	if gotBody["name"] != "ios-devs" || gotBody["templateId"] != uuidTemplate || gotBody["poolSize"] != float64(2) {
+	if gotBody["name"] != "ios-devs" || gotBody["templateId"] != uuidTemplate || gotBody["warmSessions"] != float64(2) {
 		t.Errorf("unexpected create body: %v", gotBody)
 	}
 	if gotBody["machineType"] != "g2.mac" || gotBody["cluster"] != "c1" {
@@ -58,7 +58,7 @@ func TestCreateCmd_HappyPath(t *testing.T) {
 	if flags, _ := gotBody["enabledFeatureFlagNames"].([]any); len(flags) != 1 || flags[0] != "beta" {
 		t.Errorf("feature flags wrong: %v", gotBody["enabledFeatureFlagNames"])
 	}
-	if !strings.Contains(stdout, "p-new") || !strings.Contains(stdout, "Pool size:") {
+	if !strings.Contains(stdout, "p-new") || !strings.Contains(stdout, "Warm sessions:") {
 		t.Errorf("stdout missing the created pool:\n%s", stdout)
 	}
 }
@@ -103,7 +103,7 @@ func TestCreateCmd_DefaultsAreMinimal(t *testing.T) {
 	if _, _, err := run(t, newCreateCmd(), srv.URL, "ws-1", []string{"preset", "--template", uuidTemplate}, output.Human); err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
-	for _, k := range []string{"poolSize", "ownerType", "sessionInputs", "mapSavedToSessionInputs", "enabledFeatureFlagNames"} {
+	for _, k := range []string{"warmSessions", "maxSessions", "ownerType", "sessionInputs", "mapSavedToSessionInputs", "enabledFeatureFlagNames"} {
 		if _, ok := gotBody[k]; ok {
 			t.Errorf("%s should be omitted by default, body = %v", k, gotBody)
 		}
@@ -181,8 +181,8 @@ func TestUpdateCmd_SendsOnlyWhatChanged(t *testing.T) {
 		t.Errorf("name = %v, want renamed", gotBody["name"])
 	}
 	// --size 0 is a real request (drain the pool) and must be sent.
-	if v, ok := gotBody["poolSize"]; !ok || v != float64(0) {
-		t.Errorf("poolSize = %v (present=%v), want 0 present", v, ok)
+	if v, ok := gotBody["warmSessions"]; !ok || v != float64(0) {
+		t.Errorf("warmSessions = %v (present=%v), want 0 present", v, ok)
 	}
 	// --stack "" clears the override and must be sent as an empty string.
 	if v, ok := gotBody["stackId"]; !ok || v != "" {
@@ -260,7 +260,7 @@ func TestUpdateCmd_ClearLists(t *testing.T) {
 	if gotBody["updateSessionInputs"] != true || gotBody["updateEnabledFeatureFlagNames"] != true {
 		t.Errorf("switches missing, body=%v", gotBody)
 	}
-	for _, k := range []string{"sessionInputs", "enabledFeatureFlagNames", "name", "poolSize"} {
+	for _, k := range []string{"sessionInputs", "enabledFeatureFlagNames", "name", "warmSessions"} {
 		if _, ok := gotBody[k]; ok {
 			t.Errorf("%s should be absent, body=%v", k, gotBody)
 		}
@@ -301,7 +301,7 @@ func TestUpdateCmd_RejectsBadFlags(t *testing.T) {
 func TestUpdateCmd_RequiresArg(t *testing.T) {
 	_, _, err := run(t, newUpdateCmd(), "http://unused", "ws-1", []string{"--size", "1"}, output.Human)
 	if err == nil {
-		t.Fatal("expected error when WARM_POOL_ID is missing")
+		t.Fatal("expected error when POOL_ID is missing")
 	}
 }
 
@@ -309,15 +309,15 @@ func TestUpdateCmd_RequiresArg(t *testing.T) {
 // and, with --output json, the pool goes to stdout.
 func TestSetSizeCmd_HappyPath(t *testing.T) {
 	var gotBody map[string]any
-	srv := mutationServer(t, http.MethodPatch, "/v1/workspaces/ws-1/warm-pools/"+uuidPool, `{"warmPool":{"id":"p-1","name":"ios-devs","poolSize":3}}`, &gotBody)
+	srv := mutationServer(t, http.MethodPatch, "/v1/workspaces/ws-1/warm-pools/"+uuidPool, `{"warmPool":{"id":"p-1","name":"ios-devs","warmSessions":3}}`, &gotBody)
 	defer srv.Close()
 
 	stdout, stderr, err := run(t, newSetSizeCmd(), srv.URL, "ws-1", []string{uuidPool, "3"}, output.Human)
 	if err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
-	if gotBody["poolSize"] != float64(3) || len(gotBody) != 1 {
-		t.Errorf("body = %v, want only poolSize 3", gotBody)
+	if gotBody["warmSessions"] != float64(3) || len(gotBody) != 1 {
+		t.Errorf("body = %v, want only warmSessions 3", gotBody)
 	}
 	if stdout != "" {
 		t.Errorf("stdout should be empty in human mode, got: %q", stdout)
@@ -330,8 +330,8 @@ func TestSetSizeCmd_HappyPath(t *testing.T) {
 	if _, _, err := run(t, newSetSizeCmd(), srv.URL, "ws-1", []string{uuidPool, "0"}, output.Human); err != nil {
 		t.Fatalf("Execute (0): %v", err)
 	}
-	if v, ok := gotBody["poolSize"]; !ok || v != float64(0) {
-		t.Errorf("poolSize = %v (present=%v), want 0 present", v, ok)
+	if v, ok := gotBody["warmSessions"]; !ok || v != float64(0) {
+		t.Errorf("warmSessions = %v (present=%v), want 0 present", v, ok)
 	}
 
 	stdout, _, err = run(t, newSetSizeCmd(), srv.URL, "ws-1", []string{uuidPool, "3"}, output.JSON)
@@ -375,7 +375,7 @@ func TestDeleteCmd_HappyPath(t *testing.T) {
 		t.Fatalf("Execute: %v", err)
 	}
 	// Confirmation goes to stderr, never stdout.
-	if !strings.Contains(stderr, "Deleted warm pool "+uuidPool) {
+	if !strings.Contains(stderr, "Deleted pool "+uuidPool) {
 		t.Errorf("stderr missing confirmation: %q", stderr)
 	}
 	if stdout != "" {
@@ -442,7 +442,7 @@ func TestDeleteCmd_ResolvesName(t *testing.T) {
 	if deletedPath != "/v1/workspaces/ws-1/warm-pools/p-9" {
 		t.Errorf("deleted path = %q, want the resolved id p-9", deletedPath)
 	}
-	if !strings.Contains(stderr, "Deleted warm pool p-9") {
+	if !strings.Contains(stderr, "Deleted pool p-9") {
 		t.Errorf("stderr should confirm deletion of the resolved id: %q", stderr)
 	}
 }
@@ -450,6 +450,57 @@ func TestDeleteCmd_ResolvesName(t *testing.T) {
 func TestDeleteCmd_RequiresArg(t *testing.T) {
 	_, _, err := run(t, newDeleteCmd(), "http://unused", "ws-1", nil, output.Human)
 	if err == nil {
-		t.Fatal("expected error when WARM_POOL_ID is missing")
+		t.Fatal("expected error when POOL_ID is missing")
+	}
+}
+
+// --max-sessions is forwarded on create; a size above the max is refused
+// before the request, since the backend would refuse it too.
+func TestCreateCmd_MaxSessions(t *testing.T) {
+	var gotBody map[string]any
+	srv := mutationServer(t, http.MethodPost, "/v1/workspaces/ws-1/warm-pools",
+		`{"warmPool":{"id":"p-new","name":"agents","warmSessions":5,"maxSessions":20,"status":{"inUse":0,"limitState":"under_max"}}}`, &gotBody)
+	defer srv.Close()
+
+	stdout, _, err := run(t, newCreateCmd(), srv.URL, "ws-1", []string{"agents", "--template", uuidTemplate, "--size", "5", "--max-sessions", "20"}, output.Human)
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if gotBody["warmSessions"] != float64(5) || gotBody["maxSessions"] != float64(20) {
+		t.Errorf("unexpected create body: %v", gotBody)
+	}
+	for _, want := range []string{"Max sessions:", "20", "In use:", "0 of 20"} {
+		if !strings.Contains(stdout, want) {
+			t.Errorf("stdout missing %q:\n%s", want, stdout)
+		}
+	}
+
+	gotBody = nil
+	_, _, err = run(t, newCreateCmd(), srv.URL, "ws-1", []string{"agents", "--template", uuidTemplate, "--size", "6", "--max-sessions", "5"}, output.Human)
+	if err == nil || !strings.Contains(err.Error(), "--size (6) cannot be more than --max-sessions (5)") {
+		t.Errorf("err = %v, want the size-above-max refusal", err)
+	}
+	if gotBody != nil {
+		t.Errorf("request was sent despite the invalid flags: %v", gotBody)
+	}
+	if _, _, err := run(t, newCreateCmd(), srv.URL, "ws-1", []string{"agents", "--template", uuidTemplate, "--max-sessions", "-1"}, output.Human); err == nil || !strings.Contains(err.Error(), "--max-sessions must not be negative") {
+		t.Errorf("err = %v, want the negative refusal", err)
+	}
+}
+
+// --max-sessions 0 is a real request (remove the limit) and travels alone.
+func TestUpdateCmd_MaxSessions(t *testing.T) {
+	var gotBody map[string]any
+	srv := mutationServer(t, http.MethodPatch, "/v1/workspaces/ws-1/warm-pools/"+uuidPool, `{"warmPool":{"id":"p-1","name":"agents","warmSessions":5}}`, &gotBody)
+	defer srv.Close()
+
+	if _, _, err := run(t, newUpdateCmd(), srv.URL, "ws-1", []string{uuidPool, "--max-sessions", "0"}, output.Human); err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if v, ok := gotBody["maxSessions"]; !ok || v != float64(0) || len(gotBody) != 1 {
+		t.Errorf("body = %v, want only maxSessions 0", gotBody)
+	}
+	if _, _, err := run(t, newUpdateCmd(), srv.URL, "ws-1", []string{uuidPool, "--size", "9", "--max-sessions", "4"}, output.Human); err == nil || !strings.Contains(err.Error(), "warm sessions (9) cannot be more than max sessions (4)") {
+		t.Errorf("err = %v, want the size-above-max refusal", err)
 	}
 }

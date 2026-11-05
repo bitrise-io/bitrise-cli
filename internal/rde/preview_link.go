@@ -41,7 +41,7 @@ type CreatePreviewLinkRequest struct {
 	// SessionAutoTerminateMinutes is the idle window of the sessions the link
 	// spawns; zero uses the default of 60 minutes.
 	SessionAutoTerminateMinutes int
-	// WarmPoolID serves the link's opens from a warm pool: each open claims
+	// WarmPoolID serves the link's opens from a pool: each open claims
 	// a warm session when one is available and creates one from the pool's
 	// configuration otherwise. The pool must be workspace-owned and boot a
 	// device; it fixes the machine and the device, so StackID, MachineType

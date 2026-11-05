@@ -98,13 +98,13 @@ func diskStatusText(s style.Styles, status string) string {
 	return status
 }
 
-// warmStateText renders a session's relation to its warm pool with the one
+// warmStateText renders a session's relation to its pool with the one
 // fact a caller wants from it: whether the session skipped the VM boot.
 // Unknown states (a value added after this code was written) render as-is.
 func warmStateText(s style.Styles, state string) string {
 	switch state {
 	case internalrde.WarmStateClaimed:
-		return s.Success.Render(state) + s.Dim.Render(" — handed out pre-booted from the warm pool")
+		return s.Success.Render(state) + s.Dim.Render(" — handed out pre-booted from the pool")
 	case internalrde.WarmStateCold:
 		return s.Warn.Render(state) + s.Dim.Render(" — no warm session was available; created from the pool's configuration")
 	case "warming", "ready":
@@ -144,7 +144,7 @@ func lifecyclePhaseText(s style.Styles, phase string) string {
 	case "setup_failed", "personalization_failed", "restore_failed":
 		return s.Failure.Render(words) + s.Dim.Render(" — the last hook failed; see the lifecycle hooks below and 'session logs'")
 	case "warming", "ready_to_claim":
-		return words + s.Dim.Render(" — warm pool inventory, not yet claimed")
+		return words + s.Dim.Render(" — pool inventory, not yet claimed")
 	}
 	return words
 }

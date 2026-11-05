@@ -1,10 +1,10 @@
-## bitrise-cli rde warm-pool update
+## bitrise-cli rde pool update
 
-Update a warm pool's name, count or configuration
+Update a pool's name, limits or configuration
 
 ### Synopsis
 
-Update a warm pool. Only the flags you pass are sent; everything else is
+Update a pool. Only the flags you pass are sent; everything else is
 left as it is.
 
 Session inputs and feature flags are replaced as a whole: passing any
@@ -21,25 +21,34 @@ device.
 
 Changing the configuration invalidates the pool's current inventory: the
 backend terminates the existing warm sessions and boots new ones from the
-updated configuration. Changing only --name or --size does not. For the
-count alone, 'rde warm-pool set-size' is the shorter spelling.
+updated configuration. Changing only --name, --size or --max-sessions does
+not. For the count alone, 'rde pool set-size' is the shorter spelling.
+
+--max-sessions sets the pool's limit: the most sessions from it that may be
+in use at once; 0 removes the limit. Lowering it below the number in use
+terminates nothing — the pool reads "over max" and refuses claims until
+enough sessions end. --size cannot be more than --max-sessions. Changing
+--size or --max-sessions requires the workspace's billing-data permission
+(the same gate as 'rde usage'); a Workspace API Token always may.
 
 ```
-bitrise-cli rde warm-pool update WARM_POOL_ID [flags]
+bitrise-cli rde pool update POOL_ID [flags]
 ```
 
 ### Examples
 
 ```
-  bitrise-cli rde warm-pool update WARM_POOL_ID --name ios-devs-eu --size 4
+  bitrise-cli rde pool update POOL_ID --name ios-devs-eu --size 4
+  # Allow 48 sessions of the pool in use at once; --max-sessions 0 removes the limit.
+  bitrise-cli rde pool update agent-sessions --max-sessions 48
   # Replace the inputs (all of them) and switch to a bigger machine.
-  bitrise-cli rde warm-pool update ios-devs --secret-input GITHUB_TOKEN=ghp_yyy --machine-type g2.mac.m2pro.12c-32g
+  bitrise-cli rde pool update ios-devs --secret-input GITHUB_TOKEN=ghp_yyy --machine-type g2.mac.m2pro.12c-32g
   # Drop the stack override so the template's stack applies again.
-  bitrise-cli rde warm-pool update ios-devs --stack ""
-  bitrise-cli rde warm-pool update ios-devs --clear-feature-flags
+  bitrise-cli rde pool update ios-devs --stack ""
+  bitrise-cli rde pool update ios-devs --clear-feature-flags
   # Boot an iPhone 15 instead of the template's device; then go back to the template's.
-  bitrise-cli rde warm-pool update ios-devs --device-model "iPhone 15"
-  bitrise-cli rde warm-pool update ios-devs --clear-device
+  bitrise-cli rde pool update ios-devs --device-model "iPhone 15"
+  bitrise-cli rde pool update ios-devs --clear-device
 ```
 
 ### Options
@@ -57,10 +66,11 @@ bitrise-cli rde warm-pool update WARM_POOL_ID [flags]
   -h, --help                         help for update
       --input stringArray            session input as [scope:]key=value (repeatable); unscoped applies to every scope that defines the key, scope:key (shared, on_create) to that scope only
       --machine-type string          machine type override; "" removes the override
+      --max-sessions int             new limit on sessions from the pool in use at once; 0 removes the limit (requires the billing-data permission)
       --name string                  new name
       --no-device                    true: the warm sessions boot without the template's device; --no-device=false boots it again
       --secret-input stringArray     session input as [scope:]key=value, stored as a secret at rest (repeatable; the value is visible in shell history and process args)
-      --size int                     new pool size of warm sessions; 0 drains the pool but keeps it as a preset
+      --size int                     new number of warm sessions to keep booted; 0 drains the pool but keeps it as a preset (requires the billing-data permission)
       --stack string                 stack ID override; "" removes the override
 ```
 
@@ -76,5 +86,5 @@ bitrise-cli rde warm-pool update WARM_POOL_ID [flags]
 
 ### SEE ALSO
 
-* [bitrise-cli rde warm-pool](bitrise-cli_rde_warm-pool.md)	 - Keep pre-booted sessions ready to claim (warm pools)
+* [bitrise-cli rde pool](bitrise-cli_rde_pool.md)	 - Keep pre-booted sessions ready to claim (pools)
 

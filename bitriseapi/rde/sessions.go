@@ -46,7 +46,7 @@ type Session struct {
 	// Device is the session's virtual device and readiness; absent when
 	// the session has no device.
 	Device *SessionDevice `json:"device,omitempty"`
-	// WarmPoolID is the warm pool this session belongs to (see WarmPool);
+	// WarmPoolID is the pool this session belongs to (see WarmPool);
 	// empty when none. WarmState is its relation to that pool: "warming" /
 	// "ready" (pool inventory), "claimed" (handed out warm) or "cold"
 	// (created from the pool's configuration because no warm session was
@@ -133,7 +133,7 @@ type SnapshotInput struct {
 	// Hook is the scope the value belongs to: "shared" (also the meaning of
 	// empty), "on_create", "on_claim" or "on_restore".
 	Hook string `json:"hook,omitempty"`
-	// SuppliedByPool is set on a session a warm pool handed out for a value
+	// SuppliedByPool is set on a session a pool handed out for a value
 	// the pool supplied and the claimer never receives (the On create
 	// scope): Value is then always empty, whatever include_secrets says.
 	SuppliedByPool bool `json:"suppliedByPool,omitempty"`
@@ -211,7 +211,7 @@ type CreateSessionRequest struct {
 	// workspace-owned sessions; sent only when set so the backend default
 	// applies otherwise.
 	OwnerType string `json:"ownerType,omitempty"`
-	// WarmPoolID claims a session from a warm pool (see WarmPool) instead
+	// WarmPoolID claims a session from a pool (see WarmPool) instead
 	// of building one from this request. The pool fixes the configuration,
 	// so TemplateID, SessionInputs, MapSavedToSessionInputs,
 	// EnabledFeatureFlagNames, StackID, MachineType, Cluster, DeviceSpec,
@@ -255,7 +255,7 @@ type SessionDevice struct {
 	BuildNumber   string      `json:"buildNumber,omitempty"`
 	CommitSHA     string      `json:"commitSha,omitempty"`
 	// PageURL is the device's page in the RDE web UI; opening it needs a
-	// Bitrise login with access to the session. Empty on unclaimed warm pool
+	// Bitrise login with access to the session. Empty on unclaimed pool
 	// sessions.
 	PageURL string `json:"pageUrl,omitempty"`
 }

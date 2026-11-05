@@ -16,7 +16,7 @@ import (
 	"github.com/bitrise-io/bitrise-cli/internal/output"
 )
 
-// uuidPool is a UUID-shaped warm pool arg. Real pool IDs are UUIDs, so
+// uuidPool is a UUID-shaped pool arg. Real pool IDs are UUIDs, so
 // passing one exercises the ResolveWarmPoolID short-circuit (no extra
 // ListWarmPools call) — the path production hits when a user pastes an ID.
 const uuidPool = "33333333-4444-4444-8444-555555555555"
@@ -44,10 +44,10 @@ func run(t *testing.T, c *cobra.Command, srvURL, workspaceID string, args []stri
 }
 
 const listBody = `{"warmPools":[
-	{"id":"p-1","name":"ios-devs","templateId":"t-1","templateName":"iOS Dev","ownerType":"workspace","ownerId":"my-ws","poolSize":2,
-	 "status":{"ready":1,"warming":1,"claimedTotal":12,"coldTotal":3}},
-	{"id":"p-2","name":"presets","templateId":"t-1","templateName":"iOS Dev","ownerType":"workspace","ownerId":"my-ws","createdByEmail":"a@b.io","poolSize":0,
-	 "status":{"configError":"stack retired"}}
+	{"id":"p-1","name":"ios-devs","templateId":"t-1","templateName":"iOS Dev","ownerType":"workspace","ownerId":"my-ws","warmSessions":2,"maxSessions":5,
+	 "status":{"ready":1,"warming":1,"claimedTotal":12,"coldTotal":3,"inUse":5,"limitState":"full","refused7d":4}},
+	{"id":"p-2","name":"presets","templateId":"t-1","templateName":"iOS Dev","ownerType":"workspace","ownerId":"my-ws","createdByEmail":"a@b.io","warmSessions":0,
+	 "status":{"configError":"stack retired","inUse":1,"limitState":"no_limit"}}
 ]}`
 
 func TestListCmd_HappyPath(t *testing.T) {
@@ -66,7 +66,7 @@ func TestListCmd_HappyPath(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
-	for _, want := range []string{"NAME", "SIZE", "READY", "STATUS", "ios-devs", "iOS Dev", "workspace", "a@b.io", "config error", "p-1", "p-2"} {
+	for _, want := range []string{"NAME", "SIZE", "READY", "IN USE/MAX", "STATUS", "ios-devs", "iOS Dev", "workspace", "a@b.io", "config error", "p-1", "p-2", "5/5 full"} {
 		if !strings.Contains(stdout, want) {
 			t.Errorf("stdout missing %q:\n%s", want, stdout)
 		}
@@ -128,14 +128,18 @@ func TestListCmd_JSONOutput(t *testing.T) {
 	}
 	var got struct {
 		Items []struct {
-			ID        string `json:"id"`
-			Name      string `json:"name"`
-			PoolSize  int    `json:"pool_size"`
-			OwnerType string `json:"owner_type"`
-			Status    struct {
+			ID          string `json:"id"`
+			Name        string `json:"name"`
+			PoolSize    int    `json:"pool_size"`
+			MaxSessions int    `json:"max_sessions"`
+			OwnerType   string `json:"owner_type"`
+			Status      struct {
 				Ready        int    `json:"ready"`
 				ClaimedTotal int    `json:"claimed_total"`
 				ConfigError  string `json:"config_error"`
+				InUse        int    `json:"in_use"`
+				LimitState   string `json:"limit_state"`
+				Refused7d    int    `json:"refused_7d"`
 			} `json:"status"`
 		} `json:"items"`
 	}
@@ -144,6 +148,9 @@ func TestListCmd_JSONOutput(t *testing.T) {
 	}
 	if len(got.Items) != 2 || got.Items[0].ID != "p-1" || got.Items[0].PoolSize != 2 || got.Items[0].Status.Ready != 1 || got.Items[0].Status.ClaimedTotal != 12 {
 		t.Errorf("unexpected JSON items: %+v", got.Items)
+	}
+	if got.Items[0].MaxSessions != 5 || got.Items[0].Status.InUse != 5 || got.Items[0].Status.LimitState != "full" || got.Items[0].Status.Refused7d != 4 {
+		t.Errorf("limit fields missing from JSON: %+v", got.Items[0])
 	}
 	if got.Items[1].OwnerType != "workspace" || got.Items[1].Status.ConfigError != "stack retired" {
 		t.Errorf("unexpected second item: %+v", got.Items[1])
@@ -160,7 +167,7 @@ func TestListCmd_EmptyHuman(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
-	if !strings.Contains(stdout, "No warm pools found.") {
+	if !strings.Contains(stdout, "No pools found.") {
 		t.Errorf("expected empty-state message, got: %q", stdout)
 	}
 }
@@ -181,12 +188,12 @@ func TestListCmd_MissingWorkspace(t *testing.T) {
 }
 
 const viewBody = `{"warmPool":{
-	"id":"p-1","name":"ios-devs","templateId":"t-1","templateName":"iOS Dev","ownerType":"workspace","ownerId":"my-ws","poolSize":2,
+	"id":"p-1","name":"ios-devs","templateId":"t-1","templateName":"iOS Dev","ownerType":"workspace","ownerId":"my-ws","warmSessions":2,"maxSessions":10,
 	"machineType":"g2.mac.m2pro.6c-14g",
 	"sessionInputs":[{"key":"GITHUB_TOKEN","value":"leaked","isSecret":true},{"key":"REPO","value":"my-app"},{"key":"SSH_KEY","savedInputId":"si-1"}],
 	"enabledFeatureFlagNames":["enable_beta_simulator"],
 	"deviceSpec":{"platform":"ios","deviceModel":"iPhone 16","osVersion":"18.2"},
-	"status":{"ready":1,"warming":1,"claimedTotal":12,"coldTotal":3,"lastError":"quota exceeded",
+	"status":{"ready":1,"warming":1,"claimedTotal":12,"coldTotal":3,"lastError":"quota exceeded","inUse":8,"limitState":"under_max","refused7d":2,
 	  "sessions":[{"sessionId":"s-ready","state":"ready","createdAt":"2026-09-17T08:00:00Z","readyAt":"2026-09-17T08:04:00Z"},
 	              {"sessionId":"s-warm","state":"warming","createdAt":"2026-09-17T08:10:00Z"}]},
 	"createdAt":"2026-09-01T00:00:00Z"}}`
@@ -208,7 +215,7 @@ func TestViewCmd_HappyPath(t *testing.T) {
 	}
 	for _, want := range []string{
 		"ios-devs", "p-1", "iOS Dev", "t-1", "workspace",
-		"Pool size:", "2", "1 ready, 1 warming", "12 claimed, 3 cold", "quota exceeded",
+		"Warm sessions:", "2", "Max sessions:", "10", "In use:", "8 of 10", "1 ready, 1 warming", "12 claimed, 3 cold", "Refused (7 days):", "quota exceeded",
 		"g2.mac.m2pro.6c-14g", "iOS simulator · iPhone 16 · 18.2",
 		"GITHUB_TOKEN", "(hidden)", "REPO", "my-app", "SSH_KEY", "saved input", "si-1",
 		"enable_beta_simulator",
@@ -237,12 +244,12 @@ func TestViewCmd_JSONOutput(t *testing.T) {
 	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
 		t.Fatalf("unmarshal JSON output: %v\n%s", err, stdout)
 	}
-	if got["id"] != "p-1" || got["machine_type"] != "g2.mac.m2pro.6c-14g" || got["pool_size"] != float64(2) {
+	if got["id"] != "p-1" || got["machine_type"] != "g2.mac.m2pro.6c-14g" || got["pool_size"] != float64(2) || got["max_sessions"] != float64(10) {
 		t.Errorf("unexpected JSON: %v", got)
 	}
 	status, _ := got["status"].(map[string]any)
 	sessions, _ := status["sessions"].([]any)
-	if status["ready"] != float64(1) || len(sessions) != 2 {
+	if status["ready"] != float64(1) || len(sessions) != 2 || status["in_use"] != float64(8) || status["limit_state"] != "under_max" || status["refused_7d"] != float64(2) {
 		t.Errorf("unexpected status in JSON: %v", got["status"])
 	}
 	if strings.Contains(stdout, "leaked") {
@@ -257,7 +264,7 @@ func TestViewCmd_ResolvesName(t *testing.T) {
 		case "/v1/workspaces/ws-1/warm-pools":
 			_, _ = io.WriteString(w, `{"warmPools":[{"id":"p-9","name":"ios-devs"},{"id":"p-7","name":"other"}]}`)
 		case "/v1/workspaces/ws-1/warm-pools/p-9":
-			_, _ = io.WriteString(w, `{"warmPool":{"id":"p-9","name":"ios-devs","poolSize":1}}`)
+			_, _ = io.WriteString(w, `{"warmPool":{"id":"p-9","name":"ios-devs","warmSessions":1}}`)
 		default:
 			t.Errorf("unexpected path: %s", r.URL.Path)
 		}
@@ -276,6 +283,6 @@ func TestViewCmd_ResolvesName(t *testing.T) {
 func TestViewCmd_RequiresArg(t *testing.T) {
 	_, _, err := run(t, newViewCmd(), "http://unused", "ws-1", nil, output.Human)
 	if err == nil {
-		t.Fatal("expected error when WARM_POOL_ID is missing")
+		t.Fatal("expected error when POOL_ID is missing")
 	}
 }

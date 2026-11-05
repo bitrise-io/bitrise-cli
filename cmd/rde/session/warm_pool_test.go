@@ -11,7 +11,7 @@ import (
 	"github.com/bitrise-io/bitrise-cli/internal/output"
 )
 
-// uuidPool is a UUID-shaped warm pool arg so ResolveWarmPoolID
+// uuidPool is a UUID-shaped pool arg so ResolveWarmPoolID
 // short-circuits without an extra ListWarmPools call.
 const uuidPool = "33333333-4444-4444-8444-555555555555"
 
@@ -44,7 +44,7 @@ func TestCreateCmd_WarmPoolClaim(t *testing.T) {
 			t.Errorf("%s must not be sent with --warm-pool: %v", k, gotBody)
 		}
 	}
-	for _, want := range []string{"Session created", "s-new", "Warm pool:", uuidPool, "Warm state:", "claimed", "pre-booted"} {
+	for _, want := range []string{"Session created", "s-new", "Pool:", uuidPool, "Warm state:", "claimed", "pre-booted"} {
 		if !strings.Contains(stdout, want) {
 			t.Errorf("stdout missing %q:\n%s", want, stdout)
 		}
@@ -149,7 +149,7 @@ func TestCreateCmd_WarmPoolSatisfiesConfigurationGuard(t *testing.T) {
 	}
 }
 
-// session view shows the warm pool and state only when the session has one;
+// session view shows the pool and state only when the session has one;
 // JSON carries them additively.
 func TestViewCmd_ShowsWarmState(t *testing.T) {
 	body := `{"session":{"id":"s-1","name":"dev","status":"SESSION_STATUS_RUNNING","warmPoolId":"p-1","warmState":"claimed"}}`
@@ -162,7 +162,7 @@ func TestViewCmd_ShowsWarmState(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
-	for _, want := range []string{"Warm pool:", "p-1", "Warm state:", "claimed"} {
+	for _, want := range []string{"Pool:", "p-1", "Warm state:", "claimed"} {
 		if !strings.Contains(stdout, want) {
 			t.Errorf("stdout missing %q:\n%s", want, stdout)
 		}
@@ -187,7 +187,7 @@ func TestViewCmd_ShowsWarmState(t *testing.T) {
 		t.Fatalf("Execute (plain): %v", err)
 	}
 	if strings.Contains(stdout, "Warm") {
-		t.Errorf("stdout must not mention warm pools for a pool-less session:\n%s", stdout)
+		t.Errorf("stdout must not mention pools for a pool-less session:\n%s", stdout)
 	}
 	stdout, _, err = run(t, newViewCmd(), srv.URL, "ws-1", []string{uuidSession}, output.JSON)
 	if err != nil {

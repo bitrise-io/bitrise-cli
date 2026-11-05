@@ -1,10 +1,10 @@
-## bitrise-cli rde warm-pool create
+## bitrise-cli rde pool create
 
-Create a warm pool
+Create a pool
 
 ### Synopsis
 
-Create a warm pool: a stored session configuration the RDE backend keeps
+Create a pool: a stored session configuration the RDE backend keeps
 --size sessions of booted and idle, ready to be claimed with 'rde session
 create --warm-pool NAME'.
 
@@ -16,8 +16,18 @@ same way — a pool can only store what a session request could send.
 
 --size is how many warm sessions to keep booted. It defaults to 0: the pool
 is created as an inert configuration preset and costs nothing until you
-raise the size with 'rde warm-pool set-size'. Every warm session costs
+raise the size with 'rde pool set-size'. Every warm session costs
 machine time while idle.
+
+--max-sessions caps how many sessions from the pool may be in use at once —
+claimed or created cold; a session keeps its origin pool for life. When the
+pool is full, a claim that finds no warm session, a restore and a start are
+refused until one of the pool's sessions ends; the refusal names your own
+sessions in use from the pool. Warm sessions only fill the room the max
+leaves, so --size cannot be more than --max-sessions. 0 (the default) means
+no limit. A ceiling, not a reservation: the workspace's CPU quota still
+applies on top. Use it to keep one group — an agent fleet, preview-link
+viewers — from taking the CPUs the whole workspace shares.
 
 The pool belongs to the workspace: every member sees, claims from and
 manages it, a Workspace API Token can create and claim from it, and it can
@@ -48,20 +58,22 @@ device to boot; --no-device boots none. A claimed session's app artifact is
 still given at claim time.
 
 ```
-bitrise-cli rde warm-pool create NAME [flags]
+bitrise-cli rde pool create NAME [flags]
 ```
 
 ### Examples
 
 ```
-  bitrise-cli rde warm-pool create ios-devs --template TEMPLATE_ID --size 2
+  bitrise-cli rde pool create ios-devs --template TEMPLATE_ID --size 2
   # Inputs as plain values; a feature flag enabled on every warm session.
-  bitrise-cli rde warm-pool create ci-devices --template TEMPLATE_ID --size 3 --secret-input GITHUB_TOKEN=ghp_xxx --feature-flag enable_beta_simulator
+  bitrise-cli rde pool create ci-devices --template TEMPLATE_ID --size 3 --secret-input GITHUB_TOKEN=ghp_xxx --feature-flag enable_beta_simulator
+  # At most 20 sessions of this pool in use at once, 5 of them kept warm.
+  bitrise-cli rde pool create agent-sessions --template TEMPLATE_ID --size 5 --max-sessions 20
   # A configuration preset: nothing booted until 'set-size' raises the count.
-  bitrise-cli rde warm-pool create preset --template TEMPLATE_ID --machine-type g2.mac.m2pro.6c-14g
+  bitrise-cli rde pool create preset --template TEMPLATE_ID --machine-type g2.mac.m2pro.6c-14g
   # The template's simulator, but an iPhone 15 on iOS 17.5; or no device at all.
-  bitrise-cli rde warm-pool create ios-17 --template TEMPLATE_ID --device-model "iPhone 15" --device-os-version 17.5
-  bitrise-cli rde warm-pool create headless --template TEMPLATE_ID --no-device
+  bitrise-cli rde pool create ios-17 --template TEMPLATE_ID --device-model "iPhone 15" --device-os-version 17.5
+  bitrise-cli rde pool create headless --template TEMPLATE_ID --no-device
 ```
 
 ### Options
@@ -76,6 +88,7 @@ bitrise-cli rde warm-pool create NAME [flags]
   -h, --help                         help for create
       --input stringArray            session input as [scope:]key=value (repeatable); unscoped applies to every scope that defines the key, scope:key (shared, on_create) to that scope only
       --machine-type string          machine type name to override the template's (see 'rde machine-type list --stack STACK_ID')
+      --max-sessions int             the most sessions from the pool that may be in use at once, warm ones included; a full pool refuses claims, restores and starts until a session ends. 0 (the default): no limit
       --no-device                    boot the warm sessions without the template's device (ignored when the template declares none)
       --secret-input stringArray     session input as [scope:]key=value, stored as a secret at rest (repeatable; the value is visible in shell history and process args)
       --size int                     how many warm sessions to keep booted; 0 (the default) creates an inert configuration preset
@@ -95,5 +108,5 @@ bitrise-cli rde warm-pool create NAME [flags]
 
 ### SEE ALSO
 
-* [bitrise-cli rde warm-pool](bitrise-cli_rde_warm-pool.md)	 - Keep pre-booted sessions ready to claim (warm pools)
+* [bitrise-cli rde pool](bitrise-cli_rde_pool.md)	 - Keep pre-booted sessions ready to claim (pools)
 
