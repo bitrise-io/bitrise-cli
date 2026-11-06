@@ -44,6 +44,7 @@ func newCreateCmd() *cobra.Command {
 		artifactName         string
 		owner                string
 		warmPool             string
+		workspaceScriptTest  bool
 	)
 
 	c := &cobra.Command{
@@ -155,6 +156,12 @@ it the workspace's. It comes back with "Setup: personalizing" while the
 platform's System setup and On claim run with your inputs; the On restore
 values wait for the first restore.
 
+Workspace script test: --workspace-script-test creates a session whose
+boots run the saved workspace script even while it is disabled (draft), so
+you can try a change before enabling it for everyone ('rde workspace-script
+--help'). Only for a personal session (not --owner workspace, not
+--warm-pool), created by someone who can edit the workspace script.
+
 Example values:
   --input key=value
   --input on_restore:key=value               # this scope only
@@ -181,7 +188,9 @@ Example values:
   # Keep a signed artifact URL out of shell history and process args: read it from a file.
   bitrise-cli rde session create android-check --device-platform android --artifact-url-stdin < artifact-url.txt
   # Claim a pre-booted session from a warm pool (see 'rde warm-pool list').
-  bitrise-cli rde session create dev --warm-pool WARM_POOL_ID`,
+  bitrise-cli rde session create dev --warm-pool WARM_POOL_ID
+  # Try the workspace script's draft before enabling it (see 'rde workspace-script').
+  bitrise-cli rde session create try-it --template TEMPLATE_ID --workspace-script-test`,
 		Args: cmdutil.RequireArgs("NAME"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
@@ -237,6 +246,12 @@ Example values:
 				if aiPrompt != "" {
 					return fmt.Errorf("--owner workspace: --ai-prompt is not available on a workspace session (it has no personal Claude credentials)")
 				}
+				if workspaceScriptTest {
+					return fmt.Errorf("--owner workspace: --workspace-script-test is only for a personal session")
+				}
+			}
+			if workspaceScriptTest && warmPool != "" {
+				return fmt.Errorf("--workspace-script-test cannot be combined with --warm-pool: a test session is created, not claimed")
 			}
 			// The per-device fields need a platform to attach to — unless a
 			// template supplies it: then they tweak the template's declared
@@ -296,6 +311,7 @@ Example values:
 				MapSavedToSessionInputs: mapSavedInputs,
 				Labels:                  labelMap,
 				OwnerType:               owner,
+				WorkspaceScriptTest:     workspaceScriptTest,
 			}
 			if setAutoTerminate {
 				m := autoTerminateMinutes
@@ -435,6 +451,7 @@ Example values:
 	c.Flags().BoolVar(&mapSavedInputs, "map-saved-inputs", false, "auto-fill template session inputs from the user's saved inputs (matched by key)")
 	c.Flags().StringVar(&owner, "owner", "", "who owns the session: user (default; a personal session) or workspace (owned by the workspace itself, visible to every member; session inputs as plain values only). A Workspace API Token always creates workspace sessions")
 	c.Flags().StringVar(&warmPool, "warm-pool", "", "warm pool ID or name to claim the session from: a pre-booted warm session is handed out instantly, or one is created from the pool's configuration when none is available; the pool fixes the configuration, so --template, --stack, --machine-type, --feature-flag, --cluster and the device flags are rejected with it; the input flags give the template's On claim and On restore inputs (see 'rde warm-pool list')")
+	c.Flags().BoolVar(&workspaceScriptTest, "workspace-script-test", false, "test the workspace script: the session's boots run the saved script even while it is disabled (draft); personal sessions only (not with --owner workspace or --warm-pool), for people who can edit the workspace script")
 	_ = c.RegisterFlagCompletionFunc("owner", func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
 		return []string{internalrde.SessionOwnerUser, internalrde.SessionOwnerWorkspace}, cobra.ShellCompDirectiveNoFileComp
 	})

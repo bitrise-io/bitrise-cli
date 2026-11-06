@@ -145,6 +145,55 @@ func TestCreateCmd_OwnerWorkspaceSent(t *testing.T) {
 	}
 }
 
+// --workspace-script-test rides in the create body; without the flag the
+// field is absent so the backend default (no test session) applies.
+func TestCreateCmd_WorkspaceScriptTestSent(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		args []string
+		want any
+	}{
+		{"set", []string{"try-it", "--stack", "linux", "--machine-type", "standard", "--workspace-script-test"}, true},
+		{"unset", []string{"try-it", "--stack", "linux", "--machine-type", "standard"}, nil},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var gotBody map[string]any
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				_ = json.NewDecoder(r.Body).Decode(&gotBody)
+				_, _ = io.WriteString(w, `{"session":{"id":"s-new","name":"try-it","status":"SESSION_STATUS_PENDING"}}`)
+			}))
+			defer srv.Close()
+			if _, _, err := run(t, newCreateCmd(), srv.URL, "ws-1", tc.args, output.Human); err != nil {
+				t.Fatalf("Execute: %v", err)
+			}
+			if got := gotBody["workspaceScriptTest"]; got != tc.want {
+				t.Errorf("workspaceScriptTest = %v, want %v (body=%v)", got, tc.want, gotBody)
+			}
+		})
+	}
+}
+
+// A test session is personal and created, not claimed: the combinations the
+// backend refuses fail before any request.
+func TestCreateCmd_WorkspaceScriptTestRejects(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
+		t.Error("no request must reach the backend")
+	}))
+	defer srv.Close()
+	cases := map[string][]string{
+		"workspace owner": {"try-it", "--template", uuidTemplate, "--owner", "workspace", "--workspace-script-test"},
+		"warm pool":       {"try-it", "--warm-pool", uuidSession, "--workspace-script-test"},
+	}
+	for name, args := range cases {
+		t.Run(name, func(t *testing.T) {
+			_, _, err := run(t, newCreateCmd(), srv.URL, "ws-1", args, output.Human)
+			if err == nil || !strings.Contains(err.Error(), "--workspace-script-test") {
+				t.Errorf("err = %v", err)
+			}
+		})
+	}
+}
+
 func TestCreateCmd_OwnerOmittedWhenFlagUnset(t *testing.T) {
 	var gotBody map[string]any
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

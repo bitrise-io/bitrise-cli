@@ -110,6 +110,12 @@ it the workspace's. It comes back with "Setup: personalizing" while the
 platform's System setup and On claim run with your inputs; the On restore
 values wait for the first restore.
 
+Workspace script test: --workspace-script-test creates a session whose
+boots run the saved workspace script even while it is disabled (draft), so
+you can try a change before enabling it for everyone ('rde workspace-script
+--help'). Only for a personal session (not --owner workspace, not
+--warm-pool), created by someone who can edit the workspace script.
+
 Example values:
   --input key=value
   --input on_restore:key=value               # this scope only
@@ -145,6 +151,8 @@ bitrise-cli rde session create NAME [flags]
   bitrise-cli rde session create android-check --device-platform android --artifact-url-stdin < artifact-url.txt
   # Claim a pre-booted session from a warm pool (see 'rde warm-pool list').
   bitrise-cli rde session create dev --warm-pool WARM_POOL_ID
+  # Try the workspace script's draft before enabling it (see 'rde workspace-script').
+  bitrise-cli rde session create try-it --template TEMPLATE_ID --workspace-script-test
 ```
 
 ### Options
@@ -176,6 +184,7 @@ bitrise-cli rde session create NAME [flags]
       --wait                         wait until the session leaves provisioning (running, failed, …) — with --device-platform until the device is ready or failed, on a lifecycle-hooks template until its hooks are done — before returning; exits 1 if the final status isn't running, the device failed or a hook failed
       --wait-timeout duration        max time to wait when --wait is set (uses Go duration syntax: 30s, 5m, 1h) (default 10m0s)
       --warm-pool string             warm pool ID or name to claim the session from: a pre-booted warm session is handed out instantly, or one is created from the pool's configuration when none is available; the pool fixes the configuration, so --template, --stack, --machine-type, --feature-flag, --cluster and the device flags are rejected with it; the input flags give the template's On claim and On restore inputs (see 'rde warm-pool list')
+      --workspace-script-test        test the workspace script: the session's boots run the saved script even while it is disabled (draft); personal sessions only (not with --owner workspace or --warm-pool), for people who can edit the workspace script
 ```
 
 ### Options inherited from parent commands
