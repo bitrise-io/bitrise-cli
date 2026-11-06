@@ -20,7 +20,7 @@ bitrise-cli rde workspace-script view [flags]
   bitrise-cli rde workspace-script view
   bitrise-cli rde workspace-script view --show-secrets
   # Compare the live script with the one in git.
-  bitrise-cli rde workspace-script view -o json | jq -r .script | diff - workspace-script.sh
+  bitrise-cli rde workspace-script view -o json | jq -j .script | diff - workspace-script.sh
 ```
 
 ### Options

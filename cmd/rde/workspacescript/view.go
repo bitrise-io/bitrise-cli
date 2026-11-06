@@ -27,7 +27,7 @@ variables are write-only and never shown — only whether a value is set.`,
 		Example: `  bitrise-cli rde workspace-script view
   bitrise-cli rde workspace-script view --show-secrets
   # Compare the live script with the one in git.
-  bitrise-cli rde workspace-script view -o json | jq -r .script | diff - workspace-script.sh`,
+  bitrise-cli rde workspace-script view -o json | jq -j .script | diff - workspace-script.sh`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			workspaceID, err := cmdutil.ResolveWorkspaceID(cmd)
