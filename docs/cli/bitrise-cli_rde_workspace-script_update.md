@@ -22,8 +22,13 @@ This suits keeping the script in git and deploying it from CI with
 Usage permission — Workspace API Tokens cannot edit the workspace script.
 
 --set-var, --set-secret and --set-protected add a variable or replace an
-existing one's value and visibility (plain, secret, protected). A value
-given inline is visible in shell history and process arguments.
+existing one's value and visibility (plain, secret, protected).
+
+Pass secret and protected values on stdin: --set-secret KEY=- (or
+--set-protected KEY=-) reads the value from stdin, with one trailing newline
+trimmed, and keeps it out of shell history and process arguments. A value
+given inline is visible in both. Only one thing can read stdin per call: a
+single KEY=- value or --script-file -.
 
 ```
 bitrise-cli rde workspace-script update [flags]
@@ -34,7 +39,9 @@ bitrise-cli rde workspace-script update [flags]
 ```
   bitrise-cli rde workspace-script update --script-file workspace-script.sh
   cat workspace-script.sh | bitrise-cli rde workspace-script update --script-file -
-  bitrise-cli rde workspace-script update --set-var REGION=eu --set-secret AGENT_TOKEN="$AGENT_TOKEN"
+  bitrise-cli rde workspace-script update --set-var REGION=eu
+  # Secrets from stdin, not the command line (e.g. from a CI secret env var).
+  printf '%s' "$AGENT_TOKEN" | bitrise-cli rde workspace-script update --set-secret AGENT_TOKEN=-
   bitrise-cli rde workspace-script update --remove-var OLD_FLAG
   # Try the draft on a test session, then turn it on for everyone.
   bitrise-cli rde workspace-script update --script-file workspace-script.sh --disable
@@ -50,8 +57,8 @@ bitrise-cli rde workspace-script update [flags]
   -h, --help                        help for update
       --remove-var stringArray      remove the variable KEY (repeatable)
       --script-file string          path to the bash script to save ('-' reads stdin)
-      --set-protected stringArray   set a protected variable as KEY=VALUE: encrypted and write-only, never shown again (repeatable)
-      --set-secret stringArray      set a secret variable as KEY=VALUE: encrypted at rest, hidden unless viewed with --show-secrets (repeatable)
+      --set-protected stringArray   set a protected variable as KEY=VALUE: encrypted and write-only, never shown again; KEY=- reads the value from stdin (recommended) (repeatable)
+      --set-secret stringArray      set a secret variable as KEY=VALUE: encrypted at rest, hidden unless viewed with --show-secrets; KEY=- reads the value from stdin (recommended) (repeatable)
       --set-var stringArray         set a plain variable as KEY=VALUE (repeatable)
 ```
 

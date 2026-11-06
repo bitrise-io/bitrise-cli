@@ -88,7 +88,10 @@ func TestApplyWorkspaceScriptChanges(t *testing.T) {
 	}
 }
 
-func TestApplyWorkspaceScriptChanges_Rejects(t *testing.T) {
+// Input-only mistakes are caught by Validate, which UpdateWorkspaceScript
+// runs before its GET: no request is made, so a flag error never turns into
+// an auth or network error. Errors name keys, never values.
+func TestUpdateWorkspaceScript_ValidatesBeforeAnyRequest(t *testing.T) {
 	plain := func(k string) WorkspaceScriptVariableChange {
 		return WorkspaceScriptVariableChange{Key: k, Value: "v", Visibility: VariableVisibilityPlain}
 	}
@@ -96,20 +99,38 @@ func TestApplyWorkspaceScriptChanges_Rejects(t *testing.T) {
 		changes WorkspaceScriptChanges
 		want    string
 	}{
+		"nothing":            {WorkspaceScriptChanges{}, "nothing to update"},
+		"empty key":          {WorkspaceScriptChanges{SetVariables: []WorkspaceScriptVariableChange{{Key: "", Value: "s3cret", Visibility: VariableVisibilitySecret}}}, "must not be empty"},
 		"reserved key":       {WorkspaceScriptChanges{SetVariables: []WorkspaceScriptVariableChange{plain("RDE_X")}}, "reserved"},
 		"set twice":          {WorkspaceScriptChanges{SetVariables: []WorkspaceScriptVariableChange{plain("A"), plain("A")}}, "more than once"},
 		"set and removed":    {WorkspaceScriptChanges{SetVariables: []WorkspaceScriptVariableChange{plain("REGION")}, RemoveVariables: []string{"REGION"}}, "both set and removed"},
-		"remove unknown":     {WorkspaceScriptChanges{RemoveVariables: []string{"NOPE"}}, "no variable NOPE"},
+		"empty remove key":   {WorkspaceScriptChanges{RemoveVariables: []string{""}}, "must not be empty"},
 		"empty protected":    {WorkspaceScriptChanges{SetVariables: []WorkspaceScriptVariableChange{{Key: "P", Visibility: VariableVisibilityProtected}}}, "needs a value"},
-		"unknown visibility": {WorkspaceScriptChanges{SetVariables: []WorkspaceScriptVariableChange{{Key: "P", Value: "v", Visibility: "public"}}}, "unknown visibility"},
+		"unknown visibility": {WorkspaceScriptChanges{SetVariables: []WorkspaceScriptVariableChange{{Key: "P", Value: "s3cret", Visibility: "public"}}}, "unknown visibility"},
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
-			_, err := applyWorkspaceScriptChanges(storedWorkspaceScript, tc.changes)
+			rs := newRecordingServer(t, `{}`)
+			_, err := rs.service().UpdateWorkspaceScript(context.Background(), "ws-1", tc.changes)
 			if err == nil || !strings.Contains(err.Error(), tc.want) {
 				t.Errorf("err = %v, want it to contain %q", err, tc.want)
 			}
+			if err != nil && strings.Contains(err.Error(), "s3cret") {
+				t.Errorf("error leaks a value: %v", err)
+			}
+			if rs.lastMethod != "" {
+				t.Errorf("a %s request was made, want none", rs.lastMethod)
+			}
 		})
+	}
+}
+
+// Whether a removed variable exists is the one check that needs the stored
+// script.
+func TestApplyWorkspaceScriptChanges_RemoveUnknown(t *testing.T) {
+	_, err := applyWorkspaceScriptChanges(storedWorkspaceScript, WorkspaceScriptChanges{RemoveVariables: []string{"NOPE"}})
+	if err == nil || !strings.Contains(err.Error(), "no variable NOPE") {
+		t.Errorf("err = %v", err)
 	}
 }
 

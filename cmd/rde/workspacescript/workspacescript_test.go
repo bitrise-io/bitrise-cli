@@ -374,3 +374,95 @@ func TestUpdateCmd_RemoveUnknownVariableSavesNothing(t *testing.T) {
 		t.Errorf("PUT sent %d time(s), want none", f.puts)
 	}
 }
+
+// A malformed --set-* argument may be a secret pasted without its key: the
+// error names the flag and the expected syntax, never the argument.
+func TestUpdateCmd_MalformedArgumentIsNotEchoed(t *testing.T) {
+	const secret = "not-a-real-value-0123"
+	for _, args := range [][]string{
+		{"--set-secret", secret},
+		{"--set-protected", "=" + secret},
+		{"--set-var", "REGION=eu", "--set-secret", secret},
+	} {
+		t.Run(strings.Join(args, " "), func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+				t.Error("backend must not be called")
+			}))
+			defer srv.Close()
+			_, stderr, err := run(t, newUpdateCmd(), srv.URL, args, "", output.Human)
+			if err == nil || !strings.Contains(err.Error(), "expected KEY=VALUE") {
+				t.Fatalf("err = %v", err)
+			}
+			if strings.Contains(err.Error(), secret) || strings.Contains(stderr, secret) {
+				t.Errorf("the secret leaked into the error: %v / %q", err, stderr)
+			}
+		})
+	}
+}
+
+// KEY=- reads a secret or protected value from stdin, trimming one trailing
+// newline; a plain --set-var KEY=- is the literal "-".
+func TestUpdateCmd_SecretValueFromStdin(t *testing.T) {
+	cases := []struct {
+		name  string
+		args  []string
+		stdin string
+		want  putVar
+	}{
+		{"secret", []string{"--set-secret", "TOKEN=-"}, "rotated\n", putVar{Key: "TOKEN", Value: "rotated", IsSecret: true}},
+		{"protected multi-line", []string{"--set-protected", "SIGNING_KEY=-"}, "line1\nline2\n\n", putVar{Key: "SIGNING_KEY", Value: "line1\nline2\n", IsSecret: true, Protected: true}},
+		{"plain is literal", []string{"--set-var", "REGION=-"}, "ignored\n", putVar{Key: "REGION", Value: "-"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			f := &fakeBackend{getBody: stored, putResp: masked}
+			if _, _, err := run(t, newUpdateCmd(), f.server(t).URL, tc.args, tc.stdin, output.Human); err != nil {
+				t.Fatalf("Execute: %v", err)
+			}
+			var found bool
+			for _, v := range decodePut(t, f.putBody).Variables {
+				if v.Key == tc.want.Key {
+					found = true
+					if v != tc.want {
+						t.Errorf("variable = %+v, want %+v", v, tc.want)
+					}
+				}
+			}
+			if !found {
+				t.Errorf("variable %s not in the PUT body: %s", tc.want.Key, f.putBody)
+			}
+		})
+	}
+}
+
+// Every input-only mistake fails before stdin is read and before any
+// request: stdin conflicts, empty stdin, and what Validate rejects.
+func TestUpdateCmd_InputErrorsMakeNoRequest(t *testing.T) {
+	cases := map[string]struct {
+		args  []string
+		stdin string
+		want  string
+	}{
+		"script and secret from stdin": {[]string{"--script-file", "-", "--set-secret", "A=-"}, "x", "only one value can be read from stdin"},
+		"two stdin values":             {[]string{"--set-secret", "A=-", "--set-protected", "B=-"}, "x", "only one value can be read from stdin"},
+		"empty stdin value":            {[]string{"--set-secret", "A=-"}, "\n", "no value read from stdin"},
+		"empty script file":            {[]string{"--script-file", ""}, "", "--script-file must not be empty"},
+		"reserved key":                 {[]string{"--set-var", "RDE_X=v"}, "", "reserved"},
+		"set twice":                    {[]string{"--set-var", "A=1", "--set-secret", "A=2"}, "", "more than once"},
+		"set and removed":              {[]string{"--set-var", "A=1", "--remove-var", "A"}, "", "both set and removed"},
+		"empty protected":              {[]string{"--set-protected", "P="}, "", "needs a value"},
+		"empty remove key":             {[]string{"--remove-var", ""}, "", "must not be empty"},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+				t.Error("backend must not be called")
+			}))
+			defer srv.Close()
+			_, _, err := run(t, newUpdateCmd(), srv.URL, tc.args, tc.stdin, output.Human)
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Errorf("err = %v, want it to contain %q", err, tc.want)
+			}
+		})
+	}
+}

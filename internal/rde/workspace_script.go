@@ -75,6 +75,47 @@ func (c WorkspaceScriptChanges) IsEmpty() bool {
 	return c.Script == nil && c.Enabled == nil && len(c.SetVariables) == 0 && len(c.RemoveVariables) == 0
 }
 
+// Validate checks the changes on their own, without the stored script: it
+// rejects an empty change set, empty and reserved keys, a variable set twice
+// or both set and removed, an empty protected value and an unknown
+// visibility. Callers run it before any request, so a flag mistake never
+// waits on the network. Errors name keys, never values. Whether a removed
+// variable exists can only be checked against the stored script, by
+// UpdateWorkspaceScript.
+func (c WorkspaceScriptChanges) Validate() error {
+	if c.IsEmpty() {
+		return fmt.Errorf("nothing to update")
+	}
+	set := make(map[string]bool, len(c.SetVariables))
+	for _, ch := range c.SetVariables {
+		if err := validateVariableKey(ch.Key); err != nil {
+			return err
+		}
+		if set[ch.Key] {
+			return fmt.Errorf("variable %s is set more than once", ch.Key)
+		}
+		switch ch.Visibility {
+		case VariableVisibilityPlain, VariableVisibilitySecret:
+		case VariableVisibilityProtected:
+			if ch.Value == "" {
+				return fmt.Errorf("protected variable %s needs a value", ch.Key)
+			}
+		default:
+			return fmt.Errorf("variable %s: unknown visibility %q", ch.Key, ch.Visibility)
+		}
+		set[ch.Key] = true
+	}
+	for _, key := range c.RemoveVariables {
+		if key == "" {
+			return fmt.Errorf("variable key to remove must not be empty")
+		}
+		if set[key] {
+			return fmt.Errorf("variable %s is both set and removed", key)
+		}
+	}
+	return nil
+}
+
 // reservedVariablePrefix starts the names the platform sets itself.
 const reservedVariablePrefix = "RDE_"
 
@@ -101,8 +142,8 @@ func (s *Service) UpdateWorkspaceScript(ctx context.Context, workspaceID string,
 	if s.client == nil {
 		return WorkspaceScript{}, errClient()
 	}
-	if changes.IsEmpty() {
-		return WorkspaceScript{}, fmt.Errorf("nothing to update")
+	if err := changes.Validate(); err != nil {
+		return WorkspaceScript{}, err
 	}
 	current, err := s.client.GetWorkspaceScript(ctx, workspaceID, true)
 	if err != nil {
@@ -120,8 +161,9 @@ func (s *Service) UpdateWorkspaceScript(ctx context.Context, workspaceID string,
 }
 
 // applyWorkspaceScriptChanges builds the full-replacement PUT body from the
-// current script (read with secrets) and the changes. Variables keep their
-// order; new ones are appended in the order given.
+// current script (read with secrets) and changes that passed Validate. The
+// one check left for here is that a removed variable exists. Variables keep
+// their order; new ones are appended in the order given.
 func applyWorkspaceScriptChanges(current rdeapi.WorkspaceScript, changes WorkspaceScriptChanges) (rdeapi.UpdateWorkspaceScriptRequest, error) {
 	req := rdeapi.UpdateWorkspaceScriptRequest{
 		Enabled: current.Enabled,
@@ -136,21 +178,6 @@ func applyWorkspaceScriptChanges(current rdeapi.WorkspaceScript, changes Workspa
 
 	set := make(map[string]WorkspaceScriptVariableChange, len(changes.SetVariables))
 	for _, ch := range changes.SetVariables {
-		if err := validateVariableKey(ch.Key); err != nil {
-			return rdeapi.UpdateWorkspaceScriptRequest{}, err
-		}
-		if _, dup := set[ch.Key]; dup {
-			return rdeapi.UpdateWorkspaceScriptRequest{}, fmt.Errorf("variable %s is set more than once", ch.Key)
-		}
-		switch ch.Visibility {
-		case VariableVisibilityPlain, VariableVisibilitySecret:
-		case VariableVisibilityProtected:
-			if ch.Value == "" {
-				return rdeapi.UpdateWorkspaceScriptRequest{}, fmt.Errorf("protected variable %s needs a value", ch.Key)
-			}
-		default:
-			return rdeapi.UpdateWorkspaceScriptRequest{}, fmt.Errorf("variable %s: unknown visibility %q", ch.Key, ch.Visibility)
-		}
 		set[ch.Key] = ch
 	}
 	existing := make(map[string]bool, len(current.Variables))
@@ -159,9 +186,6 @@ func applyWorkspaceScriptChanges(current rdeapi.WorkspaceScript, changes Workspa
 	}
 	removed := map[string]bool{}
 	for _, key := range changes.RemoveVariables {
-		if _, isSet := set[key]; isSet {
-			return rdeapi.UpdateWorkspaceScriptRequest{}, fmt.Errorf("variable %s is both set and removed", key)
-		}
 		if !existing[key] {
 			return rdeapi.UpdateWorkspaceScriptRequest{}, fmt.Errorf("the workspace script has no variable %s to remove", key)
 		}
