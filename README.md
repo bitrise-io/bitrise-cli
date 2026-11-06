@@ -181,6 +181,8 @@ details) under [docs/cli](docs/cli/bitrise-cli.md).
 | [`rde warm-pool set-size`](docs/cli/bitrise-cli_rde_warm-pool_set-size.md) | Set a pool's size: how many warm sessions it keeps booted |
 | [`rde warm-pool update`](docs/cli/bitrise-cli_rde_warm-pool_update.md) | Update a warm pool's name, count or configuration |
 | [`rde warm-pool view`](docs/cli/bitrise-cli_rde_warm-pool_view.md) | Show a warm pool's status, configuration and warm sessions |
+| [`rde workspace-script update`](docs/cli/bitrise-cli_rde_workspace-script_update.md) | Change the workspace script, its state or its variables |
+| [`rde workspace-script view`](docs/cli/bitrise-cli_rde_workspace-script_view.md) | Show the workspace script, its state and its variables |
 
 ### [`stack`](docs/cli/bitrise-cli_stack.md) — List available stacks
 
