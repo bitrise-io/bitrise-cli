@@ -10,8 +10,7 @@ terminates surplus warm sessions (claimed sessions are untouched). 0 drains
 the pool but keeps it usable as a configuration preset: 'rde session create
 --warm-pool' then creates sessions on demand from its configuration. The
 size cannot be more than the pool's max sessions ('rde pool update
---max-sessions'); changing it requires the workspace's billing-data
-permission, which a Workspace API Token always has.
+--max-sessions').
 
 This is the knob for scaling a pool to business hours: run it from a cron job
 in the morning and again with 0 in the evening. A Workspace API Token works,

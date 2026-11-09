@@ -109,9 +109,11 @@ type WarmPoolStatus struct {
 	Sessions []WarmPoolSession `json:"sessions,omitempty"`
 	// InUse is the pool's handed-out sessions in use right now, the number
 	// MaxSessions caps. LimitState says where it stands: LimitNoLimit,
-	// LimitUnderMax or LimitFull (claims that find no warm session, restores
+	// LimitUnderMax, LimitFull (claims that find no warm session, restores
 	// and starts are refused; a max lowered below the number in use reads
-	// as full too — nothing is terminated). Refused7d counts the claims,
+	// as full too — nothing is terminated) or LimitUnknown (the backend
+	// could not read the live count this time; InUse is 0 and the pool is
+	// served as not full — nothing to flag). Refused7d counts the claims,
 	// restores and starts refused in the last 7 days — a growing number
 	// means the max is too low for the demand.
 	InUse      int    `json:"in_use"`
@@ -124,6 +126,7 @@ const (
 	LimitNoLimit  = "no_limit"
 	LimitUnderMax = "under_max"
 	LimitFull     = "full"
+	LimitUnknown  = "unknown"
 )
 
 // WarmPoolSession is one warm session in a pool's inventory.

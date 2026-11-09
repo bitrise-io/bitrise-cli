@@ -27,9 +27,10 @@ not. For the count alone, 'rde pool set-size' is the shorter spelling.
 --max-sessions sets the pool's limit: the most sessions from it that may be
 in use at once; 0 removes the limit. Lowering it below the number in use
 terminates nothing — the pool reads "full" and refuses claims until enough
-sessions end. --size cannot be more than --max-sessions. Changing
---size or --max-sessions requires the workspace's billing-data permission
-(the same gate as 'rde usage'); a Workspace API Token always may.
+sessions end. --size cannot be more than --max-sessions. Any member or
+Workspace API Token may change either; a higher max lets the pool take more
+of the CPUs the whole workspace shares, so check with a workspace admin
+before raising it for a fleet.
 
 ```
 bitrise-cli rde pool update POOL_ID [flags]
@@ -66,11 +67,11 @@ bitrise-cli rde pool update POOL_ID [flags]
   -h, --help                         help for update
       --input stringArray            session input as [scope:]key=value (repeatable); unscoped applies to every scope that defines the key, scope:key (shared, on_create) to that scope only
       --machine-type string          machine type override; "" removes the override
-      --max-sessions int             new limit on sessions from the pool in use at once; 0 removes the limit (requires the billing-data permission)
+      --max-sessions int             new limit on sessions from the pool in use at once; 0 removes the limit
       --name string                  new name
       --no-device                    true: the warm sessions boot without the template's device; --no-device=false boots it again
       --secret-input stringArray     session input as [scope:]key=value, stored as a secret at rest (repeatable; the value is visible in shell history and process args)
-      --size int                     new number of warm sessions to keep booted; 0 drains the pool but keeps it as a preset (requires the billing-data permission)
+      --size int                     new number of warm sessions to keep booted; 0 drains the pool but keeps it as a preset
       --stack string                 stack ID override; "" removes the override
 ```
 

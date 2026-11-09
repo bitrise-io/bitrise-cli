@@ -85,9 +85,10 @@ type WarmPoolStatus struct {
 	// only; empty on list responses.
 	Sessions []WarmPoolSession `json:"sessions,omitempty"`
 	// InUse is the pool's handed-out sessions in use right now — what
-	// WarmPool.MaxSessions caps. LimitState is "no_limit", "under_max" or
-	// "full"; Refused7d counts the claims, restores and starts refused in
-	// the last 7 days.
+	// WarmPool.MaxSessions caps. LimitState is "no_limit", "under_max",
+	// "full" or "unknown" (the live count could not be read this time; InUse
+	// is 0 and the pool is served as not full). Refused7d counts the claims,
+	// restores and starts refused in the last 7 days.
 	InUse      int    `json:"inUse,omitempty"`
 	LimitState string `json:"limitState,omitempty"`
 	Refused7d  int    `json:"refused7d,omitempty"`

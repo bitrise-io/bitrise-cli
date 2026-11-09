@@ -73,6 +73,47 @@ func TestListCmd_HappyPath(t *testing.T) {
 	}
 }
 
+// limit_state "unknown" means the backend could not read the live in-use
+// count this time and served the pool as not full: the list shows "?" for
+// the count and flags nothing, the detail view says the count was not read.
+func TestLimitStateUnknown_NothingAlarming(t *testing.T) {
+	body := `{"warmPools":[{"id":"p-1","name":"agents","templateId":"t-1","templateName":"Agents","ownerType":"workspace","ownerId":"my-ws","poolSize":2,"maxSessions":10,
+	 "status":{"ready":2,"inUse":0,"limitState":"unknown"}}]}`
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/warm-pools") {
+			_, _ = io.WriteString(w, body)
+			return
+		}
+		_, _ = io.WriteString(w, `{"warmPool":{"id":"p-1","name":"agents","templateId":"t-1","templateName":"Agents","ownerType":"workspace","ownerId":"my-ws","poolSize":2,"maxSessions":10,
+	 "status":{"ready":2,"inUse":0,"limitState":"unknown"}}}`)
+	}))
+	defer srv.Close()
+
+	stdout, _, err := run(t, newListCmd(), srv.URL, "ws-1", nil, output.Human)
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if !strings.Contains(stdout, "?/10") || strings.Contains(stdout, "full") || strings.Contains(stdout, "0/10") {
+		t.Errorf("list should show ?/10 and nothing alarming:\n%s", stdout)
+	}
+
+	stdout, _, err = run(t, newViewCmd(), srv.URL, "ws-1", []string{uuidPool}, output.Human)
+	if err != nil {
+		t.Fatalf("view: %v", err)
+	}
+	if !strings.Contains(stdout, "In use:") || !strings.Contains(stdout, "not read this time") || strings.Contains(stdout, "— full") {
+		t.Errorf("view should say the count was not read and warn about nothing:\n%s", stdout)
+	}
+
+	stdout, _, err = run(t, newListCmd(), srv.URL, "ws-1", nil, output.JSON)
+	if err != nil {
+		t.Fatalf("list json: %v", err)
+	}
+	if !strings.Contains(stdout, `"limit_state": "unknown"`) {
+		t.Errorf("JSON should carry limit_state unknown as data:\n%s", stdout)
+	}
+}
+
 // --template narrows by template (a UUID passes through unresolved) and
 // --all switches to the every-pool scope; both ride in the query string.
 func TestListCmd_TemplateFilterAndAll(t *testing.T) {

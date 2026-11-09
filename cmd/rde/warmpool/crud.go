@@ -271,9 +271,10 @@ not. For the count alone, 'rde pool set-size' is the shorter spelling.
 --max-sessions sets the pool's limit: the most sessions from it that may be
 in use at once; 0 removes the limit. Lowering it below the number in use
 terminates nothing — the pool reads "full" and refuses claims until enough
-sessions end. --size cannot be more than --max-sessions. Changing
---size or --max-sessions requires the workspace's billing-data permission
-(the same gate as 'rde usage'); a Workspace API Token always may.`,
+sessions end. --size cannot be more than --max-sessions. Any member or
+Workspace API Token may change either; a higher max lets the pool take more
+of the CPUs the whole workspace shares, so check with a workspace admin
+before raising it for a fleet.`,
 		Example: `  bitrise-cli rde pool update POOL_ID --name ios-devs-eu --size 4
   # Allow 48 sessions of the pool in use at once; --max-sessions 0 removes the limit.
   bitrise-cli rde pool update agent-sessions --max-sessions 48
@@ -394,8 +395,8 @@ sessions end. --size cannot be more than --max-sessions. Changing
 		},
 	}
 	c.Flags().StringVar(&name, "name", "", "new name")
-	c.Flags().IntVar(&count, "size", 0, "new number of warm sessions to keep booted; 0 drains the pool but keeps it as a preset (requires the billing-data permission)")
-	c.Flags().IntVar(&maxSessions, "max-sessions", 0, "new limit on sessions from the pool in use at once; 0 removes the limit (requires the billing-data permission)")
+	c.Flags().IntVar(&count, "size", 0, "new number of warm sessions to keep booted; 0 drains the pool but keeps it as a preset")
+	c.Flags().IntVar(&maxSessions, "max-sessions", 0, "new limit on sessions from the pool in use at once; 0 removes the limit")
 	inputs.bind(c)
 	c.Flags().BoolVar(&clearInputs, "clear-inputs", false, "remove every stored session input")
 	c.Flags().StringArrayVar(&featureFlags, "feature-flag", nil, "feature flag to enable on the warm sessions (repeatable; replaces the enabled flags as a whole)")
@@ -422,8 +423,7 @@ terminates surplus warm sessions (claimed sessions are untouched). 0 drains
 the pool but keeps it usable as a configuration preset: 'rde session create
 --warm-pool' then creates sessions on demand from its configuration. The
 size cannot be more than the pool's max sessions ('rde pool update
---max-sessions'); changing it requires the workspace's billing-data
-permission, which a Workspace API Token always has.
+--max-sessions').
 
 This is the knob for scaling a pool to business hours: run it from a cron job
 in the morning and again with 0 in the evening. A Workspace API Token works,

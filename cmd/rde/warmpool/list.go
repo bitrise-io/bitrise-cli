@@ -121,12 +121,17 @@ const limitSuffixFull = " full"
 
 // inUseLabel is the pool's sessions in use against its max: "3/10", a bare
 // "3" for a pool without a limit, and " full" appended when the pool
-// refuses claims.
+// refuses claims. "?" stands in for the count when the backend could not
+// read it this time (limit_state "unknown"): the pool is served as not
+// full, so nothing is flagged.
 func inUseLabel(p internalrde.WarmPool) string {
 	if p.Status == nil {
 		return ""
 	}
 	label := strconv.Itoa(p.Status.InUse)
+	if p.Status.LimitState == internalrde.LimitUnknown {
+		label = "?"
+	}
 	if p.MaxSessions > 0 {
 		label += "/" + strconv.Itoa(p.MaxSessions)
 	}

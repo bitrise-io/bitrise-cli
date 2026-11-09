@@ -86,6 +86,11 @@ func renderDetail(w io.Writer, p internalrde.WarmPool) error {
 		if p.MaxSessions > 0 {
 			inUse += " of " + strconv.Itoa(p.MaxSessions)
 		}
+		if st.LimitState == internalrde.LimitUnknown {
+			// The backend could not read the live count this time and
+			// served the pool as not full; nothing to warn about.
+			inUse = s.Dim.Render("not read this time (the pool counts as not full)")
+		}
 		if st.LimitState == internalrde.LimitFull {
 			inUse += s.Warn.Render(" — full: claims that find no warm session, restores and starts are refused until a session ends")
 		}
