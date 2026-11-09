@@ -220,6 +220,11 @@ type CreateSessionRequest struct {
 	// AutoTerminateMinutes and Artifact (device pools) apply to the
 	// claimed session.
 	WarmPoolID string `json:"warmPoolId,omitempty"`
+	// WorkspaceScriptTest creates a test session for the workspace script:
+	// its boots run the saved script even while the script is disabled
+	// (draft). Refused unless the caller may edit the workspace script, the
+	// session is personal and it is not a warm pool claim.
+	WorkspaceScriptTest bool `json:"workspaceScriptTest,omitempty"`
 }
 
 // DeviceSpec describes a virtual device in the preview-link vocabulary.

@@ -473,6 +473,11 @@ type CreateSessionRequest struct {
 	// the pool's. Name, Description, Labels, AutoTerminateMinutes and
 	// Artifact apply to the claimed session.
 	WarmPoolID string
+	// WorkspaceScriptTest makes the session a workspace script test
+	// session: its boots run the saved script even while it is disabled.
+	// Personal sessions only, by someone who may edit the script; refused
+	// with WarmPoolID.
+	WorkspaceScriptTest bool
 }
 
 // Session owner kinds accepted by CreateSessionRequest.OwnerType (and the
@@ -619,6 +624,7 @@ func (s *Service) CreateSession(ctx context.Context, workspaceID string, req Cre
 		NoDevice:                req.NoDevice,
 		OwnerType:               req.OwnerType,
 		WarmPoolID:              req.WarmPoolID,
+		WorkspaceScriptTest:     req.WorkspaceScriptTest,
 	})
 	if err != nil {
 		return CreateSessionResult{}, err

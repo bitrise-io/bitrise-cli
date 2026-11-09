@@ -29,6 +29,10 @@ Warm pools: 'rde warm-pool' keeps a number of sessions of one configuration
 booted and idle so 'rde session create --warm-pool' (or a preview link minted
 with --warm-pool) hands one out instantly instead of booting a VM.
 
+Workspace script: 'rde workspace-script' manages the bash script every
+session in the workspace runs first at each boot (workspace owners and
+billing managers only).
+
 ### Examples
 
 ```
@@ -38,6 +42,7 @@ with --warm-pool) hands one out instantly instead of booting a VM.
   bitrise-cli rde device-guide          # read before creating a session with a device
   bitrise-cli rde preview-link create --device-platform ios --artifact-url https://…/App.zip
   bitrise-cli rde warm-pool list
+  bitrise-cli rde workspace-script view
 ```
 
 ### Options
@@ -69,4 +74,5 @@ with --warm-pool) hands one out instantly instead of booting a VM.
 * [bitrise-cli rde template](bitrise-cli_rde_template.md)	 - List and inspect RDE templates
 * [bitrise-cli rde usage](bitrise-cli_rde_usage.md)	 - Show the workspace's active session and resource usage
 * [bitrise-cli rde warm-pool](bitrise-cli_rde_warm-pool.md)	 - Keep pre-booted sessions ready to claim (warm pools)
+* [bitrise-cli rde workspace-script](bitrise-cli_rde_workspace-script.md)	 - View and edit the script every session in the workspace boots with
 
