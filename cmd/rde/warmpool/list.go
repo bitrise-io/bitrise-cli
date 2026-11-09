@@ -36,8 +36,8 @@ READY and WARMING are the pool's current inventory; SIZE is the pool's warm
 sessions — the count the backend keeps booted. IN USE/MAX is how many sessions from the
 pool are in use right now against its max sessions ("3/10"; a bare count
 when the pool has no limit): "full" means a claim that finds no warm
-session, a restore or a start is refused until a session ends; "over max"
-means the max was lowered below the number in use. STATUS is "ok", or the problem 'view' explains:
+session, a restore or a start is refused until a session ends (a max
+lowered below the number in use reads as full too). STATUS is "ok", or the problem 'view' explains:
 "config error" (the stored configuration no longer builds — the pool creates
 nothing until it is fixed), "paused" (backing off after repeated failures)
 or "error" (the last machine creation failed).`,
@@ -102,7 +102,7 @@ func renderList(w io.Writer, res listResult) error {
 		case colID:
 			return s.Slug.Render(content)
 		case colInUse:
-			if strings.HasSuffix(content, limitSuffixFull) || strings.HasSuffix(content, limitSuffixOverMax) {
+			if strings.HasSuffix(content, limitSuffixFull) {
 				return s.Warn.Render(content)
 			}
 		case colStatus:
@@ -115,16 +115,13 @@ func renderList(w io.Writer, res listResult) error {
 	return style.Table(w, headers, rows, s.Header, styler)
 }
 
-// Suffixes inUseLabel appends for the two states a pool shows besides
-// normal; text, never color alone.
-const (
-	limitSuffixFull    = " full"
-	limitSuffixOverMax = " over max"
-)
+// limitSuffixFull is what inUseLabel appends when the pool refuses claims;
+// text, never color alone.
+const limitSuffixFull = " full"
 
 // inUseLabel is the pool's sessions in use against its max: "3/10", a bare
-// "3" for a pool without a limit, and " full" / " over max" appended for
-// the states that refuse claims.
+// "3" for a pool without a limit, and " full" appended when the pool
+// refuses claims.
 func inUseLabel(p internalrde.WarmPool) string {
 	if p.Status == nil {
 		return ""
@@ -133,11 +130,8 @@ func inUseLabel(p internalrde.WarmPool) string {
 	if p.MaxSessions > 0 {
 		label += "/" + strconv.Itoa(p.MaxSessions)
 	}
-	switch p.Status.LimitState {
-	case internalrde.LimitFull:
+	if p.Status.LimitState == internalrde.LimitFull {
 		label += limitSuffixFull
-	case internalrde.LimitOverMax:
-		label += limitSuffixOverMax
 	}
 	return label
 }

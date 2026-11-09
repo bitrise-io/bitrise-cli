@@ -26,8 +26,8 @@ not. For the count alone, 'rde pool set-size' is the shorter spelling.
 
 --max-sessions sets the pool's limit: the most sessions from it that may be
 in use at once; 0 removes the limit. Lowering it below the number in use
-terminates nothing — the pool reads "over max" and refuses claims until
-enough sessions end. --size cannot be more than --max-sessions. Changing
+terminates nothing — the pool reads "full" and refuses claims until enough
+sessions end. --size cannot be more than --max-sessions. Changing
 --size or --max-sessions requires the workspace's billing-data permission
 (the same gate as 'rde usage'); a Workspace API Token always may.
 

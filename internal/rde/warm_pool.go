@@ -29,10 +29,9 @@ type WarmPool struct {
 	OwnerID        string `json:"owner_id,omitempty"`
 	CreatedByEmail string `json:"created_by_email,omitempty"`
 	// PoolSize is the pool's warm sessions: how many the backend keeps
-	// booted and ready to claim (the wire calls it warm_sessions; the JSON
-	// name here stays pool_size for `--output json` stability). 0 drains
-	// the pool but keeps it usable as a configuration preset — always
-	// emitted, since 0 is a meaningful value.
+	// booted and ready to claim. 0 drains the pool but keeps it usable as
+	// a configuration preset — always emitted, since 0 is a meaningful
+	// value.
 	PoolSize int `json:"pool_size"`
 	// MaxSessions is the most sessions from the pool that may be in use at
 	// once (claimed or created cold; a session keeps its origin pool for
@@ -110,12 +109,11 @@ type WarmPoolStatus struct {
 	Sessions []WarmPoolSession `json:"sessions,omitempty"`
 	// InUse is the pool's handed-out sessions in use right now, the number
 	// MaxSessions caps. LimitState says where it stands: LimitNoLimit,
-	// LimitUnderMax, LimitFull (claims that find no warm session, restores
-	// and starts are refused) or LimitOverMax (the max was lowered below
-	// the number in use; nothing is terminated, claims are refused until
-	// enough sessions end). Refused7d counts the claims, restores and
-	// starts refused in the last 7 days — a growing number means the max
-	// is too low for the demand.
+	// LimitUnderMax or LimitFull (claims that find no warm session, restores
+	// and starts are refused; a max lowered below the number in use reads
+	// as full too — nothing is terminated). Refused7d counts the claims,
+	// restores and starts refused in the last 7 days — a growing number
+	// means the max is too low for the demand.
 	InUse      int    `json:"in_use"`
 	LimitState string `json:"limit_state,omitempty"`
 	Refused7d  int    `json:"refused_7d"`
@@ -126,7 +124,6 @@ const (
 	LimitNoLimit  = "no_limit"
 	LimitUnderMax = "under_max"
 	LimitFull     = "full"
-	LimitOverMax  = "over_max"
 )
 
 // WarmPoolSession is one warm session in a pool's inventory.
@@ -299,7 +296,7 @@ func (s *Service) CreateWarmPool(ctx context.Context, workspaceID string, req Cr
 	w, err := s.client.CreateWarmPool(ctx, workspaceID, rdeapi.CreateWarmPoolRequest{
 		Name:                    req.Name,
 		TemplateID:              req.TemplateID,
-		WarmSessions:            req.PoolSize,
+		PoolSize:                req.PoolSize,
 		MaxSessions:             req.MaxSessions,
 		SessionInputs:           sessionInputsToAPI(req.SessionInputs),
 		EnabledFeatureFlagNames: req.EnabledFeatureFlagNames,
@@ -333,13 +330,13 @@ func (s *Service) UpdateWarmPool(ctx context.Context, workspaceID, warmPoolID st
 		return WarmPool{}, fmt.Errorf("warm sessions (%d) cannot be more than max sessions (%d)", *req.PoolSize, *req.MaxSessions)
 	}
 	wire := rdeapi.UpdateWarmPoolRequest{
-		Name:         req.Name,
-		WarmSessions: req.PoolSize,
-		MaxSessions:  req.MaxSessions,
-		StackID:      req.StackID,
-		MachineType:  req.MachineType,
-		Cluster:      req.Cluster,
-		NoDevice:     req.NoDevice,
+		Name:        req.Name,
+		PoolSize:    req.PoolSize,
+		MaxSessions: req.MaxSessions,
+		StackID:     req.StackID,
+		MachineType: req.MachineType,
+		Cluster:     req.Cluster,
+		NoDevice:    req.NoDevice,
 	}
 	if req.SessionInputs != nil {
 		wire.SessionInputs = sessionInputsToAPI(*req.SessionInputs)
@@ -412,7 +409,7 @@ func warmPoolFromAPI(w rdeapi.WarmPool) WarmPool {
 		OwnerType:               w.OwnerType,
 		OwnerID:                 w.OwnerID,
 		CreatedByEmail:          w.CreatedByEmail,
-		PoolSize:                w.WarmSessions,
+		PoolSize:                w.PoolSize,
 		MaxSessions:             w.MaxSessions,
 		EnabledFeatureFlagNames: w.EnabledFeatureFlagNames,
 		StackID:                 w.StackID,

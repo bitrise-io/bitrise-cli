@@ -12,7 +12,7 @@ import (
 func TestGetWarmPool_MappingMasksSecretsAndParsesStatus(t *testing.T) {
 	rs := newRecordingServer(t, `{"warmPool":{
 		"id":"p1","name":"ios-devs","workspaceId":"ws-1","templateId":"t1","templateName":"iOS Dev",
-		"ownerType":"workspace","ownerId":"my-ws","createdByEmail":"a@b.io","warmSessions":2,
+		"ownerType":"workspace","ownerId":"my-ws","createdByEmail":"a@b.io","poolSize":2,
 		"sessionInputs":[
 			{"key":"GITHUB_TOKEN","value":"leaked","isSecret":true},
 			{"key":"REPO","value":"app"},
@@ -121,7 +121,7 @@ func TestListWarmPools_ForwardsFilterAndScope(t *testing.T) {
 }
 
 func TestCreateWarmPool_MapsRequestAndValidates(t *testing.T) {
-	rs := newRecordingServer(t, `{"warmPool":{"id":"p-new","name":"ios-devs","warmSessions":2}}`)
+	rs := newRecordingServer(t, `{"warmPool":{"id":"p-new","name":"ios-devs","poolSize":2}}`)
 	svc := rs.service()
 
 	p, err := svc.CreateWarmPool(context.Background(), "ws-1", CreateWarmPoolRequest{
@@ -143,7 +143,7 @@ func TestCreateWarmPool_MapsRequestAndValidates(t *testing.T) {
 	if err := json.Unmarshal(rs.lastBody, &sent); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
-	if sent["templateId"] != "t1" || sent["warmSessions"] != float64(2) || sent["stackId"] != "osx-27-edge" || sent["cluster"] != "c1" {
+	if sent["templateId"] != "t1" || sent["poolSize"] != float64(2) || sent["stackId"] != "osx-27-edge" || sent["cluster"] != "c1" {
 		t.Errorf("body = %s", rs.lastBody)
 	}
 	inputs, _ := sent["sessionInputs"].([]any)
@@ -190,7 +190,7 @@ func TestUpdateWarmPool_SwitchesFollowTheLists(t *testing.T) {
 	if err := json.Unmarshal(rs.lastBody, &sent); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
-	if sent["name"] != "renamed" || sent["warmSessions"] != float64(0) {
+	if sent["name"] != "renamed" || sent["poolSize"] != float64(0) {
 		t.Errorf("body = %s", rs.lastBody)
 	}
 	for _, k := range []string{"updateSessionInputs", "updateEnabledFeatureFlagNames", "updateDeviceSpec", "stackId"} {

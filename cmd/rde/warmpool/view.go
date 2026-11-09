@@ -86,11 +86,8 @@ func renderDetail(w io.Writer, p internalrde.WarmPool) error {
 		if p.MaxSessions > 0 {
 			inUse += " of " + strconv.Itoa(p.MaxSessions)
 		}
-		switch st.LimitState {
-		case internalrde.LimitFull:
+		if st.LimitState == internalrde.LimitFull {
 			inUse += s.Warn.Render(" — full: claims that find no warm session, restores and starts are refused until a session ends")
-		case internalrde.LimitOverMax:
-			inUse += s.Warn.Render(" — over max: nothing is terminated; claims are refused until enough sessions end")
 		}
 		ew.F("%s%s\n", lbl("In use:"), inUse)
 		ew.F("%s%d claimed, %d cold%s\n", lbl("Lifetime:"), st.ClaimedTotal, st.ColdTotal,

@@ -44,9 +44,9 @@ func run(t *testing.T, c *cobra.Command, srvURL, workspaceID string, args []stri
 }
 
 const listBody = `{"warmPools":[
-	{"id":"p-1","name":"ios-devs","templateId":"t-1","templateName":"iOS Dev","ownerType":"workspace","ownerId":"my-ws","warmSessions":2,"maxSessions":5,
+	{"id":"p-1","name":"ios-devs","templateId":"t-1","templateName":"iOS Dev","ownerType":"workspace","ownerId":"my-ws","poolSize":2,"maxSessions":5,
 	 "status":{"ready":1,"warming":1,"claimedTotal":12,"coldTotal":3,"inUse":5,"limitState":"full","refused7d":4}},
-	{"id":"p-2","name":"presets","templateId":"t-1","templateName":"iOS Dev","ownerType":"workspace","ownerId":"my-ws","createdByEmail":"a@b.io","warmSessions":0,
+	{"id":"p-2","name":"presets","templateId":"t-1","templateName":"iOS Dev","ownerType":"workspace","ownerId":"my-ws","createdByEmail":"a@b.io","poolSize":0,
 	 "status":{"configError":"stack retired","inUse":1,"limitState":"no_limit"}}
 ]}`
 
@@ -188,7 +188,7 @@ func TestListCmd_MissingWorkspace(t *testing.T) {
 }
 
 const viewBody = `{"warmPool":{
-	"id":"p-1","name":"ios-devs","templateId":"t-1","templateName":"iOS Dev","ownerType":"workspace","ownerId":"my-ws","warmSessions":2,"maxSessions":10,
+	"id":"p-1","name":"ios-devs","templateId":"t-1","templateName":"iOS Dev","ownerType":"workspace","ownerId":"my-ws","poolSize":2,"maxSessions":10,
 	"machineType":"g2.mac.m2pro.6c-14g",
 	"sessionInputs":[{"key":"GITHUB_TOKEN","value":"leaked","isSecret":true},{"key":"REPO","value":"my-app"},{"key":"SSH_KEY","savedInputId":"si-1"}],
 	"enabledFeatureFlagNames":["enable_beta_simulator"],
@@ -264,7 +264,7 @@ func TestViewCmd_ResolvesName(t *testing.T) {
 		case "/v1/workspaces/ws-1/warm-pools":
 			_, _ = io.WriteString(w, `{"warmPools":[{"id":"p-9","name":"ios-devs"},{"id":"p-7","name":"other"}]}`)
 		case "/v1/workspaces/ws-1/warm-pools/p-9":
-			_, _ = io.WriteString(w, `{"warmPool":{"id":"p-9","name":"ios-devs","warmSessions":1}}`)
+			_, _ = io.WriteString(w, `{"warmPool":{"id":"p-9","name":"ios-devs","poolSize":1}}`)
 		default:
 			t.Errorf("unexpected path: %s", r.URL.Path)
 		}

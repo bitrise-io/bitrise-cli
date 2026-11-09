@@ -85,17 +85,19 @@ type APIError struct {
 // was refused, the numbers, the caller's own sessions in use from the pool
 // and the next steps. The status message is written to be read as is.
 type WarmPoolRefusal struct {
-	// Reason is "POOL_FULL" or "CPU_QUOTA_EXHAUSTED".
+	// Reason is "POOL_FULL", "CPU_QUOTA_EXHAUSTED" or
+	// "MACHINE_CONCURRENCY_EXHAUSTED".
 	Reason string `json:"reason"`
-	// Action is "claim", "restore" or "create".
+	// Action is "create", "claim", "restore" or "start".
 	Action       string `json:"action"`
 	WarmPoolID   string `json:"warmPoolId"`
 	WarmPoolName string `json:"warmPoolName"`
 	// InUse and MaxSessions are the pool's numbers (POOL_FULL).
 	InUse       int `json:"inUse"`
 	MaxSessions int `json:"maxSessions"`
-	// Family, UsedVCPU and QuotaVCPU are the quota's (CPU_QUOTA_EXHAUSTED);
-	// UsedVCPU is nil when the backend does not know it.
+	// Family, UsedVCPU and QuotaVCPU are the quota's (CPU_QUOTA_EXHAUSTED;
+	// the machine limit of MACHINE_CONCURRENCY_EXHAUSTED is in the
+	// message); UsedVCPU is nil when the backend does not know it.
 	Family       string                   `json:"family"`
 	UsedVCPU     *int                     `json:"usedVcpu"`
 	QuotaVCPU    int                      `json:"quotaVcpu"`
