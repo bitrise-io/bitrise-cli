@@ -49,7 +49,8 @@ Only terminate is widened. The session is stopped, never deleted, and its
 owner can restore it; viewing, deleting, restoring, exec, logs and the rest
 still answer "not found" for a session that is not yours. For the same reason
 --wait cannot follow such a session: the command warns and returns while it
-is still "terminating".
+is still "terminating". For someone else's session only its ID, name, status,
+owner and timestamps come back, so that is all this command prints for it.
 
 Where it is not enabled, the API refuses with 403 "Terminating another
 member's session is not enabled for this workspace."; without the permission,
