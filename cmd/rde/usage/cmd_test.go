@@ -375,22 +375,37 @@ func TestUsageCmd_Human_SessionsHiddenByDefault(t *testing.T) {
 	}
 }
 
-// The full --sessions layout against a fixed clock: the per-user lists sit
-// between the per-user table and the quota table, oldest first, and the pool
-// column and its hint appear only because a held session is listed.
-func TestRenderUsage_Sessions(t *testing.T) {
+// renderFixed renders sessionsReport the way the command does — the --os
+// filter applied to the data first — against a fixed clock, so the whole
+// layout, ages included, can be compared.
+func renderFixed(t *testing.T, listSessions bool, os string) string {
+	t.Helper()
 	srv := usageServer(t, http.StatusOK, sessionsReport)
 	defer srv.Close()
 	res, err := internalrde.NewService(rdeapi.New(srv.URL, "tok")).GetWorkspaceUsage(context.Background(), "ws-1")
 	if err != nil {
 		t.Fatalf("GetWorkspaceUsage: %v", err)
 	}
-
+	opts := renderOptions{
+		listSessions: listSessions,
+		os:           os,
+		quotasLoaded: len(res.ComputeQuotas) > 0,
+		now:          time.Date(2026, 9, 4, 12, 0, 0, 0, time.UTC),
+	}
+	if os != "" {
+		res = res.FilterOS(os)
+	}
 	var buf bytes.Buffer
-	now := time.Date(2026, 9, 4, 12, 0, 0, 0, time.UTC)
-	if err := renderUsage(&buf, res, true, now); err != nil {
+	if err := renderUsage(&buf, res, opts); err != nil {
 		t.Fatalf("renderUsage: %v", err)
 	}
+	return buf.String()
+}
+
+// The full --sessions layout against a fixed clock: the per-user lists sit
+// between the per-user table and the quota table, oldest first, and the pool
+// column and its hint appear only because a held session is listed.
+func TestRenderUsage_Sessions(t *testing.T) {
 	const want = `Sessions:   3     (Linux 1, macOS 1, unknown 1)
 vCPU:       12    (Linux 8, macOS 4)
 Memory GB:  38    (Linux 32, macOS 6)
@@ -413,8 +428,222 @@ A session held by a pool cannot be terminated directly: lower the pool's size ('
 MACHINE FAMILY  OS     VCPU USED / QUOTA  STATUS
 M2 Pro          macOS  4 / 48             44 left
 `
-	if got := buf.String(); got != want {
+	if got := renderFixed(t, true, ""); got != want {
 		t.Errorf("output mismatch\n--- got ---\n%s\n--- want ---\n%s", got, want)
+	}
+}
+
+// --os narrows the per-user table to that OS's numbers (no combined total,
+// no other OS), leaves out users with no session on it and narrows the quota
+// table; the summary lines stay workspace-wide.
+func TestRenderUsage_OS(t *testing.T) {
+	const want = `Sessions:   3     (Linux 1, macOS 1, unknown 1)
+vCPU:       12    (Linux 8, macOS 4)
+Memory GB:  38    (Linux 32, macOS 6)
+
+USER               MACOS SESSIONS  MACOS VCPU/GB
+alice@example.com  1               4 / 6
+
+MACHINE FAMILY  OS     VCPU USED / QUOTA  STATUS
+M2 Pro          macOS  4 / 48             44 left
+`
+	if got := renderFixed(t, false, "macos"); got != want {
+		t.Errorf("output mismatch\n--- got ---\n%s\n--- want ---\n%s", got, want)
+	}
+}
+
+// --os with --sessions: each user's list holds only that OS's sessions. The
+// held session of unknown OS is gone, and with it the pool column and hint.
+func TestRenderUsage_OS_Sessions(t *testing.T) {
+	const want = `Sessions:   3     (Linux 1, macOS 1, unknown 1)
+vCPU:       12    (Linux 8, macOS 4)
+Memory GB:  38    (Linux 32, macOS 6)
+
+USER               MACOS SESSIONS  MACOS VCPU/GB
+alice@example.com  1               4 / 6
+
+alice@example.com
+NAME       STATUS       AGE     OS     VCPU/GB  ID
+ios-build  terminating  5h 12m  macOS  4 / 6    ` + idIOSBuild + `
+
+MACHINE FAMILY  OS     VCPU USED / QUOTA  STATUS
+M2 Pro          macOS  4 / 48             44 left
+`
+	if got := renderFixed(t, true, "macos"); got != want {
+		t.Errorf("output mismatch\n--- got ---\n%s\n--- want ---\n%s", got, want)
+	}
+}
+
+// The plan of sessionsReport has no Linux machine family: under --os linux
+// that is said as such, not as a quota that failed to load.
+func TestRenderUsage_OS_NoQuotaOnThatOS(t *testing.T) {
+	const want = `Sessions:   3     (Linux 1, macOS 1, unknown 1)
+vCPU:       12    (Linux 8, macOS 4)
+Memory GB:  38    (Linux 32, macOS 6)
+
+USER               LINUX SESSIONS  LINUX VCPU/GB
+alice@example.com  1               8 / 32
+
+alice@example.com
+NAME      STATUS   AGE    OS     VCPU/GB  ID
+api-work  running  3d 4h  Linux  8 / 32   ` + idAPIWork + `
+
+vCPU quota: the plan includes no Linux machine family.
+`
+	if got := renderFixed(t, true, "linux"); got != want {
+		t.Errorf("output mismatch\n--- got ---\n%s\n--- want ---\n%s", got, want)
+	}
+}
+
+// linuxOnlyReport has one user with one Linux session and nothing on macOS.
+const linuxOnlyReport = `{
+	"totals": {"linux": {"sessionCount": 1, "vcpu": 2, "memoryGb": 8}},
+	"users": [{
+		"userSlug": "alice-slug", "email": "alice@example.com",
+		"totals": {"linux": {"sessionCount": 1, "vcpu": 2, "memoryGb": 8}},
+		"sessions": [{"id": "` + idAPIWork + `", "name": "api-work", "os": "linux", "vcpu": 2, "memoryGb": 8,
+			"status": "SESSION_STATUS_RUNNING", "createdAt": "2026-09-01T08:00:00Z"}]
+	}],
+	"computeQuotas": [{"family": "linux-lc01", "displayName": "x86 Linux", "usedVcpu": 2, "quotaVcpu": 64, "os": "linux"}]
+}`
+
+// Nobody has a session on the filtered OS: one plain sentence instead of an
+// empty table, and --sessions adds nothing to it.
+func TestUsageCmd_Human_OS_NoSessionsOnThatOS(t *testing.T) {
+	srv := usageServer(t, http.StatusOK, linuxOnlyReport)
+	defer srv.Close()
+
+	for _, args := range [][]string{{"--os", "macos"}, {"--os", "macos", "--sessions"}} {
+		stdout, _, err := run(t, NewCmd(), srv.URL, "ws-1", output.Human, args...)
+		if err != nil {
+			t.Fatalf("%v: unexpected error: %v", args, err)
+		}
+		const want = `Sessions:   1     (Linux 1, macOS 0)
+vCPU:       2     (Linux 2, macOS 0)
+Memory GB:  8     (Linux 8, macOS 0)
+
+No active macOS sessions.
+
+vCPU quota: the plan includes no macOS machine family.
+`
+		if stdout != want {
+			t.Errorf("%v: output mismatch\n--- got ---\n%s\n--- want ---\n%s", args, stdout, want)
+		}
+	}
+}
+
+// --os reaches the renderer through the flag, on its own and with --sessions.
+func TestUsageCmd_Human_OSFlag(t *testing.T) {
+	srv := usageServer(t, http.StatusOK, sessionsReport)
+	defer srv.Close()
+
+	stdout, _, err := run(t, NewCmd(), srv.URL, "ws-1", output.Human, "--os", "macos")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	for _, want := range []string{"MACOS SESSIONS", "MACOS VCPU/GB", "alice@example.com", "M2 Pro"} {
+		if !strings.Contains(stdout, want) {
+			t.Errorf("stdout missing %q:\n%s", want, stdout)
+		}
+	}
+	for _, unwanted := range []string{"LINUX VCPU/GB", "(workspace)", "ios-build"} {
+		if strings.Contains(stdout, unwanted) {
+			t.Errorf("stdout contains %q under --os macos:\n%s", unwanted, stdout)
+		}
+	}
+
+	stdout, _, err = run(t, NewCmd(), srv.URL, "ws-1", output.Human, "--os", "macos", "--sessions")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(stdout, "ios-build") || !strings.Contains(stdout, idIOSBuild) {
+		t.Errorf("stdout missing the macOS session:\n%s", stdout)
+	}
+	for _, unwanted := range []string{"api-work", "warm-1", "HELD BY POOL"} {
+		if strings.Contains(stdout, unwanted) {
+			t.Errorf("stdout contains %q under --os macos --sessions:\n%s", unwanted, stdout)
+		}
+	}
+}
+
+// The session list is not enabled (no sessions on any row) but users do run
+// sessions on the filtered OS: --sessions still says the list is missing.
+func TestUsageCmd_Human_OSFlag_SessionsNotEnabled(t *testing.T) {
+	srv := usageServer(t, http.StatusOK, sparseReport)
+	defer srv.Close()
+
+	stdout, _, err := run(t, NewCmd(), srv.URL, "ws-1", output.Human, "--os", "linux", "--sessions")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	for _, want := range []string{"LINUX SESSIONS", "alice@example.com", "Session list not available"} {
+		if !strings.Contains(stdout, want) {
+			t.Errorf("stdout missing %q:\n%s", want, stdout)
+		}
+	}
+}
+
+// The filter applies to the JSON too: users, sessions and compute_quotas are
+// narrowed, the totals objects keep their shape.
+func TestUsageCmd_JSON_OSFlag(t *testing.T) {
+	srv := usageServer(t, http.StatusOK, sessionsReport)
+	defer srv.Close()
+
+	stdout, _, err := run(t, NewCmd(), srv.URL, "ws-1", output.JSON, "--os", "macos")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	var got struct {
+		Totals map[string]map[string]float64 `json:"totals"`
+		Users  []struct {
+			Email    string                        `json:"email"`
+			Totals   map[string]map[string]float64 `json:"totals"`
+			Sessions []map[string]any              `json:"sessions"`
+		} `json:"users"`
+		ComputeQuotas []map[string]any `json:"compute_quotas"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
+		t.Fatalf("stdout is not JSON: %v\n%s", err, stdout)
+	}
+	if len(got.Users) != 1 || got.Users[0].Email != "alice@example.com" {
+		t.Fatalf("users = %+v, want alice only", got.Users)
+	}
+	if s := got.Users[0].Sessions; len(s) != 1 || s[0]["id"] != idIOSBuild || s[0]["os"] != "macos" {
+		t.Errorf("users[0].sessions = %v, want the macOS session only", s)
+	}
+	// Workspace-wide and per-row totals still carry every OS.
+	if got.Totals["linux"]["session_count"] != 1 || got.Totals["macos"]["session_count"] != 1 || got.Totals["unknown"]["session_count"] != 1 {
+		t.Errorf("totals = %v, want all three buckets untouched", got.Totals)
+	}
+	if got.Users[0].Totals["linux"]["vcpu"] != 8 || got.Users[0].Totals["macos"]["vcpu"] != 4 {
+		t.Errorf("users[0].totals = %v, want both OS buckets untouched", got.Users[0].Totals)
+	}
+	if len(got.ComputeQuotas) != 1 || got.ComputeQuotas[0]["family"] != "m2pro" {
+		t.Errorf("compute_quotas = %v, want the macOS family only", got.ComputeQuotas)
+	}
+
+	// An OS nothing matches leaves arrays, not nulls.
+	stdout, _, err = run(t, NewCmd(), srv.URL, "ws-1", output.JSON, "--os", "linux")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(stdout, `"compute_quotas": []`) {
+		t.Errorf("compute_quotas not an empty array under --os linux:\n%s", stdout)
+	}
+}
+
+// Anything but linux or macos is refused before any request is made.
+func TestUsageCmd_OSFlag_Invalid(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+	}))
+	defer srv.Close()
+
+	for _, value := range []string{"windows", "macOS", "Linux", "all"} {
+		_, _, err := run(t, NewCmd(), srv.URL, "ws-1", output.Human, "--os="+value)
+		if err == nil || err.Error() != "--os must be linux or macos" {
+			t.Errorf("--os=%s: error = %v, want the usage error", value, err)
+		}
 	}
 }
 

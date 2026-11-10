@@ -28,6 +28,16 @@ stop sessions left running. The exception is a session held by a pool (HELD BY
 POOL in the list, held_by_warm_pool_id in JSON): a warm session nobody has
 claimed yet. Lower the pool's size to remove it ('rde warm-pool set-size').
 
+Pass --os linux or --os macos to look at one OS only, for example when macOS
+capacity is the tight one. The per-user table then shows only that OS's
+numbers and leaves out users with no active session on it; the session lists
+(--sessions) and the quota table show only that OS. The summary lines at the
+top stay workspace-wide. A session whose OS could not be determined is on
+neither OS. With --output json the same filter applies: users keeps only the
+rows with an active session on that OS, each sessions array only that OS's
+sessions and compute_quotas only that OS's machine families, while the totals
+objects keep their shape (they are split by OS already).
+
 ```
 bitrise-cli rde usage [flags]
 ```
@@ -37,6 +47,7 @@ bitrise-cli rde usage [flags]
 ```
   bitrise-cli rde usage
   bitrise-cli rde usage --sessions
+  bitrise-cli rde usage --sessions --os macos
   bitrise-cli rde usage --output json | jq '.totals'
   bitrise-cli rde usage --output json | jq '.compute_quotas'
   # IDs of the sessions created more than 7 days ago, pool-held ones left out
@@ -47,8 +58,9 @@ bitrise-cli rde usage [flags]
 ### Options
 
 ```
-  -h, --help       help for usage
-      --sessions   also list each user's active sessions, oldest first (--output json always includes them)
+  -h, --help        help for usage
+      --os string   show one OS only: linux or macos (narrows the per-user table, the session lists and the quota table; applies to --output json too)
+      --sessions    also list each user's active sessions, oldest first (--output json always includes them)
 ```
 
 ### Options inherited from parent commands

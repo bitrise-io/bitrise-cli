@@ -102,6 +102,57 @@ type WorkspaceUsage struct {
 	ComputeQuotas []ComputeQuota `json:"compute_quotas"`
 }
 
+// OS values of the usage report: UsageSession.OS, ComputeQuota.OS and the
+// argument of WorkspaceUsage.FilterOS.
+const (
+	UsageOSLinux = "linux"
+	UsageOSMacos = "macos"
+)
+
+// OSUsage returns the bucket of one OS (UsageOSLinux or UsageOSMacos); the
+// zero value for anything else.
+func (t UsageTotals) OSUsage(os string) PlatformUsage {
+	switch os {
+	case UsageOSLinux:
+		return t.Linux
+	case UsageOSMacos:
+		return t.Macos
+	}
+	return PlatformUsage{}
+}
+
+// FilterOS narrows the report to one OS (UsageOSLinux or UsageOSMacos):
+// Users keeps only the rows with an active session on that OS, each row's
+// Sessions only the sessions on it, and ComputeQuotas only the machine
+// families of that OS. A session or family whose OS the backend could not
+// tell belongs to neither OS. The Totals objects — workspace-wide and per
+// row — keep their shape: they are split by OS already. The lists stay
+// non-nil, so the JSON shape keeps its arrays.
+func (u WorkspaceUsage) FilterOS(os string) WorkspaceUsage {
+	out := u
+	out.Users = make([]UserUsage, 0, len(u.Users))
+	for _, row := range u.Users {
+		if row.Totals.OSUsage(os).SessionCount == 0 {
+			continue
+		}
+		sessions := make([]UsageSession, 0, len(row.Sessions))
+		for _, sess := range row.Sessions {
+			if sess.OS == os {
+				sessions = append(sessions, sess)
+			}
+		}
+		row.Sessions = sessions
+		out.Users = append(out.Users, row)
+	}
+	out.ComputeQuotas = make([]ComputeQuota, 0, len(u.ComputeQuotas))
+	for _, q := range u.ComputeQuotas {
+		if q.OS == os {
+			out.ComputeQuotas = append(out.ComputeQuotas, q)
+		}
+	}
+	return out
+}
+
 // GetWorkspaceUsage returns the workspace's active-session usage snapshot.
 // Requires the workspace's billing-view permission (workspace owners and
 // billing-managing custom roles).

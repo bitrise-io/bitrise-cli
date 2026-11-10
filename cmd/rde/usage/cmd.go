@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -18,7 +19,10 @@ import (
 // NewCmd returns the `rde usage` command. A leaf command, not a noun with
 // subcommands: the report is a single summary, not a listable collection.
 func NewCmd() *cobra.Command {
-	var listSessions bool
+	var (
+		listSessions bool
+		osFilter     string
+	)
 	c := &cobra.Command{
 		Use:   "usage",
 		Short: "Show the workspace's active session and resource usage",
@@ -44,15 +48,31 @@ On such a workspace, whoever can view this report can also terminate any
 listed session with 'rde session terminate SESSION_ID' — a way to find and
 stop sessions left running. The exception is a session held by a pool (HELD BY
 POOL in the list, held_by_warm_pool_id in JSON): a warm session nobody has
-claimed yet. Lower the pool's size to remove it ('rde warm-pool set-size').`,
+claimed yet. Lower the pool's size to remove it ('rde warm-pool set-size').
+
+Pass --os linux or --os macos to look at one OS only, for example when macOS
+capacity is the tight one. The per-user table then shows only that OS's
+numbers and leaves out users with no active session on it; the session lists
+(--sessions) and the quota table show only that OS. The summary lines at the
+top stay workspace-wide. A session whose OS could not be determined is on
+neither OS. With --output json the same filter applies: users keeps only the
+rows with an active session on that OS, each sessions array only that OS's
+sessions and compute_quotas only that OS's machine families, while the totals
+objects keep their shape (they are split by OS already).`,
 		Example: `  bitrise-cli rde usage
   bitrise-cli rde usage --sessions
+  bitrise-cli rde usage --sessions --os macos
   bitrise-cli rde usage --output json | jq '.totals'
   bitrise-cli rde usage --output json | jq '.compute_quotas'
   # IDs of the sessions created more than 7 days ago, pool-held ones left out
   bitrise-cli rde usage --output json | jq -r '.users[].sessions[]
     | select(.held_by_warm_pool_id == "" and .created_at < (now - 7*86400 | todate)) | .id'`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			switch osFilter {
+			case "", internalrde.UsageOSLinux, internalrde.UsageOSMacos:
+			default:
+				return fmt.Errorf("--os must be %s or %s", internalrde.UsageOSLinux, internalrde.UsageOSMacos)
+			}
 			workspaceID, err := cmdutil.ResolveWorkspaceID(cmd)
 			if err != nil {
 				return err
@@ -66,8 +86,19 @@ claimed yet. Lower the pool's size to remove it ('rde warm-pool set-size').`,
 			if err != nil {
 				return err
 			}
+			opts := renderOptions{
+				listSessions: listSessions,
+				os:           osFilter,
+				quotasLoaded: len(res.ComputeQuotas) > 0,
+				now:          time.Now(),
+			}
+			// The filter narrows the data, so both formats show the same
+			// thing: the JSON is filtered too.
+			if osFilter != "" {
+				res = res.FilterOS(osFilter)
+			}
 			render := func(w io.Writer, res internalrde.WorkspaceUsage) error {
-				return renderUsage(w, res, listSessions, time.Now())
+				return renderUsage(w, res, opts)
 			}
 			if err := output.Render(cmd.OutOrStdout(), format, res, render); err != nil {
 				return err
@@ -85,19 +116,40 @@ claimed yet. Lower the pool's size to remove it ('rde warm-pool set-size').`,
 		},
 	}
 	c.Flags().BoolVar(&listSessions, "sessions", false, "also list each user's active sessions, oldest first (--output json always includes them)")
+	c.Flags().StringVar(&osFilter, "os", "", "show one OS only: linux or macos (narrows the per-user table, the session lists and the quota table; applies to --output json too)")
+
+	_ = c.RegisterFlagCompletionFunc("os", func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
+		return []string{
+			internalrde.UsageOSLinux + "\tLinux sessions and machine families only",
+			internalrde.UsageOSMacos + "\tmacOS sessions and machine families only",
+		}, cobra.ShellCompDirectiveNoFileComp
+	})
 	return c
 }
 
-// renderUsage prints the report. listSessions adds the per-user session
-// lists between the per-user table and the quota table; now is the instant
-// the sessions' ages are measured against.
-func renderUsage(w io.Writer, res internalrde.WorkspaceUsage, listSessions bool, now time.Time) error {
+// renderOptions is what the human renderer needs besides the report.
+type renderOptions struct {
+	// listSessions adds the per-user session lists between the per-user
+	// table and the quota table.
+	listSessions bool
+	// os is the --os filter the report was narrowed with ("" for none): the
+	// per-user table then shows that OS's numbers only.
+	os string
+	// quotasLoaded reports whether the report carried quotas before the
+	// filter, to tell "none on this OS" from "could not be loaded".
+	quotasLoaded bool
+	// now is the instant the sessions' ages are measured against.
+	now time.Time
+}
+
+// renderUsage prints the report, already narrowed to opts.os when set.
+func renderUsage(w io.Writer, res internalrde.WorkspaceUsage, opts renderOptions) error {
 	s := style.New(w)
-	if err := renderSessions(w, s, res); err != nil {
+	if err := renderSessions(w, s, res, opts.os); err != nil {
 		return err
 	}
-	if listSessions {
-		if err := renderUserSessions(w, s, res, now); err != nil {
+	if opts.listSessions {
+		if err := renderUserSessions(w, s, res, opts); err != nil {
 			return err
 		}
 	}
@@ -106,11 +158,14 @@ func renderUsage(w io.Writer, res internalrde.WorkspaceUsage, listSessions bool,
 	if ew.Err != nil {
 		return ew.Err
 	}
-	return renderQuotas(w, s, res.ComputeQuotas)
+	return renderQuotas(w, s, res.ComputeQuotas, opts)
 }
 
 // renderSessions prints the active-session totals and the per-user table.
-func renderSessions(w io.Writer, s style.Styles, res internalrde.WorkspaceUsage) error {
+// The totals stay workspace-wide under an OS filter (they name each OS's
+// share anyway); the table shows the filtered OS only, or one sentence when
+// nobody has a session on it.
+func renderSessions(w io.Writer, s style.Styles, res internalrde.WorkspaceUsage, os string) error {
 	total := sumBuckets(res.Totals)
 	if total.SessionCount == 0 {
 		_, err := fmt.Fprintln(w, "No active sessions.")
@@ -125,11 +180,18 @@ func renderSessions(w io.Writer, s style.Styles, res internalrde.WorkspaceUsage)
 	ew.F("%s%-6d%s\n", lbl("vCPU:"), total.VCPU, osSplit(res.Totals, func(p internalrde.PlatformUsage) int32 { return p.VCPU }))
 	ew.F("%s%-6d%s\n", lbl("Memory GB:"), total.MemoryGB, osSplit(res.Totals, func(p internalrde.PlatformUsage) int32 { return p.MemoryGB }))
 
-	if len(res.Users) > 0 {
+	switch {
+	case len(res.Users) > 0:
 		ew.F("\n")
-		if err := renderUserTable(w, s, res.Users); err != nil {
-			return err
+		if ew.Err != nil {
+			return ew.Err
 		}
+		if os != "" {
+			return renderUserTableOS(w, s, res.Users, os)
+		}
+		return renderUserTable(w, s, res.Users)
+	case os != "":
+		ew.F("\nNo active %s sessions.\n", osLabel(os))
 	}
 	return ew.Err
 }
@@ -138,9 +200,9 @@ func renderSessions(w io.Writer, s style.Styles, res internalrde.WorkspaceUsage)
 // row's totals, oldest first (the order the backend sends). A report with
 // active sessions but no session on any row comes from a workspace where the
 // list is not enabled: that gets one plain sentence instead of nothing.
-func renderUserSessions(w io.Writer, s style.Styles, res internalrde.WorkspaceUsage, now time.Time) error {
-	if sumBuckets(res.Totals).SessionCount == 0 {
-		// "No active sessions." already says it.
+func renderUserSessions(w io.Writer, s style.Styles, res internalrde.WorkspaceUsage, opts renderOptions) error {
+	if sumBuckets(res.Totals).SessionCount == 0 || (opts.os != "" && len(res.Users) == 0) {
+		// "No active sessions." / "No active macOS sessions." already says it.
 		return nil
 	}
 	ew := cmdutil.NewErrWriter(w)
@@ -154,7 +216,7 @@ func renderUserSessions(w io.Writer, s style.Styles, res internalrde.WorkspaceUs
 		if ew.Err != nil {
 			return ew.Err
 		}
-		tableHeld, err := renderSessionTable(w, s, u.Sessions, now)
+		tableHeld, err := renderSessionTable(w, s, u.Sessions, opts.now)
 		if err != nil {
 			return err
 		}
@@ -253,9 +315,13 @@ func formatAge(created *time.Time, now time.Time) string {
 // renderQuotas prints the vCPU quota per machine family. Shown even with no
 // active sessions: warm pool machines hold quota too, and the quota itself is
 // what a user checks before starting a session.
-func renderQuotas(w io.Writer, s style.Styles, quotas []internalrde.ComputeQuota) error {
+func renderQuotas(w io.Writer, s style.Styles, quotas []internalrde.ComputeQuota, opts renderOptions) error {
 	if len(quotas) == 0 {
-		_, err := fmt.Fprintln(w, s.Dim.Render("vCPU quota: could not be loaded."))
+		msg := "vCPU quota: could not be loaded."
+		if opts.os != "" && opts.quotasLoaded {
+			msg = fmt.Sprintf("vCPU quota: the plan includes no %s machine family.", osLabel(opts.os))
+		}
+		_, err := fmt.Fprintln(w, s.Dim.Render(msg))
 		return err
 	}
 	const colStatus = 3
@@ -350,6 +416,26 @@ func renderUserTable(w io.Writer, s style.Styles, users []internalrde.UserUsage)
 			row = append(row, vcpuGB(u.Totals.Unknown))
 		}
 		rows = append(rows, row)
+	}
+	styler := func(row, col int, content string) string {
+		if col == colUser && users[row].IsWorkspace {
+			return s.Dim.Render(content)
+		}
+		return content
+	}
+	return style.Table(w, headers, rows, s.Header, styler)
+}
+
+// renderUserTableOS is the per-user table narrowed to one OS: that OS's
+// session count and vCPU/GB, with no combined total and no other OS.
+func renderUserTableOS(w io.Writer, s style.Styles, users []internalrde.UserUsage, os string) error {
+	const colUser = 0
+	prefix := strings.ToUpper(os)
+	headers := []string{"USER", prefix + " SESSIONS", prefix + " VCPU/GB"}
+	rows := make([][]string, 0, len(users))
+	for _, u := range users {
+		p := u.Totals.OSUsage(os)
+		rows = append(rows, []string{userLabel(u), strconv.Itoa(int(p.SessionCount)), vcpuGB(p)})
 	}
 	styler := func(row, col int, content string) string {
 		if col == colUser && users[row].IsWorkspace {
