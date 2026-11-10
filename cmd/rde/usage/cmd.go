@@ -68,9 +68,10 @@ objects keep their shape (they are split by OS already).`,
   bitrise-cli rde usage --output json | jq -r '.users[].sessions[]
     | select(.held_by_warm_pool_id == "" and .created_at < (now - 7*86400 | todate)) | .id'`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			switch osFilter {
-			case "", internalrde.UsageOSLinux, internalrde.UsageOSMacos:
-			default:
+			// An explicitly empty --os (say --os "$OS" with the variable
+			// unset) is refused like any other bad value: treating it as "no
+			// filter" would hand a script the sessions of both OSs.
+			if cmd.Flags().Changed("os") && osFilter != internalrde.UsageOSLinux && osFilter != internalrde.UsageOSMacos {
 				return fmt.Errorf("--os must be %s or %s", internalrde.UsageOSLinux, internalrde.UsageOSMacos)
 			}
 			workspaceID, err := cmdutil.ResolveWorkspaceID(cmd)

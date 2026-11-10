@@ -632,17 +632,21 @@ func TestUsageCmd_JSON_OSFlag(t *testing.T) {
 	}
 }
 
-// Anything but linux or macos is refused before any request is made.
+// Anything but linux or macos is refused before any request is made — an
+// explicitly empty value too (--os "$OS" with the variable unset), so a
+// script never gets the unfiltered report where it asked for one OS.
 func TestUsageCmd_OSFlag_Invalid(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
 		t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
 	}))
 	defer srv.Close()
 
-	for _, value := range []string{"windows", "macOS", "Linux", "all"} {
-		_, _, err := run(t, NewCmd(), srv.URL, "ws-1", output.Human, "--os="+value)
-		if err == nil || err.Error() != "--os must be linux or macos" {
-			t.Errorf("--os=%s: error = %v, want the usage error", value, err)
+	for _, value := range []string{"windows", "macOS", "Linux", "all", ""} {
+		for _, format := range []output.Format{output.Human, output.JSON} {
+			_, _, err := run(t, NewCmd(), srv.URL, "ws-1", format, "--os", value)
+			if err == nil || err.Error() != "--os must be linux or macos" {
+				t.Errorf("--os %q (%s): error = %v, want the usage error", value, format, err)
+			}
 		}
 	}
 }
