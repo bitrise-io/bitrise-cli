@@ -30,6 +30,35 @@ type UserUsage struct {
 	Username    string       `json:"username"`
 	IsWorkspace bool         `json:"isWorkspace"`
 	Totals      *UsageTotals `json:"totals"`
+	// Sessions are the active sessions behind this row's totals, oldest
+	// first. The backend fills it only for a workspace where terminating
+	// any session is enabled; absent otherwise.
+	Sessions []UsageSession `json:"sessions"`
+}
+
+// UsageSession is one active session in the usage report: enough to decide
+// whether to terminate it (TerminateSession with its ID). The backend omits
+// zero-valued fields, so absent means 0 / empty.
+type UsageSession struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	// OS is "linux" or "macos"; empty when the backend could not tell.
+	OS          string `json:"os"`
+	MachineType string `json:"machineType"`
+	// VCPU and MemoryGB are 0 when the machine type's spec is unknown.
+	VCPU     int32 `json:"vcpu"`
+	MemoryGB int32 `json:"memoryGb"`
+	// Status is the raw SESSION_STATUS_* enum string (starting, running,
+	// terminating or draining).
+	Status string `json:"status"`
+	// CreatedAt is RFC3339. A session terminated and restored since keeps
+	// its original creation time.
+	CreatedAt string `json:"createdAt"`
+	// HeldByWarmPoolID is the ID of the warm pool holding the session:
+	// unclaimed inventory, or the machine a pool keeps after its setup
+	// failed. Such a session cannot be terminated directly. Empty for every
+	// other session, including ones already claimed from a pool.
+	HeldByWarmPoolID string `json:"heldByWarmPoolId"`
 }
 
 // ComputeQuota is the workspace's vCPU quota on one machine family and the

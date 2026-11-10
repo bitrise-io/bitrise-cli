@@ -54,6 +54,60 @@ func TestGetWorkspaceUsage_PathAndParse(t *testing.T) {
 	}
 }
 
+// The per-user session list arrives in the wire's lowerCamelCase, with
+// zero-valued fields omitted.
+func TestGetWorkspaceUsage_ParsesUserSessions(t *testing.T) {
+	rs := newRecordingServer(t, `{
+		"users": [
+			{
+				"userSlug": "alice-slug", "email": "alice@example.com",
+				"sessions": [{
+					"id": "11111111-1111-1111-1111-111111111111", "name": "api-work", "os": "linux",
+					"machineType": "g2.linux.large", "vcpu": 8, "memoryGb": 32,
+					"status": "SESSION_STATUS_RUNNING", "createdAt": "2026-09-01T08:00:00Z"
+				}]
+			},
+			{
+				"isWorkspace": true,
+				"sessions": [{
+					"id": "22222222-2222-2222-2222-222222222222", "name": "warm-1",
+					"status": "SESSION_STATUS_STARTING", "createdAt": "2026-09-02T08:00:00Z",
+					"heldByWarmPoolId": "33333333-3333-3333-3333-333333333333"
+				}]
+			},
+			{"userSlug": "bob-slug"}
+		]
+	}`)
+
+	usage, err := rs.client().GetWorkspaceUsage(context.Background(), "ws-1")
+	if err != nil {
+		t.Fatalf("GetWorkspaceUsage: %v", err)
+	}
+	if len(usage.Users) != 3 {
+		t.Fatalf("users = %+v, want 3 rows", usage.Users)
+	}
+	want := UsageSession{
+		ID: "11111111-1111-1111-1111-111111111111", Name: "api-work", OS: "linux",
+		MachineType: "g2.linux.large", VCPU: 8, MemoryGB: 32,
+		Status: "SESSION_STATUS_RUNNING", CreatedAt: "2026-09-01T08:00:00Z",
+	}
+	if got := usage.Users[0].Sessions; len(got) != 1 || got[0] != want {
+		t.Errorf("users[0].sessions = %+v, want [%+v]", got, want)
+	}
+	wantHeld := UsageSession{
+		ID: "22222222-2222-2222-2222-222222222222", Name: "warm-1",
+		Status: "SESSION_STATUS_STARTING", CreatedAt: "2026-09-02T08:00:00Z",
+		HeldByWarmPoolID: "33333333-3333-3333-3333-333333333333",
+	}
+	if got := usage.Users[1].Sessions; len(got) != 1 || got[0] != wantHeld {
+		t.Errorf("users[1].sessions = %+v, want [%+v]", got, wantHeld)
+	}
+	// A workspace where the list is not enabled omits it.
+	if got := usage.Users[2].Sessions; len(got) != 0 {
+		t.Errorf("users[2].sessions = %+v, want none", got)
+	}
+}
+
 func TestGetWorkspaceUsage_ValidationGuard(t *testing.T) {
 	rs := newRecordingServer(t, `{}`)
 

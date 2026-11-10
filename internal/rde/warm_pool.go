@@ -99,6 +99,10 @@ type WarmPoolStatus struct {
 	// Sessions is the inventory, oldest first — filled by GetWarmPool
 	// only, empty on list responses.
 	Sessions []WarmPoolSession `json:"sessions,omitempty"`
+	// OldestWarmSessionCreatedAt is when the pool's longest-waiting warm
+	// session (warming or ready, not yet claimed) was created; nil when the
+	// pool holds no warm sessions.
+	OldestWarmSessionCreatedAt *time.Time `json:"oldest_warm_session_created_at,omitempty"`
 }
 
 // WarmPoolSession is one warm session in a pool's inventory.
@@ -416,6 +420,8 @@ func warmPoolStatusFromAPI(w rdeapi.WarmPoolStatus) WarmPoolStatus {
 		LastError:    w.LastError,
 		ConfigError:  w.ConfigError,
 		PausedUntil:  parseTime(w.PausedUntil),
+
+		OldestWarmSessionCreatedAt: parseTime(w.OldestWarmSessionCreatedAt),
 	}
 	for _, sess := range w.Sessions {
 		out.Sessions = append(out.Sessions, WarmPoolSession{

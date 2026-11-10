@@ -44,7 +44,7 @@ func TestListWarmPools_PathQueryAndParse(t *testing.T) {
 func TestGetWarmPool_PathAndInventory(t *testing.T) {
 	rs := newRecordingServer(t, `{"warmPool":{"id":"p1","name":"ios-devs",
 		"sessionInputs":[{"key":"GITHUB_TOKEN","isSecret":true},{"key":"REPO","value":"app"},{"key":"SSH_KEY","savedInputId":"si-1"}],
-		"status":{"ready":1,"warming":0,"lastError":"quota exceeded",
+		"status":{"ready":1,"warming":0,"lastError":"quota exceeded","oldestWarmSessionCreatedAt":"2026-09-17T08:00:00Z",
 		  "sessions":[{"sessionId":"s-1","state":"ready","createdAt":"2026-09-17T08:00:00Z","readyAt":"2026-09-17T08:04:00Z"}]}}}`)
 
 	p, err := rs.client().GetWarmPool(context.Background(), "ws-1", "p 1")
@@ -59,6 +59,9 @@ func TestGetWarmPool_PathAndInventory(t *testing.T) {
 	}
 	if p.Status == nil || p.Status.LastError != "quota exceeded" || len(p.Status.Sessions) != 1 || p.Status.Sessions[0].State != "ready" {
 		t.Errorf("status = %+v", p.Status)
+	}
+	if got, want := p.Status.OldestWarmSessionCreatedAt, "2026-09-17T08:00:00Z"; got != want {
+		t.Errorf("oldestWarmSessionCreatedAt = %q, want %q", got, want)
 	}
 }
 

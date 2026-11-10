@@ -520,6 +520,134 @@ func TestTerminateCmd_HappyPath(t *testing.T) {
 	}
 }
 
+// Someone else's session on a workspace where terminating any session is not
+// enabled: the API's sentence reaches the user word for word.
+func TestTerminateCmd_NotEnabledMessageIntact(t *testing.T) {
+	const msg = "Terminating another member's session is not enabled for this workspace."
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+		_, _ = io.WriteString(w, `{"code":7,"message":"`+msg+`","details":[]}`)
+	}))
+	defer srv.Close()
+
+	stdout, _, err := run(t, newTerminateCmd(), srv.URL, "ws-1", []string{uuidSession}, output.Human)
+	if err == nil {
+		t.Fatalf("expected the 403 as an error, stdout:\n%s", stdout)
+	}
+	if got, want := err.Error(), "RDE API 403: "+msg; got != want {
+		t.Errorf("error = %q, want %q", got, want)
+	}
+}
+
+// foreignTerminateBody is what the API returns for terminating someone
+// else's session: a minimal session with only its id, name, status, owner
+// and timestamps, in the wire's lowerCamelCase.
+const foreignTerminateBody = `{"session":{
+	"id":"` + uuidSession + `","name":"bobs-session","status":"SESSION_STATUS_TERMINATING",
+	"ownerType":"user","ownerId":"u-bob",
+	"createdAt":"2026-09-01T08:00:00Z","updatedAt":"2026-09-04T12:00:00Z"}}`
+
+// The minimal session renders as just the fields it carries: no empty
+// template line, no zero auto-terminate, no connection details.
+func TestTerminateCmd_ForeignSessionMinimalResponse_Human(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/v1/workspaces/ws-1/sessions/"+uuidSession+"/terminate" {
+			t.Errorf("unexpected: %s %s", r.Method, r.URL.Path)
+		}
+		_, _ = io.WriteString(w, foreignTerminateBody)
+	}))
+	defer srv.Close()
+
+	stdout, stderr, err := run(t, newTerminateCmd(), srv.URL, "ws-1", []string{uuidSession}, output.Human)
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	const want = `Name:                 bobs-session
+ID:                   ` + uuidSession + `
+Status:               terminating
+Created:              2026-09-01 08:00 UTC
+Updated:              2026-09-04 12:00 UTC
+`
+	if stdout != want {
+		t.Errorf("output mismatch\n--- got ---\n%s\n--- want ---\n%s", stdout, want)
+	}
+	if stderr != "" {
+		t.Errorf("stderr = %q, want nothing", stderr)
+	}
+}
+
+// In JSON the minimal session is exactly the fields the API sent: every
+// other key is left out rather than emitted as an empty or zero value.
+func TestTerminateCmd_ForeignSessionMinimalResponse_JSON(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, foreignTerminateBody)
+	}))
+	defer srv.Close()
+
+	stdout, _, err := run(t, newTerminateCmd(), srv.URL, "ws-1", []string{uuidSession}, output.JSON)
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	assertMinimalSessionJSON(t, stdout)
+}
+
+// assertMinimalSessionJSON checks stdout is foreignTerminateBody's session in
+// the stable snake_case shape, with no key beyond the seven it carries.
+func assertMinimalSessionJSON(t *testing.T, stdout string) {
+	t.Helper()
+	var got map[string]any
+	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
+		t.Fatalf("stdout is not JSON: %v\n%s", err, stdout)
+	}
+	want := map[string]any{
+		"id": uuidSession, "name": "bobs-session", "status": "terminating",
+		"owner_type": "user", "owner_id": "u-bob",
+		"created_at": "2026-09-01T08:00:00Z", "updated_at": "2026-09-04T12:00:00Z",
+	}
+	for key, w := range want {
+		if got[key] != w {
+			t.Errorf("JSON[%q] = %v, want %v", key, got[key], w)
+		}
+	}
+	for key := range got {
+		if _, ok := want[key]; !ok {
+			t.Errorf("JSON carries %q = %v, which the minimal response does not have:\n%s", key, got[key], stdout)
+		}
+	}
+}
+
+// --wait on someone else's session: the terminate is accepted, but the
+// session cannot be read back (terminate is the only verb that reaches it).
+// That is a warning, not a failure, and the terminate response is rendered.
+func TestTerminateCmd_WaitCannotFollowForeignSession(t *testing.T) {
+	var polled int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/workspaces/ws-1/sessions/"+uuidSession+"/terminate":
+			_, _ = io.WriteString(w, foreignTerminateBody)
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/workspaces/ws-1/sessions/"+uuidSession:
+			polled++
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = io.WriteString(w, `{"code":5,"message":"session not found","details":[]}`)
+		default:
+			t.Errorf("unexpected: %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer srv.Close()
+
+	stdout, stderr, err := run(t, newTerminateCmd(), srv.URL, "ws-1", []string{uuidSession, "--wait"}, output.JSON)
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if polled != 1 {
+		t.Errorf("polled the session %d times, want 1", polled)
+	}
+	assertMinimalSessionJSON(t, stdout)
+	if !strings.Contains(stderr, "Warning:") || !strings.Contains(stderr, "cannot follow session "+uuidSession) {
+		t.Errorf("stderr missing the warning:\n%s", stderr)
+	}
+}
+
 func TestRestoreCmd_HappyPath(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
