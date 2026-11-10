@@ -22,7 +22,7 @@ func TestGetWarmPool_MappingMasksSecretsAndParsesStatus(t *testing.T) {
 		"machineType":"g2.mac",
 		"deviceSpec":{"platform":"ios","deviceModel":"iPhone 16"},
 		"status":{"ready":1,"warming":1,"claimedTotal":12,"coldTotal":3,"lastError":"quota","configError":"stack retired",
-		  "pausedUntil":"2026-09-17T09:00:00Z",
+		  "pausedUntil":"2026-09-17T09:00:00Z","oldestWarmSessionCreatedAt":"2026-09-17T08:00:00Z",
 		  "sessions":[{"sessionId":"s-1","state":"ready","createdAt":"2026-09-17T08:00:00Z","readyAt":"2026-09-17T08:04:00Z"},
 		              {"sessionId":"s-2","state":"warming","createdAt":"2026-09-17T08:10:00Z"}]},
 		"createdAt":"2026-09-01T00:00:00Z","updatedAt":"2026-09-17T07:00:00Z"}}`)
@@ -63,6 +63,9 @@ func TestGetWarmPool_MappingMasksSecretsAndParsesStatus(t *testing.T) {
 	if st.PausedUntil == nil || !st.PausedUntil.Equal(time.Date(2026, 9, 17, 9, 0, 0, 0, time.UTC)) {
 		t.Errorf("paused_until = %v", st.PausedUntil)
 	}
+	if st.OldestWarmSessionCreatedAt == nil || !st.OldestWarmSessionCreatedAt.Equal(time.Date(2026, 9, 17, 8, 0, 0, 0, time.UTC)) {
+		t.Errorf("oldest_warm_session_created_at = %v", st.OldestWarmSessionCreatedAt)
+	}
 	if len(st.Sessions) != 2 || st.Sessions[0].ReadyAt == nil || st.Sessions[1].ReadyAt != nil || st.Sessions[1].State != "warming" {
 		t.Errorf("inventory = %+v", st.Sessions)
 	}
@@ -76,7 +79,7 @@ func TestGetWarmPool_MappingMasksSecretsAndParsesStatus(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
 	}
-	for _, want := range []string{`"pool_size":2`, `"template_name":"iOS Dev"`, `"owner_type":"workspace"`, `"claimed_total":12`, `"cold_total":3`, `"session_id":"s-1"`, `"value":"ssh-ed25519 AAAA"`, `"paused_until"`} {
+	for _, want := range []string{`"pool_size":2`, `"template_name":"iOS Dev"`, `"owner_type":"workspace"`, `"claimed_total":12`, `"cold_total":3`, `"session_id":"s-1"`, `"value":"ssh-ed25519 AAAA"`, `"paused_until"`, `"oldest_warm_session_created_at":"2026-09-17T08:00:00Z"`} {
 		if !strings.Contains(string(out), want) {
 			t.Errorf("JSON missing %s:\n%s", want, out)
 		}

@@ -80,6 +80,10 @@ type WarmPoolStatus struct {
 	// Sessions is the inventory, oldest first. Filled by GetWarmPool
 	// only; empty on list responses.
 	Sessions []WarmPoolSession `json:"sessions,omitempty"`
+	// OldestWarmSessionCreatedAt is when the pool's longest-waiting warm
+	// session (warming or ready, not yet claimed) was created (RFC3339);
+	// empty when the pool holds no warm sessions.
+	OldestWarmSessionCreatedAt string `json:"oldestWarmSessionCreatedAt,omitempty"`
 }
 
 // WarmPoolSession is one warm session in a pool's inventory.

@@ -2,6 +2,7 @@ package rde
 
 import (
 	"context"
+	"time"
 
 	rdeapi "github.com/bitrise-io/bitrise-cli/bitriseapi/rde"
 )
@@ -35,6 +36,36 @@ type UserUsage struct {
 	Username    string      `json:"username,omitempty"`
 	IsWorkspace bool        `json:"is_workspace,omitempty"`
 	Totals      UsageTotals `json:"totals"`
+	// Sessions are the active sessions behind this row's totals, oldest
+	// first. Filled only for a workspace where terminating any session is
+	// enabled; empty (never null) otherwise.
+	Sessions []UsageSession `json:"sessions"`
+}
+
+// UsageSession is one active session in the usage report: enough to decide
+// whether to terminate it ('rde session terminate' with its ID). Always
+// dense apart from CreatedAt: fields the backend omitted are 0 / empty.
+type UsageSession struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	// OS is "linux" or "macos"; empty when the backend could not tell (the
+	// session is then counted in the row's unknown bucket).
+	OS          string `json:"os"`
+	MachineType string `json:"machine_type"`
+	// VCPU and MemoryGB are 0 when the machine type's spec is unknown.
+	VCPU     int32 `json:"vcpu"`
+	MemoryGB int32 `json:"memory_gb"`
+	// Status is "starting", "running", "terminating" or "draining".
+	Status string `json:"status"`
+	// CreatedAt gives the session's age. A session terminated and restored
+	// since keeps its original creation time.
+	CreatedAt *time.Time `json:"created_at,omitempty"`
+	// HeldByWarmPoolID is the ID of the warm pool holding the session: a
+	// warm session waiting to be claimed, or the machine a pool keeps after
+	// its setup failed. Such a session cannot be terminated directly — lower
+	// the pool's size or retry the pool instead. Empty for every other
+	// session, including ones already claimed from a pool.
+	HeldByWarmPoolID string `json:"held_by_warm_pool_id"`
 }
 
 // ComputeQuota is the workspace's vCPU quota on one machine family and the
@@ -96,12 +127,27 @@ func usageFromAPI(w rdeapi.WorkspaceUsage) WorkspaceUsage {
 		ComputeQuotas:           make([]ComputeQuota, 0, len(w.ComputeQuotas)),
 	}
 	for _, u := range w.Users {
+		sessions := make([]UsageSession, 0, len(u.Sessions))
+		for _, sess := range u.Sessions {
+			sessions = append(sessions, UsageSession{
+				ID:               sess.ID,
+				Name:             sess.Name,
+				OS:               sess.OS,
+				MachineType:      sess.MachineType,
+				VCPU:             sess.VCPU,
+				MemoryGB:         sess.MemoryGB,
+				Status:           statusFromAPI(sess.Status),
+				CreatedAt:        parseTime(sess.CreatedAt),
+				HeldByWarmPoolID: sess.HeldByWarmPoolID,
+			})
+		}
 		out.Users = append(out.Users, UserUsage{
 			UserID:      u.UserSlug,
 			Email:       u.Email,
 			Username:    u.Username,
 			IsWorkspace: u.IsWorkspace,
 			Totals:      usageTotalsFromAPI(u.Totals),
+			Sessions:    sessions,
 		})
 	}
 	for _, q := range w.ComputeQuotas {

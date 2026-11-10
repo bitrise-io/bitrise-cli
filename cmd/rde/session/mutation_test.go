@@ -520,6 +520,63 @@ func TestTerminateCmd_HappyPath(t *testing.T) {
 	}
 }
 
+// Someone else's session on a workspace where terminating any session is not
+// enabled: the API's sentence reaches the user word for word.
+func TestTerminateCmd_NotEnabledMessageIntact(t *testing.T) {
+	const msg = "Terminating another member's session is not enabled for this workspace."
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+		_, _ = io.WriteString(w, `{"code":7,"message":"`+msg+`","details":[]}`)
+	}))
+	defer srv.Close()
+
+	stdout, _, err := run(t, newTerminateCmd(), srv.URL, "ws-1", []string{uuidSession}, output.Human)
+	if err == nil {
+		t.Fatalf("expected the 403 as an error, stdout:\n%s", stdout)
+	}
+	if got, want := err.Error(), "RDE API 403: "+msg; got != want {
+		t.Errorf("error = %q, want %q", got, want)
+	}
+}
+
+// --wait on someone else's session: the terminate is accepted, but the
+// session cannot be read back (terminate is the only verb that reaches it).
+// That is a warning, not a failure, and the terminate response is rendered.
+func TestTerminateCmd_WaitCannotFollowForeignSession(t *testing.T) {
+	var polled int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/workspaces/ws-1/sessions/"+uuidSession+"/terminate":
+			_, _ = io.WriteString(w, `{"session":{"id":"`+uuidSession+`","name":"bobs-session","status":"SESSION_STATUS_TERMINATING"}}`)
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/workspaces/ws-1/sessions/"+uuidSession:
+			polled++
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = io.WriteString(w, `{"code":5,"message":"session not found","details":[]}`)
+		default:
+			t.Errorf("unexpected: %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer srv.Close()
+
+	stdout, stderr, err := run(t, newTerminateCmd(), srv.URL, "ws-1", []string{uuidSession, "--wait"}, output.JSON)
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if polled != 1 {
+		t.Errorf("polled the session %d times, want 1", polled)
+	}
+	var got map[string]any
+	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
+		t.Fatalf("stdout is not JSON: %v\n%s", err, stdout)
+	}
+	if got["id"] != uuidSession || got["status"] != "terminating" {
+		t.Errorf("stdout = %s, want the terminate response", stdout)
+	}
+	if !strings.Contains(stderr, "Warning:") || !strings.Contains(stderr, "cannot follow session "+uuidSession) {
+		t.Errorf("stderr missing the warning:\n%s", stderr)
+	}
+}
+
 func TestRestoreCmd_HappyPath(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
