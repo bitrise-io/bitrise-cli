@@ -35,9 +35,10 @@ with --show-secrets) or protected (encrypted and write-only: never shown,
 only whether a value is set). Keys starting with RDE_ are reserved.
 
 Only people with the workspace's Usage permission (workspace owners and
-billing managers) can view or edit the script, with a personal access token
-— Workspace API Tokens are refused. The feature must be enabled for the
-workspace by Bitrise.`,
+billing managers) can view or edit the script with a personal access token.
+A Workspace API Token created with Remote Dev Environments access can view
+and edit it too, which is the credential for CI. The feature must be enabled
+for the workspace by Bitrise.`,
 		Example: `  bitrise-cli rde workspace-script view
   bitrise-cli rde workspace-script update --script-file workspace-script.sh
   bitrise-cli rde session create try-it --workspace-script-test --template TEMPLATE_ID

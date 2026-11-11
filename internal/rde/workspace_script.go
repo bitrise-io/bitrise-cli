@@ -23,7 +23,8 @@ type WorkspaceScript struct {
 	Enabled    bool                      `json:"enabled"`
 	Script     string                    `json:"script"`
 	Variables  []WorkspaceScriptVariable `json:"variables"`
-	// UpdatedBy is the email of the last editor; UpdatedAt when it was last
+	// UpdatedBy is the email of the last editor, or "Workspace API token"
+	// when the last save was made with one; UpdatedAt when it was last
 	// saved. Both omitted until configured.
 	UpdatedBy string     `json:"updated_by,omitempty"`
 	UpdatedAt *time.Time `json:"updated_at,omitempty"`
