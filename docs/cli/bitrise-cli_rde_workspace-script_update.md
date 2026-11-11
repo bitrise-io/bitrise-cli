@@ -20,10 +20,9 @@ check the "[workspace]" lines in its System log, then --enable.
 This suits keeping the script in git and deploying it from CI with
 --script-file. In CI, authenticate with a Workspace API Token created with
 Remote Dev Environments access (BITRISE_TOKEN) and name the workspace with
---workspace or BITRISE_WORKSPACE_ID: a workspace token cannot look up which
-workspaces an account has. A save made with one shows "Workspace API token"
-as the last editor. A personal access token works as well, if its owner has
-the workspace's Usage permission.
+--workspace or BITRISE_WORKSPACE_ID. A save made with one shows "Workspace
+API token" as the last editor. A personal access token works as well, if its
+owner has the workspace's Usage permission.
 
 --set-var, --set-secret and --set-protected add a variable or replace an
 existing one's value and visibility (plain, secret, protected).
