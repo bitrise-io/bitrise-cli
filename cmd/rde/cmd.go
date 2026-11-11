@@ -51,7 +51,7 @@ with --warm-pool) hands one out instantly instead of booting a VM.
 
 Workspace script: 'rde workspace-script' manages the bash script every
 session in the workspace runs first at each boot (workspace owners and
-billing managers, or a Workspace API Token).`,
+billing managers only).`,
 		Example: `  bitrise-cli rde session list --workspace WORKSPACE_ID
   bitrise-cli rde session list --output json
   bitrise-cli rde template list

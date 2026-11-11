@@ -38,13 +38,13 @@ terminal state ("terminated" or "failed"), e.g. before restoring it or when
 you want the disk snapshot to be complete before moving on.
 
 Terminating someone else's session: on a workspace where it is enabled (it is
-enabled per workspace on request), whoever can run 'rde usage' can terminate
-any session in the workspace: other members' personal sessions,
-workspace-owned sessions and preview link sessions. That is a personal access
-token of someone holding the workspace's billing-view permission, or a
-Workspace API Token created with Remote Dev Environments access (for
-automation). 'rde usage --sessions' lists the sessions with their IDs. Pass
-the session ID: a session that is not yours cannot be found by name.
+enabled per workspace on request), whoever holds the workspace's billing-view
+permission — the one 'rde usage' requires — can terminate any session in the
+workspace: other members' personal sessions, workspace-owned sessions and
+preview link sessions. 'rde usage --sessions' lists them with their IDs. Pass
+the session ID: a session that is not yours cannot be found by name. It takes
+a personal access token; a Workspace API Token does not get this wider right
+by default (if your automation needs it, contact Bitrise).
 
 Only terminate is widened. The session is stopped, never deleted, and its
 owner can restore it; viewing, deleting, restoring, exec, logs and the rest

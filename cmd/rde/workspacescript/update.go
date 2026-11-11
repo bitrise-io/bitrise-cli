@@ -40,11 +40,9 @@ session with 'bitrise-cli rde session create NAME --workspace-script-test',
 check the "[workspace]" lines in its System log, then --enable.
 
 This suits keeping the script in git and deploying it from CI with
---script-file. In CI, authenticate with a Workspace API Token created with
-Remote Dev Environments access (BITRISE_TOKEN) and name the workspace with
---workspace or BITRISE_WORKSPACE_ID. A save made with one shows "Workspace
-API token" as the last editor. A personal access token works as well, if its
-owner has the workspace's Usage permission.
+--script-file and a personal access token of someone with the workspace's
+Usage permission. Workspace API Tokens cannot edit the workspace script by
+default; if your CI needs one for this, contact Bitrise.
 
 --set-var, --set-secret and --set-protected add a variable or replace an
 existing one's value and visibility (plain, secret, protected).

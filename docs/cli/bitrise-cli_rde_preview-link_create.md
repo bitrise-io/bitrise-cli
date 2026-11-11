@@ -34,7 +34,8 @@ of your personal sessions: every workspace member can see and manage it, and it
 is listed by 'rde session list --scope workspace'.
 
 In CI, authenticate with a Workspace API Token rather than a personal one:
-it belongs to the workspace, not to a person. Pass it as BITRISE_TOKEN, which is used verbatim, and name the workspace with
+minting preview links is one of the few RDE operations a workspace token may
+perform. Pass it as BITRISE_TOKEN, which is used verbatim, and name the workspace with
 --workspace or BITRISE_WORKSPACE_ID — a workspace token belongs to one
 workspace and cannot look up which workspaces an account has, so leaving it to
 be auto-detected fails.
