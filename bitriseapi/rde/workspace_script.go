@@ -69,9 +69,10 @@ func (r workspaceScriptResp) value() WorkspaceScript {
 
 // GetWorkspaceScript returns the workspace script. includeSecrets returns
 // secret values in clear; protected values are never returned. Gated on
-// the workspace's Usage permission and on the feature being available for
-// the workspace (403 otherwise); Workspace API Tokens are refused unless
-// Bitrise enabled them for the workspace.
+// the feature being available for the workspace and on the caller (403
+// otherwise): a personal access token of someone with the workspace's Usage
+// permission, or a Workspace API Token with Remote Dev Environments access
+// and a workspace role that can manage the workspace.
 // Endpoint: GET /v1/workspaces/{workspaceId}/workspace-script.
 func (c *Client) GetWorkspaceScript(ctx context.Context, workspaceID string, includeSecrets bool) (WorkspaceScript, error) {
 	if workspaceID == "" {

@@ -9,9 +9,10 @@ session counts and vCPU/memory totals split by OS, workspace-wide and per user.
 
 This reports sessions currently consuming resources; it is not a historical or
 billing-period report. Requires the workspace's billing-view permission
-(workspace owners and billing-managing custom roles). A Workspace API Token
-is refused by default; if your automation needs the report with one, contact
-Bitrise.
+(workspace owners and billing-managing custom roles), or a Workspace API
+Token created with Remote Dev Environments access and a workspace role that
+can manage the workspace (Manager, or a custom role with "Modify workspace
+settings").
 
 It also shows the workspace's vCPU quota per machine family the plan includes:
 the vCPUs in use (warm pool sessions included) out of the plan's quota. A new session cannot

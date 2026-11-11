@@ -27,11 +27,12 @@ Variables are plain (value shown), secret (encrypted at rest, shown only
 with --show-secrets) or protected (encrypted and write-only: never shown,
 only whether a value is set). Keys starting with RDE_ are reserved.
 
-Only people with the workspace's Usage permission (workspace owners and
-billing managers) can view or edit the script, with a personal access token.
-Workspace API Tokens are refused by default; if your automation needs one
-for this, contact Bitrise. The feature must be enabled for the workspace by
-Bitrise.
+Who can view or edit the script: people with the workspace's Usage
+permission (workspace owners and billing managers), with a personal access
+token; or a Workspace API Token created with Remote Dev Environments access
+and a workspace role that can manage the workspace (Manager, or a custom
+role with "Modify workspace settings"). Any other Workspace API Token is
+refused. The feature must be enabled for the workspace by Bitrise.
 
 ### Examples
 
