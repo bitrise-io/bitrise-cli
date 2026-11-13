@@ -11,18 +11,18 @@ import (
 
 // Friendly --stage values accepted by the CLI. The backend takes the numeric
 // LogStage enum; these map to it in logStageToAPI. The backend calls the
-// second stage "main" internally; the user-facing name is "startup" (it runs
-// the session's startup script — on a session that runs lifecycle hooks it is
-// the combined log of the platform's startup stage and every hook).
+// second stage "main" internally; the user-facing name is "startup" (on a
+// session that runs lifecycle hooks it is the combined log of the platform's
+// startup stage and every hook; on a session created before lifecycle hooks
+// it is the deprecated startup script's output).
 //
-// The hook stages exist only on sessions that run lifecycle hooks (a template
-// with hooks, or a legacy template mapped at creation): each one is that
+// The hook stages exist only on sessions that run lifecycle hooks: each one is that
 // hook's output, every run in order; "system" is the platform's own output
 // (the warmup stage, then the startup stage without the hooks' lines, plus the
 // system setup step).
 const (
-	LogStageWarmup    = "warmup"     // runs once at session creation
-	LogStageStartup   = "startup"    // runs on every session start/restart
+	LogStageWarmup    = "warmup"     // sessions created before lifecycle hooks: the warmup script (once at creation)
+	LogStageStartup   = "startup"    // the platform and every hook; before lifecycle hooks: the startup script
 	LogStageOnCreate  = "on-create"  // the On create hook (lifecycle hooks only)
 	LogStageOnClaim   = "on-claim"   // the On claim hook (lifecycle hooks only)
 	LogStageOnRestore = "on-restore" // the On restore hook (lifecycle hooks only)

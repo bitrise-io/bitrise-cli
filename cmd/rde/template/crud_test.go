@@ -466,3 +466,73 @@ func TestCreateCmd_ScopedAndProtectedVariables(t *testing.T) {
 		t.Errorf("template_variables[0] carries on_create_only, which no longer exists: %v", first)
 	}
 }
+
+// The deprecated startup_script / warmup_script still work: the request is
+// sent unchanged, stdout stays what it was, and one warning line names the
+// fields on stderr. A hooks-only spec gets no warning.
+func TestCreateAndUpdateCmd_WarnOnDeprecatedScripts(t *testing.T) {
+	const warnBoth = "Warning: startup_script and warmup_script are deprecated; define the template's scripts in \"hooks\" instead.\n"
+	const warnStartup = "Warning: startup_script is deprecated; define the template's scripts in \"hooks\" instead.\n"
+	cases := map[string]struct {
+		update     bool
+		spec       string
+		wantStderr string
+		wantBody   map[string]any // script keys expected on the wire
+	}{
+		"create with both scripts": {
+			spec:       `{"name":"Dev","stack_id":"s","machine_type":"m","startup_script":"echo start","warmup_script":"echo warm"}`,
+			wantStderr: warnBoth,
+			wantBody:   map[string]any{"startupScript": "echo start", "warmupScript": "echo warm"},
+		},
+		"create with hooks only": {
+			spec:     `{"name":"Dev","stack_id":"s","machine_type":"m","hooks":{"on_create":"echo create"}}`,
+			wantBody: map[string]any{},
+		},
+		"update with startup_script only": {
+			update:     true,
+			spec:       `{"startup_script":"echo start"}`,
+			wantStderr: warnStartup,
+			wantBody:   map[string]any{"startupScript": "echo start"},
+		},
+		"update clearing a script does not warn": {
+			update:   true,
+			spec:     `{"warmup_script":""}`,
+			wantBody: map[string]any{"warmupScript": ""},
+		},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			var gotBody map[string]any
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				_ = json.NewDecoder(r.Body).Decode(&gotBody)
+				_, _ = io.WriteString(w, `{"template":{"id":"t-1","name":"Dev","stackId":"s","machineType":"m"}}`)
+			}))
+			defer srv.Close()
+
+			c, args := newCreateCmd(), []string{"--file", "-"}
+			if tc.update {
+				c, args = newUpdateCmd(), []string{uuidTemplateID, "--file", "-"}
+			}
+			c.SetIn(strings.NewReader(tc.spec))
+			stdout, stderr, err := run(t, c, srv.URL, "ws-1", args, output.JSON)
+			if err != nil {
+				t.Fatalf("Execute: %v", err)
+			}
+			if stderr != tc.wantStderr {
+				t.Errorf("stderr = %q, want %q", stderr, tc.wantStderr)
+			}
+			// stdout is the template JSON alone: it must still parse.
+			var out map[string]any
+			if err := json.Unmarshal([]byte(stdout), &out); err != nil || out["id"] != "t-1" {
+				t.Errorf("stdout is not the template JSON (err=%v):\n%s", err, stdout)
+			}
+			for _, key := range []string{"startupScript", "warmupScript"} {
+				got, sent := gotBody[key]
+				want, expected := tc.wantBody[key]
+				if sent != expected || got != want {
+					t.Errorf("request %s = %v (sent=%v), want %v (sent=%v)", key, got, sent, want, expected)
+				}
+			}
+		})
+	}
+}

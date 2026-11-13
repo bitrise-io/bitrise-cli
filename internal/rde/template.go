@@ -16,15 +16,17 @@ type Template struct {
 	StackID          string `json:"stack_id,omitempty"`
 	MachineType      string `json:"machine_type,omitempty"`
 	WorkingDirectory string `json:"working_directory,omitempty"`
-	StartupScript    string `json:"startup_script,omitempty"`
-	WarmupScript     string `json:"warmup_script,omitempty"`
-	// LifecycleMode says how the template's scripts run: "legacy"
-	// (startup_script / warmup_script) or "hooks" (Hooks, run on the booted
-	// machine). Passed through verbatim so future modes reach callers
-	// without a CLI change.
+	// StartupScript and WarmupScript are deprecated: use Hooks instead.
+	// Set only on a template that still has them (lifecycle_mode "legacy").
+	StartupScript string `json:"startup_script,omitempty"`
+	WarmupScript  string `json:"warmup_script,omitempty"`
+	// LifecycleMode says how the template's scripts run: "hooks" (Hooks,
+	// run on the booted machine) or "legacy" (the deprecated
+	// startup_script / warmup_script). Passed through verbatim so future
+	// modes reach callers without a CLI change.
 	LifecycleMode string `json:"lifecycle_mode,omitempty"`
-	// Hooks are the lifecycle hook scripts of a "hooks" template; nil on a
-	// legacy template.
+	// Hooks are the template's scripts, as lifecycle hooks; nil on a
+	// template that still has the deprecated scripts.
 	Hooks             *TemplateHooks     `json:"hooks,omitempty"`
 	CreatedByEmail    string             `json:"created_by_email,omitempty"`
 	WorkspaceID       string             `json:"workspace_id,omitempty"`
@@ -63,8 +65,9 @@ type TemplateHooks struct {
 // that hook only (and need a template with lifecycle hooks). A hook receives
 // the shared values plus its own, nothing else; its own value wins over a
 // shared value of the same key. Keys are unique within a scope and the same
-// key may exist on several scopes. Legacy templates, and specs without a
-// hook key, keep every value shared — which is exactly what they had.
+// key may exist on several scopes. A template with the deprecated
+// startup_script / warmup_script, and a spec without a hook key, keep every
+// value shared.
 const (
 	ScopeShared    = "shared"
 	ScopeOnCreate  = HookOnCreate
@@ -208,14 +211,16 @@ type TemplateSpec struct {
 	StackID          *string `json:"stack_id,omitempty"`
 	MachineType      *string `json:"machine_type,omitempty"`
 	WorkingDirectory *string `json:"working_directory,omitempty"`
-	StartupScript    *string `json:"startup_script,omitempty"`
-	WarmupScript     *string `json:"warmup_script,omitempty"`
+	// StartupScript and WarmupScript are deprecated: use Hooks instead.
+	// Still accepted on templates that already use them.
+	StartupScript *string `json:"startup_script,omitempty"`
+	WarmupScript  *string `json:"warmup_script,omitempty"`
 
-	// Hooks are the lifecycle hooks (On create / On claim / On restore).
-	// Nil = don't touch on update (legacy scripts on create); non-nil =
-	// replace the template's hooks as a whole, which also turns a legacy
-	// template into a hooks template. A template has either hooks or the
-	// legacy scripts, never both.
+	// Hooks are the template's scripts, as lifecycle hooks (On create / On
+	// claim / On restore). Nil = don't touch on update; non-nil = replace
+	// the template's hooks as a whole, which on a template that still has
+	// the deprecated scripts replaces those too (one-way). A template has
+	// either hooks or the deprecated scripts, never both.
 	Hooks *TemplateHooks `json:"hooks,omitempty"`
 
 	// Nil = don't touch on update; non-nil = replace the server's list with

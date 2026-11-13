@@ -131,11 +131,12 @@ func deviceDiffLabel(d *internalrde.DeviceSpec) string {
 	return out
 }
 
-// lifecycleLabel renders which scripts a template config runs: the legacy
-// pair, or lifecycle hooks with the hooks that are set.
+// lifecycleLabel renders which scripts a template config runs: lifecycle
+// hooks with the hooks that are set, or the deprecated warmup and startup
+// scripts.
 func lifecycleLabel(c internalrde.TemplateConfig) string {
 	if c.LifecycleMode != "hooks" || c.Hooks == nil {
-		return "legacy scripts"
+		return "legacy scripts (deprecated)"
 	}
 	var set []string
 	for _, h := range []struct {

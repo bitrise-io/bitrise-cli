@@ -21,13 +21,14 @@ type Template struct {
 	Image            string `json:"image,omitempty"`
 	MachineType      string `json:"machineType,omitempty"`
 	WorkingDirectory string `json:"workingDirectory,omitempty"`
-	StartupScript    string `json:"startupScript,omitempty"`
-	WarmupScript     string `json:"warmupScript,omitempty"`
+	// StartupScript and WarmupScript are deprecated: use Hooks instead.
+	StartupScript string `json:"startupScript,omitempty"`
+	WarmupScript  string `json:"warmupScript,omitempty"`
 	// LifecycleMode says how the template's scripts are stored and run:
-	// "legacy" (StartupScript / WarmupScript, the platform's two boot
-	// stages) or "hooks" (Hooks, run on the booted machine by the RDE
-	// runner). On a "hooks" template StartupScript reads back as a
-	// generated, read-only equivalent of the hooks.
+	// "hooks" (Hooks, run on the booted machine by the RDE runner) or
+	// "legacy" (the deprecated StartupScript / WarmupScript, the
+	// platform's two boot stages). On a "hooks" template StartupScript
+	// reads back as a generated, read-only equivalent of the hooks.
 	LifecycleMode     string             `json:"lifecycleMode,omitempty"`
 	Hooks             *TemplateHooks     `json:"hooks,omitempty"`
 	CreatedByEmail    string             `json:"createdByEmail,omitempty"`
@@ -168,20 +169,21 @@ type WorkspaceLinkCreate struct {
 
 // CreateTemplateRequest is the POST body for creating a template.
 type CreateTemplateRequest struct {
-	Name              string                   `json:"name"`
-	Description       string                   `json:"description,omitempty"`
-	StackID           string                   `json:"stackId"`
-	MachineType       string                   `json:"machineType"`
-	WorkingDirectory  string                   `json:"workingDirectory,omitempty"`
+	Name             string `json:"name"`
+	Description      string `json:"description,omitempty"`
+	StackID          string `json:"stackId"`
+	MachineType      string `json:"machineType"`
+	WorkingDirectory string `json:"workingDirectory,omitempty"`
+	// StartupScript and WarmupScript are deprecated: use Hooks instead.
+	// Still accepted; cannot be combined with Hooks.
 	StartupScript     string                   `json:"startupScript,omitempty"`
 	WarmupScript      string                   `json:"warmupScript,omitempty"`
 	TemplateVariables []TemplateVariableCreate `json:"templateVariables,omitempty"`
 	SessionInputs     []SessionInputCreate     `json:"sessionInputs,omitempty"`
 	FeatureFlags      []FeatureFlagCreate      `json:"featureFlags,omitempty"`
 	WorkspaceLinks    []WorkspaceLinkCreate    `json:"workspaceLinks,omitempty"`
-	// Hooks makes this a template with lifecycle hooks (cannot be combined
-	// with StartupScript / WarmupScript; requires lifecycle hooks to be
-	// available on the workspace).
+	// Hooks are the template's scripts, as lifecycle hooks (cannot be
+	// combined with the deprecated StartupScript / WarmupScript).
 	Hooks *TemplateHooks `json:"hooks,omitempty"`
 	// DeviceSpec declares the device sessions created from the template boot
 	// by default (optional).
@@ -198,8 +200,10 @@ type UpdateTemplateRequest struct {
 	StackID          *string `json:"stackId,omitempty"`
 	MachineType      *string `json:"machineType,omitempty"`
 	WorkingDirectory *string `json:"workingDirectory,omitempty"`
-	StartupScript    *string `json:"startupScript,omitempty"`
-	WarmupScript     *string `json:"warmupScript,omitempty"`
+	// StartupScript and WarmupScript are deprecated: use Hooks instead.
+	// Refused on a template that has hooks.
+	StartupScript *string `json:"startupScript,omitempty"`
+	WarmupScript  *string `json:"warmupScript,omitempty"`
 
 	TemplateVariables       []TemplateVariableCreate `json:"templateVariables,omitempty"`
 	UpdateTemplateVariables bool                     `json:"updateTemplateVariables,omitempty"`
@@ -212,7 +216,8 @@ type UpdateTemplateRequest struct {
 	DeviceSpec              *DeviceSpec              `json:"deviceSpec,omitempty"`
 	UpdateDeviceSpec        bool                     `json:"updateDeviceSpec,omitempty"`
 	// Hooks replaces the template's lifecycle hooks as a whole when
-	// UpdateHooks is set (and turns a legacy template into a hooks template).
+	// UpdateHooks is set (on a template that still has the deprecated
+	// scripts this replaces them, one-way).
 	Hooks       *TemplateHooks `json:"hooks,omitempty"`
 	UpdateHooks bool           `json:"updateHooks,omitempty"`
 }
