@@ -154,7 +154,7 @@ func lifecycleModeText(s style.Styles, t internalrde.Template) string {
 	case "hooks":
 		return "hooks" + s.Dim.Render(" — On create / On claim / On restore run on the booted machine")
 	case "legacy":
-		return "legacy" + s.Dim.Render(" — warmup and startup scripts")
+		return "legacy" + s.Dim.Render(" — warmup and startup scripts (deprecated: use hooks)")
 	}
 	return t.LifecycleMode
 }

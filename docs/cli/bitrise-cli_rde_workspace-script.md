@@ -11,8 +11,8 @@ on macOS and Linux. It runs as the session user from $HOME via 'bash -l',
 with its variables in the environment, and its output goes to the session's
 System log, each line prefixed "[workspace] ".
 
-The template's lifecycle hooks or startup script wait until the workspace
-script exits, at most 10 minutes; after that they start anyway and the
+The template's lifecycle hooks wait until the workspace script
+exits, at most 10 minutes; after that they start anyway and the
 script keeps running (it is never killed). A line '# rde: no-wait-limit' in
 the script lifts the limit. Start long-running processes in the background
 ('my-agent &') so the script can exit.

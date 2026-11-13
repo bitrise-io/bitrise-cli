@@ -13,8 +13,8 @@ import (
 // stable `--output json` shape.
 //
 // The workspace script is one bash script per workspace that every session
-// boot runs first — before the template's lifecycle hooks or startup
-// script, on every session and every boot. Disabled is draft mode, not
+// boot runs first — before the template's lifecycle hooks, on every
+// session and every boot. Disabled is draft mode, not
 // off: the script stays saved and runs only on test sessions
 // (`session create --workspace-script-test`).
 type WorkspaceScript struct {

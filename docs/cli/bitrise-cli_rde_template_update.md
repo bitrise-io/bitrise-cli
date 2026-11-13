@@ -10,10 +10,11 @@ Only fields present in the file are sent. Array fields (template_variables,
 session_inputs, feature_flags, workspace_links) replace the server's
 existing list wholesale when present — to clear one, include it as [].
 hooks (on_create, on_claim, on_restore — see 'template create --help')
-likewise replaces the template's lifecycle hooks as a whole when present,
-and turns a legacy template into a hooks template (one-way); after that
-startup_script/warmup_script are refused on it ('template view -o json' of
-a hooks template omits them, so the round-trip below just works). A
+likewise replaces the template's lifecycle hooks as a whole when present.
+On a template that still has the deprecated startup_script/warmup_script,
+sending hooks replaces them (one-way); after that startup_script/
+warmup_script are refused on it ('template view -o json' of a hooks
+template omits them, so the round-trip below just works). A
 per-hook scope (a variable's or input's hook other than shared) and a
 protected variable (see 'template create --help') are only accepted on a
 hooks template; a protected variable sent with an empty value keeps the

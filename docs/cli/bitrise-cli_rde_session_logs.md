@@ -1,12 +1,11 @@
 ## bitrise-cli rde session logs
 
-Print a session's setup logs: a lifecycle hook, or a legacy warmup or startup script
+Print a session's setup logs: a lifecycle hook or the platform's own steps
 
 ### Synopsis
 
-Print a session's setup log — one lifecycle hook's output, the platform's
-own steps, or, on a session from a template with warmup and startup scripts,
-one of those scripts — useful for debugging a session stuck provisioning or
+Print a session's setup log — one lifecycle hook's output or the
+platform's own steps — useful for debugging a session stuck provisioning or
 one whose setup failed. The log replays from the start every time you connect.
 
 By default this prints the log captured so far and exits, without waiting for
@@ -21,9 +20,10 @@ interrupted).
              (credentials, Claude Code — queued after On create); system is
              the platform's own output (its boot steps and the System setup,
              without the hooks' lines); startup is the combined log of the
-             platform and every hook. On a session from a template with
-             warmup and startup scripts: warmup runs once at session
-             creation; startup runs on every session start/restart.
+             platform and every hook. On a session created before
+             lifecycle hooks: warmup is the (deprecated) warmup script,
+             run once at session creation; startup is the (deprecated)
+             startup script, run on every session start/restart.
   --attempt  on a hook stage, show only this attempt of the hook (1-based,
              the numbers 'session view' lists); default: every attempt in
              order, each re-run preceded by an "── attempt N ──" marker.
@@ -45,7 +45,6 @@ bitrise-cli rde session logs SESSION_ID --stage on-create|on-claim|on-restore|pe
   bitrise-cli rde session logs SESSION_ID --stage on-create --follow
   bitrise-cli rde session logs SESSION_ID --stage on-claim --attempt 2
   bitrise-cli rde session logs SESSION_ID --stage startup > session.log
-  bitrise-cli rde session logs SESSION_ID --stage warmup
 ```
 
 ### Options

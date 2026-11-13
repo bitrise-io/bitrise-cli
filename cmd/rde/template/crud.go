@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -39,10 +40,14 @@ Required fields:
 Optional fields:
   description         free-text description
   working_directory   default working directory for sessions
-  startup_script      bash script run on every session start (legacy pair)
-  warmup_script       bash script run once during pre-warming (legacy pair)
-  hooks               {on_create, on_claim, on_restore} — lifecycle hooks, the
-                      alternative to the legacy pair (see below)
+  hooks               {on_create, on_claim, on_restore} — the template's
+                      scripts, as lifecycle hooks (see below)
+  startup_script      Deprecated: use hooks instead. Bash script that ran on
+                      every session start. Still accepted on templates that
+                      already use it.
+  warmup_script       Deprecated: use hooks instead. Bash script that ran once
+                      when the session was created. Still accepted on
+                      templates that already use it.
   session_inputs      array of {key, description, required, default_value,
                       expose_as_env_var, hook} — values callers supply when
                       creating (or claiming) a session; hook is the input's
@@ -68,9 +73,9 @@ must fit the platform (iOS: a macOS stack; Android: a dockerless Android
 Linux stack). The flags take precedence over a device_spec in the file.
 Read 'bitrise-cli rde device-guide' before declaring one.
 
-Lifecycle hooks: instead of startup_script/warmup_script a template can
-carry hooks — bash scripts the platform runs on the booted machine as the
-session user, with the values of the hook's scope exported. Every hook is
+Lifecycle hooks: a template defines its scripts in hooks — bash scripts
+the platform runs on the booted machine as the session user, with the
+values of the hook's scope exported. Every hook is
 optional. on_create runs once when the session is created (on a warm pool:
 when the pool warms the machine). on_claim runs on every claim, when the
 session is assigned to its owner. on_restore runs every time a stopped
@@ -87,10 +92,9 @@ cmd &'). An On create that has not exited after 2 hours is ended by RDE
 be reached: exec, ssh, upload, download and the terminal are refused
 ("Session is setting up: On create is still running. Access opens when it
 finishes.") — 'session create --wait' returns once the setup is done. hooks
-cannot be combined with startup_script/warmup_script, and saving them
-requires lifecycle hooks to be available on the workspace. 'session view'
-shows the setup phase of a session created from such a template, and
-'session logs --stage on-create' its On create output.
+cannot be combined with the deprecated startup_script/warmup_script.
+'session view' shows the setup phase of a session, and 'session logs
+--stage on-create' its On create output.
 
 Scopes: every variable and session input belongs to one scope, its hook:
 "shared" (the default — the key may be left out) reaches every hook;
@@ -102,9 +106,9 @@ Keys are unique within a scope, and the same key may exist on several
 scopes — one value, or one saved input, then fills all of them. Who
 supplies the inputs: a direct 'session create' asks for every required
 input of every scope; a warm pool is created with the shared and on_create
-inputs; whoever claims supplies the on_claim and on_restore ones. Legacy
-templates, and specs without a hook key, keep every value shared — exactly
-the delivery they had.
+inputs; whoever claims supplies the on_claim and on_restore ones. A
+template with the deprecated startup_script/warmup_script, and a spec
+without a hook key, keep every value shared.
 
 Variables: is_secret encrypts the value at rest and hides it in output
 (members with access can still read it with include_secrets). protected
@@ -132,8 +136,11 @@ adjust to taste):
     "stack_id": "osx-xcode-16.0.x-edge",
     "machine_type": "g2.mac.m2pro.6c-14g",
     "working_directory": "/Users/vagrant/git",
-    "warmup_script": "set -euo pipefail\ncd ~\ngit clone \"https://${GITHUB_PAT}@github.com/example-org/example-app.git\" git\ncd git && bundle install && pod install --project-directory=ios\n",
-    "startup_script": "set -euo pipefail\ncd /Users/vagrant/git\ngit pull --ff-only || true\nsudo xcode-select -s \"/Applications/Xcode-${XCODE_VERSION}.app\"\n",
+    "hooks": {
+      "on_create": "set -euo pipefail\ncd ~\ngit clone \"https://${GITHUB_PAT}@github.com/example-org/example-app.git\" git\ncd git && bundle install && pod install --project-directory=ios\nsudo xcode-select -s \"/Applications/Xcode-${XCODE_VERSION}.app\"\n",
+      "on_claim": "cd /Users/vagrant/git && git pull --ff-only || true\n",
+      "on_restore": "cd /Users/vagrant/git && git pull --ff-only || true\n"
+    },
     "session_inputs": [
       {
         "key": "GITHUB_PAT",
@@ -165,7 +172,7 @@ adjust to taste):
   cat template.json | bitrise-cli rde template create --file -
   # Declare an iOS simulator every session from this template boots by default.
   bitrise-cli rde template create --file template.json --device-platform ios --device-model "iPhone 16"
-  # Lifecycle hooks instead of the legacy scripts (On create clones and installs; On restore refreshes).
+  # Lifecycle hooks: On create clones and installs; On restore refreshes.
   # GH_TOKEN is asked from whoever claims (on_claim) and again for On restore; REGISTRY_TOKEN is a protected On create variable.
   echo '{"name":"hooks-dev","stack_id":"linux-ubuntu-24.04","machine_type":"standard","hooks":{"on_create":"git clone https://github.com/example-org/app.git ~/app && cd ~/app && npm ci","on_restore":"cd ~/app && git pull --ff-only"},"session_inputs":[{"key":"GH_TOKEN","required":true,"hook":"on_claim"},{"key":"GH_TOKEN","required":true,"hook":"on_restore"}],"template_variables":[{"key":"REGISTRY_TOKEN","value":"...","hook":"on_create","protected":true},{"key":"APP_ENV","value":"dev","expose_as_env_var":true}]}' | bitrise-cli rde template create --file -`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -180,6 +187,7 @@ adjust to taste):
 			if err != nil {
 				return err
 			}
+			warnDeprecatedScripts(cmd, spec)
 			if deviceSpec != nil {
 				spec.DeviceSpec = deviceSpec
 			}
@@ -219,10 +227,11 @@ Only fields present in the file are sent. Array fields (template_variables,
 session_inputs, feature_flags, workspace_links) replace the server's
 existing list wholesale when present — to clear one, include it as [].
 hooks (on_create, on_claim, on_restore — see 'template create --help')
-likewise replaces the template's lifecycle hooks as a whole when present,
-and turns a legacy template into a hooks template (one-way); after that
-startup_script/warmup_script are refused on it ('template view -o json' of
-a hooks template omits them, so the round-trip below just works). A
+likewise replaces the template's lifecycle hooks as a whole when present.
+On a template that still has the deprecated startup_script/warmup_script,
+sending hooks replaces them (one-way); after that startup_script/
+warmup_script are refused on it ('template view -o json' of a hooks
+template omits them, so the round-trip below just works). A
 per-hook scope (a variable's or input's hook other than shared) and a
 protected variable (see 'template create --help') are only accepted on a
 hooks template; a protected variable sent with an empty value keeps the
@@ -263,6 +272,7 @@ Pass --file - to read the JSON from stdin.`,
 				if spec, err = readTemplateSpec(cmd.InOrStdin(), file); err != nil {
 					return err
 				}
+				warnDeprecatedScripts(cmd, spec)
 			}
 			if deviceSpec != nil {
 				spec.DeviceSpec = deviceSpec
@@ -353,4 +363,29 @@ func readTemplateSpec(stdin io.Reader, path string) (internalrde.TemplateSpec, e
 		return internalrde.TemplateSpec{}, fmt.Errorf("parse template spec: %w", err)
 	}
 	return spec, nil
+}
+
+// warnDeprecatedScripts prints one line to stderr when the spec sets the
+// deprecated startup_script / warmup_script to a non-empty value. The request
+// is sent unchanged; stdout is untouched, so --output json stays clean.
+func warnDeprecatedScripts(cmd *cobra.Command, spec internalrde.TemplateSpec) {
+	if cmdutil.IsQuiet(cmd) {
+		return
+	}
+	var fields []string
+	if spec.StartupScript != nil && *spec.StartupScript != "" {
+		fields = append(fields, "startup_script")
+	}
+	if spec.WarmupScript != nil && *spec.WarmupScript != "" {
+		fields = append(fields, "warmup_script")
+	}
+	if len(fields) == 0 {
+		return
+	}
+	verb := "is"
+	if len(fields) > 1 {
+		verb = "are"
+	}
+	_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Warning: %s %s deprecated; define the template's scripts in \"hooks\" instead.\n",
+		strings.Join(fields, " and "), verb)
 }
