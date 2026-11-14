@@ -31,7 +31,7 @@ with --warm-pool) hands one out instantly instead of booting a VM.
 
 Workspace script: 'rde workspace-script' manages the bash script every
 session in the workspace runs first at each boot (workspace owners and
-billing managers only).
+billing managers, or a Workspace API Token that can manage the workspace).
 
 ### Examples
 

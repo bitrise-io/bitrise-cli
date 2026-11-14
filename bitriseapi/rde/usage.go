@@ -90,7 +90,9 @@ type WorkspaceUsage struct {
 
 // GetWorkspaceUsage returns the workspace's active-session usage snapshot.
 // Requires the workspace's billing-view permission (workspace owners and
-// billing-managing custom roles); other members get a permission error.
+// billing-managing custom roles); other members get a permission error. A
+// Workspace API Token with Remote Dev Environments access and a workspace
+// role that can manage the workspace may call it too.
 // Endpoint: GET /v1/workspaces/{workspaceId}/usage.
 func (c *Client) GetWorkspaceUsage(ctx context.Context, workspaceID string) (WorkspaceUsage, error) {
 	if workspaceID == "" {

@@ -155,7 +155,8 @@ func (u WorkspaceUsage) FilterOS(os string) WorkspaceUsage {
 
 // GetWorkspaceUsage returns the workspace's active-session usage snapshot.
 // Requires the workspace's billing-view permission (workspace owners and
-// billing-managing custom roles).
+// billing-managing custom roles), or a Workspace API Token with Remote Dev
+// Environments access and a workspace role that can manage the workspace.
 func (s *Service) GetWorkspaceUsage(ctx context.Context, workspaceID string) (WorkspaceUsage, error) {
 	if s.client == nil {
 		return WorkspaceUsage{}, errClient()
