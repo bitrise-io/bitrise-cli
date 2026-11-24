@@ -18,9 +18,9 @@ type SavedInput struct {
 	Key      string `json:"key"`
 	Value    string `json:"value,omitempty"`
 	IsSecret bool   `json:"isSecret,omitempty"`
-	// MaskedValue is the masked view of a secret value, for display: "****",
-	// its last 4 characters when it is longer than 16 characters, and its
-	// length (e.g. "****5678 (20)"). Empty for a plain value.
+	// MaskedValue is the masked view of a secret value, for display: "****"
+	// followed by its last 4 characters when it is longer than 16 characters
+	// (e.g. "****5678"); never the length. Empty for a plain value.
 	MaskedValue string `json:"maskedValue,omitempty"`
 	CreatedAt   string `json:"createdAt,omitempty"`
 	UpdatedAt   string `json:"updatedAt,omitempty"`

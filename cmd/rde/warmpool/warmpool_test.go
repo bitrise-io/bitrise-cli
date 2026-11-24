@@ -183,7 +183,7 @@ func TestListCmd_MissingWorkspace(t *testing.T) {
 const viewBody = `{"warmPool":{
 	"id":"p-1","name":"ios-devs","templateId":"t-1","templateName":"iOS Dev","ownerType":"workspace","ownerId":"my-ws","poolSize":2,
 	"machineType":"g2.mac.m2pro.6c-14g",
-	"sessionInputs":[{"key":"GITHUB_TOKEN","value":"leaked","isSecret":true,"maskedValue":"****wxyz (20)"},{"key":"REPO","value":"my-app"},{"key":"SSH_KEY","savedInputId":"si-1"}],
+	"sessionInputs":[{"key":"GITHUB_TOKEN","value":"leaked","isSecret":true,"maskedValue":"****wxyz"},{"key":"REPO","value":"my-app"},{"key":"SSH_KEY","savedInputId":"si-1"}],
 	"enabledFeatureFlagNames":["enable_beta_simulator"],
 	"deviceSpec":{"platform":"ios","deviceModel":"iPhone 16","osVersion":"18.2"},
 	"status":{"ready":1,"warming":1,"claimedTotal":12,"coldTotal":3,"lastError":"quota exceeded",
@@ -210,7 +210,7 @@ func TestViewCmd_HappyPath(t *testing.T) {
 		"ios-devs", "p-1", "iOS Dev", "t-1", "workspace",
 		"Pool size:", "2", "1 ready, 1 warming", "12 claimed, 3 cold", "quota exceeded",
 		"g2.mac.m2pro.6c-14g", "iOS simulator · iPhone 16 · 18.2",
-		"GITHUB_TOKEN", "****wxyz (20)", "REPO", "my-app", "SSH_KEY", "saved input", "si-1",
+		"GITHUB_TOKEN", "****wxyz", "REPO", "my-app", "SSH_KEY", "saved input", "si-1",
 		"enable_beta_simulator",
 		"Warm sessions", "SESSION_ID", "s-ready", "ready", "s-warm", "warming", "2026-09-17 08:04 UTC",
 	} {

@@ -49,7 +49,7 @@ func TestListCmd_HappyPath_MasksSecrets(t *testing.T) {
 		}
 		_, _ = io.WriteString(w, `{"savedInputs":[
 			{"id":"sv-1","key":"repo","value":"my-app"},
-			{"id":"sv-2","key":"gh-token","isSecret":true,"value":"ghp_LEAK","maskedValue":"****1234 (20)"}
+			{"id":"sv-2","key":"gh-token","isSecret":true,"value":"ghp_LEAK","maskedValue":"****1234"}
 		]}`)
 	}))
 	defer srv.Close()
@@ -58,7 +58,7 @@ func TestListCmd_HappyPath_MasksSecrets(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
-	for _, want := range []string{"repo", "my-app", "gh-token", "****1234 (20)", "sv-1", "sv-2"} {
+	for _, want := range []string{"repo", "my-app", "gh-token", "****1234", "sv-1", "sv-2"} {
 		if !strings.Contains(stdout, want) {
 			t.Errorf("stdout missing %q:\n%s", want, stdout)
 		}

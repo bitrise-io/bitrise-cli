@@ -17,9 +17,9 @@ type SavedInput struct {
 	Key      string `json:"key"`
 	Value    string `json:"value,omitempty"`
 	IsSecret bool   `json:"is_secret,omitempty"`
-	// MaskedValue is the masked view of a secret value, for display: "****",
-	// its last 4 characters when it is longer than 16 characters, and its
-	// length (e.g. "****5678 (20)"). Empty for a plain value.
+	// MaskedValue is the masked view of a secret value, for display: "****"
+	// followed by its last 4 characters when it is longer than 16 characters
+	// (e.g. "****5678"); never the length. Empty for a plain value.
 	MaskedValue string     `json:"masked_value,omitempty"`
 	CreatedAt   *time.Time `json:"created_at,omitempty"`
 	UpdatedAt   *time.Time `json:"updated_at,omitempty"`
@@ -135,10 +135,10 @@ func savedInputFromAPI(w rdeapi.SavedInput) SavedInput {
 // backend's own mask.
 const secretMask = "****"
 
-// backendMask matches the backend's masked_value: "****", the last 4
-// characters of a value longer than 16, and the length, e.g.
-// "****5678 (20)" or "**** (12)".
-var backendMask = regexp.MustCompile(`^\*\*\*\*(.{4})? \(\d+\)$`)
+// backendMask matches the backend's masked_value: "****" followed by the
+// last 4 characters of a value longer than 16, e.g. "****5678", or just
+// "****".
+var backendMask = regexp.MustCompile(`^\*\*\*\*(.{4})?$`)
 
 // maskedValue is the masked view the CLI keeps for a value: the backend's
 // masked_value for a secret (never anything that is not a mask), nothing

@@ -250,7 +250,7 @@ func TestViewCmd_MarksScopesAndSecrets(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = io.WriteString(w, `{"template":{"id":"t-1","name":"Hooks","lifecycleMode":"hooks","hooks":{"onCreate":"echo"},
 			"sessionInputs":[{"key":"GH_TOKEN","required":true,"hook":"on_claim"},{"key":"GH_TOKEN","required":true,"hook":"on_restore"},{"key":"REPO","hook":"shared"},{"key":"LEGACY"}],
-			"templateVariables":[{"key":"REGISTRY_TOKEN","isSecret":true,"protected":true,"hook":"on_create","maskedValue":"****5678 (20)"},{"key":"TOKEN","isSecret":true,"protected":true,"maskedValue":"**** (12)"},{"key":"APP","value":"demo","hook":"shared"}]}}`)
+			"templateVariables":[{"key":"REGISTRY_TOKEN","isSecret":true,"protected":true,"hook":"on_create","maskedValue":"****5678"},{"key":"TOKEN","isSecret":true,"protected":true,"maskedValue":"****"},{"key":"APP","value":"demo","hook":"shared"}]}}`)
 	}))
 	defer srv.Close()
 
@@ -260,7 +260,7 @@ func TestViewCmd_MarksScopesAndSecrets(t *testing.T) {
 	}
 	for _, want := range []string{
 		"GH_TOKEN (required, on claim)", "GH_TOKEN (required, on restore)", "REPO (shared)", "LEGACY (shared)",
-		"REGISTRY_TOKEN ****5678 (20) (secret, on create)", "TOKEN **** (12) (secret, shared)", "APP (shared)",
+		"REGISTRY_TOKEN ****5678 (secret, on create)", "TOKEN **** (secret, shared)", "APP (shared)",
 	} {
 		if !strings.Contains(stdout, want) {
 			t.Errorf("stdout missing %q:\n%s", want, stdout)

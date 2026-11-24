@@ -8,8 +8,8 @@ Show the workspace script: whether it is enabled, who changed it last and
 when, its variables and the script itself.
 
 Secret variables are write-only: their values are never shown, only a
-mask — "****", the last 4 characters of a value longer than 16 characters,
-and its length, e.g. "****5678 (20)" — so you can tell which value is set.
+mask — "****", followed by the last 4 characters of a value longer than 16
+characters, e.g. "****5678" — so you can tell which value is set.
 
 ```
 bitrise-cli rde workspace-script view [flags]

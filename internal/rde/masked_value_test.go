@@ -9,8 +9,8 @@ import (
 )
 
 const (
-	mask       = "**** (12)"
-	maskSuffix = "****5678 (20)"
+	mask       = "****"
+	maskSuffix = "****5678"
 )
 
 // The backend returns secrets write-only, with a masked_value. The CLI keeps
@@ -26,7 +26,7 @@ func TestMaskedValue(t *testing.T) {
 		"short secret keeps the bare mask":   {true, mask, mask},
 		"secret without a mask gets one":     {true, "", secretMask},
 		"anything not a mask is never shown": {true, "ghp_plaintext", secretMask},
-		"a mask hiding more is refused":      {true, "****plaintext (20)", secretMask},
+		"a mask hiding more is refused":      {true, "****plaintext", secretMask},
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {

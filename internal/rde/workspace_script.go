@@ -52,9 +52,9 @@ type WorkspaceScriptVariable struct {
 	Value       string `json:"value,omitempty"`
 	Visibility  string `json:"visibility"`
 	ValueStored bool   `json:"value_stored,omitempty"`
-	// MaskedValue: "****", the secret's last 4 characters when it is longer
-	// than 16 characters, and its length (e.g. "****5678 (20)"). Empty for a
-	// plain value.
+	// MaskedValue: "****" followed by the secret's last 4 characters when it
+	// is longer than 16 characters (e.g. "****5678"); never the length. Empty
+	// for a plain value.
 	MaskedValue string `json:"masked_value,omitempty"`
 }
 

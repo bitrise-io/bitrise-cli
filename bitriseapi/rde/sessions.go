@@ -133,9 +133,9 @@ type SnapshotInput struct {
 	// the pool supplied and the claimer never receives (the On create
 	// scope): Value and MaskedValue are then always empty.
 	SuppliedByPool bool `json:"suppliedByPool,omitempty"`
-	// MaskedValue is the masked view of a secret value, for display: "****",
-	// its last 4 characters when it is longer than 16 characters, and its
-	// length (e.g. "****5678 (20)"). Empty for a plain value.
+	// MaskedValue is the masked view of a secret value, for display: "****"
+	// followed by its last 4 characters when it is longer than 16 characters
+	// (e.g. "****5678"); never the length. Empty for a plain value.
 	MaskedValue string `json:"maskedValue,omitempty"`
 }
 

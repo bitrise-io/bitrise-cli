@@ -11,7 +11,7 @@ func TestGetWorkspaceScript_PathQueryAndParse(t *testing.T) {
 		"configured":true,"enabled":true,"script":"echo hi\n",
 		"variables":[
 			{"key":"REGION","value":"eu"},
-			{"key":"TOKEN","isSecret":true,"protected":true,"valueStored":true,"maskedValue":"****5678 (20)"}
+			{"key":"TOKEN","isSecret":true,"protected":true,"valueStored":true,"maskedValue":"****5678"}
 		],
 		"updatedBy":"a@b.io","updatedAt":"2026-11-01T10:00:00Z"}}`)
 
@@ -28,7 +28,7 @@ func TestGetWorkspaceScript_PathQueryAndParse(t *testing.T) {
 	if !ws.Configured || !ws.Enabled || ws.Script != "echo hi\n" || ws.UpdatedBy != "a@b.io" || ws.UpdatedAt != "2026-11-01T10:00:00Z" {
 		t.Errorf("script = %+v", ws)
 	}
-	if len(ws.Variables) != 2 || ws.Variables[0].Value != "eu" || ws.Variables[1].Value != "" || ws.Variables[1].MaskedValue != "****5678 (20)" || !ws.Variables[1].ValueStored {
+	if len(ws.Variables) != 2 || ws.Variables[0].Value != "eu" || ws.Variables[1].Value != "" || ws.Variables[1].MaskedValue != "****5678" || !ws.Variables[1].ValueStored {
 		t.Errorf("variables = %+v", ws.Variables)
 	}
 }

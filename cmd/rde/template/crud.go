@@ -111,8 +111,8 @@ template with the deprecated startup_script/warmup_script, and a spec
 without a hook key, keep every value shared.
 
 Variables: is_secret encrypts the value at rest and makes it write-only:
-the API never returns it, 'template view' shows only a mask (e.g.
-"****5678 (20)": the last 4 characters of a value longer than 16, and its length), and a secret sent with an
+the API never returns it, 'template view' shows only a mask ("****", plus
+the last 4 characters of a value longer than 16), and a secret sent with an
 empty value on update keeps the one stored under the same scope and key (so
 the round-trip below keeps it). protected is kept for compatibility and
 only means is_secret.

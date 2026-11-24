@@ -29,8 +29,8 @@ const scriptPath = "/v1/workspaces/ws-1/workspace-script"
 const stored = `{"workspaceScript":{"configured":true,"enabled":true,"script":"my-agent &\n",
 	"variables":[
 		{"key":"REGION","value":"eu"},
-		{"key":"TOKEN","isSecret":true,"protected":true,"valueStored":true,"maskedValue":"**** (12)"},
-		{"key":"SIGNING_KEY","isSecret":true,"protected":true,"valueStored":true,"maskedValue":"****5678 (20)"}
+		{"key":"TOKEN","isSecret":true,"protected":true,"valueStored":true,"maskedValue":"****"},
+		{"key":"SIGNING_KEY","isSecret":true,"protected":true,"valueStored":true,"maskedValue":"****5678"}
 	],
 	"updatedBy":"admin@example.com","updatedAt":"2026-11-01T10:00:00Z"}}`
 
@@ -101,8 +101,8 @@ func TestViewCmd_MasksSecrets(t *testing.T) {
 		"enabled", "admin@example.com", "2026-11-01 10:00 UTC",
 		"KEY", "VISIBILITY", "VALUE",
 		"REGION", "plain", "eu",
-		"TOKEN", "secret", "**** (12)",
-		"SIGNING_KEY", "****5678 (20)",
+		"TOKEN", "secret", "****",
+		"SIGNING_KEY", "****5678",
 		"my-agent &",
 	} {
 		if !strings.Contains(stdout, want) {
@@ -125,7 +125,7 @@ func TestViewCmd_ShowSecretsIsDeprecated(t *testing.T) {
 	if f.getQuery != "" {
 		t.Errorf("query = %q, want none", f.getQuery)
 	}
-	if !strings.Contains(stdout, "****5678 (20)") {
+	if !strings.Contains(stdout, "****5678") {
 		t.Errorf("mask not shown:\n%s", stdout)
 	}
 	if !strings.Contains(stdout+stderr, "deprecated") {
@@ -173,8 +173,8 @@ func TestViewCmd_JSONOutput(t *testing.T) {
 	}
 	want := []map[string]any{
 		{"key": "REGION", "value": "eu", "visibility": "plain"},
-		{"key": "TOKEN", "visibility": "secret", "value_stored": true, "masked_value": "**** (12)"},
-		{"key": "SIGNING_KEY", "visibility": "secret", "value_stored": true, "masked_value": "****5678 (20)"},
+		{"key": "TOKEN", "visibility": "secret", "value_stored": true, "masked_value": "****"},
+		{"key": "SIGNING_KEY", "visibility": "secret", "value_stored": true, "masked_value": "****5678"},
 	}
 	for i, w := range want {
 		v, _ := vars[i].(map[string]any)

@@ -182,7 +182,7 @@ func formatTime(t *time.Time) string {
 }
 
 // maskOrHidden is how a secret value displays: its mask (e.g.
-// "****5678 (20)"), or "(hidden)" without one.
+// "****5678"), or "(hidden)" without one.
 func maskOrHidden(masked string) string {
 	if masked == "" {
 		return "(hidden)"

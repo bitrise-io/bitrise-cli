@@ -23,8 +23,8 @@ func newViewCmd() *cobra.Command {
 when, its variables and the script itself.
 
 Secret variables are write-only: their values are never shown, only a
-mask — "****", the last 4 characters of a value longer than 16 characters,
-and its length, e.g. "****5678 (20)" — so you can tell which value is set.`,
+mask — "****", followed by the last 4 characters of a value longer than 16
+characters, e.g. "****5678" — so you can tell which value is set.`,
 		Example: `  bitrise-cli rde workspace-script view
   # Compare the live script with the one in git.
   bitrise-cli rde workspace-script view -o json | jq -j .script | diff - workspace-script.sh`,
