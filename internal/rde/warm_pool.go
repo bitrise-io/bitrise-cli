@@ -33,7 +33,8 @@ type WarmPool struct {
 	// always emitted, since 0 is a meaningful value.
 	PoolSize int `json:"pool_size"`
 	// SessionInputs are the values the warm sessions are created with.
-	// Secret values are masked (empty Value, IsSecret true).
+	// Secret values are write-only (empty Value, IsSecret true,
+	// MaskedValue set).
 	SessionInputs           []WarmPoolInput `json:"session_inputs,omitempty"`
 	EnabledFeatureFlagNames []string        `json:"enabled_feature_flag_names,omitempty"`
 	// StackID, MachineType and Cluster override the template's; empty
@@ -76,6 +77,10 @@ type WarmPoolInput struct {
 	// Hook is the scope the value is for; empty applies it to every scope
 	// that defines the key.
 	Hook string `json:"hook,omitempty"`
+	// MaskedValue is the masked view of a secret value, for display: "****",
+	// its last 4 characters when it is longer than 16 characters, and its
+	// length (e.g. "****5678 (20)"). Empty for a plain value.
+	MaskedValue string `json:"masked_value,omitempty"`
 }
 
 // WarmPoolStatus is the live state of a warm pool. The counters are always
@@ -382,8 +387,8 @@ func warmPoolFromAPI(w rdeapi.WarmPool) WarmPool {
 	}
 	for _, i := range w.SessionInputs {
 		// Mask secret values at the CLI boundary, like snapshotFromAPI:
-		// the backend already redacts them, this is the second line of
-		// defense in case that default ever changes.
+		// secrets are write-only and the backend never returns them, this
+		// is the second line of defense.
 		val := i.Value
 		if i.IsSecret {
 			val = ""
@@ -394,6 +399,7 @@ func warmPoolFromAPI(w rdeapi.WarmPool) WarmPool {
 			IsSecret:     i.IsSecret,
 			SavedInputID: i.SavedInputID,
 			Hook:         i.Hook,
+			MaskedValue:  maskedValue(i.IsSecret && i.SavedInputID == "", i.MaskedValue),
 		})
 	}
 	if w.Status != nil {

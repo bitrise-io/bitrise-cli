@@ -8,7 +8,9 @@ Update a saved input's value and/or secret flag.
 
 Pass --value VALUE to set a new value, or --value-stdin to read it from stdin
 without prompting (keeps secrets out of shell history). Omit both to change only
-the --secret flag.
+the --secret flag. Secrets are write-only, so turning a secret into a plain
+value (--secret=false) needs a new value too: the stored secret is never
+revealed.
 
 ```
 bitrise-cli rde saved-input update SAVED_INPUT_ID [flags]

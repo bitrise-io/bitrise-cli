@@ -111,14 +111,19 @@ type TemplateVariable struct {
 	IsSecret bool   `json:"is_secret,omitempty"`
 	// ExposeAsEnvVar ("Also in terminal"): hooks always receive the value;
 	// this additionally writes it to the session's shell profile when its
-	// scope's step runs. Refused on a protected variable.
+	// scope's step runs.
 	ExposeAsEnvVar bool `json:"expose_as_env_var,omitempty"`
 	// Hook is the variable's scope (see Scopes): empty or "shared", or
 	// "on_create" / "on_claim" / "on_restore" on a template with hooks.
 	Hook string `json:"hook,omitempty"`
-	// Protected: secret and write-only — the API never returns the value,
-	// an empty value on update keeps the stored one. Implies IsSecret.
+	// Protected is kept for compatibility: every secret is write-only — the
+	// API never returns its value, and an empty value on update keeps the
+	// stored one — so it reads equal to IsSecret.
 	Protected bool `json:"protected,omitempty"`
+	// MaskedValue is the masked view of a secret value, for display: "****",
+	// its last 4 characters when it is longer than 16 characters, and its
+	// length (e.g. "****5678 (20)"). Empty for a plain value.
+	MaskedValue string `json:"masked_value,omitempty"`
 }
 
 // SessionInputDef is an input definition on a template.
@@ -249,8 +254,9 @@ type TemplateVariableSpec struct {
 	// Hook: see TemplateVariable.Hook. A per-hook scope needs a template
 	// with lifecycle hooks.
 	Hook string `json:"hook,omitempty"`
-	// Protected: see TemplateVariable.Protected. An empty Value on update
-	// keeps the stored one, so the view → edit → update round-trip keeps
+	// Protected is kept for compatibility and only means "secret". A
+	// secret sent with an empty Value on update keeps the one stored under
+	// the same scope and key, so the view → edit → update round-trip keeps
 	// write-only values.
 	Protected bool `json:"protected,omitempty"`
 }
@@ -595,11 +601,8 @@ func templateFromAPI(w rdeapi.Template) Template {
 	for _, v := range w.TemplateVariables {
 		// Mask secret values at the CLI boundary: passing them through
 		// would leak the value into stdout, shell history, and log files.
-		// Because the CLI never opts into include_secrets on template reads,
-		// the backend already omits these values — this masking
-		// is the belt-and-suspenders second line of defense.
-		// A protected variable is write-only on top: the backend returns
-		// no value for it with or without include_secrets.
+		// Secrets are write-only, so the backend never returns these values
+		// — this masking is the belt-and-suspenders second line of defense.
 		val := v.Value
 		if v.IsSecret || v.Protected {
 			val = ""
@@ -611,6 +614,7 @@ func templateFromAPI(w rdeapi.Template) Template {
 			ExposeAsEnvVar: v.ExposeAsEnvVar,
 			Hook:           v.Hook,
 			Protected:      v.Protected,
+			MaskedValue:    maskedValue(v.IsSecret || v.Protected, v.MaskedValue),
 		})
 	}
 	for _, i := range w.SessionInputs {

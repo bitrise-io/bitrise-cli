@@ -24,26 +24,29 @@ type WorkspaceScript struct {
 	UpdatedAt string `json:"updatedAt,omitempty"`
 }
 
-// WorkspaceScriptVariable is one variable as the API returns it. Value is
-// empty for a secret unless the request asked for secrets, and always empty
-// for a protected (write-only) variable; ValueStored says whether a
-// protected variable has a stored value.
+// WorkspaceScriptVariable is one variable as the API returns it. Secrets are
+// write-only: Value is always empty for a secret, MaskedValue carries its
+// masked view, and ValueStored says whether a value is stored. Protected is
+// kept for compatibility and always equals IsSecret.
 type WorkspaceScriptVariable struct {
 	Key         string `json:"key"`
 	Value       string `json:"value,omitempty"`
 	IsSecret    bool   `json:"isSecret,omitempty"`
 	Protected   bool   `json:"protected,omitempty"`
 	ValueStored bool   `json:"valueStored,omitempty"`
+	// MaskedValue: "****", the secret's last 4 characters when it is longer
+	// than 16 characters, and its length (e.g. "****5678 (20)"). Empty for a
+	// plain value.
+	MaskedValue string `json:"maskedValue,omitempty"`
 }
 
-// WorkspaceScriptVariableInput is one variable as the PUT body sends it.
-// Protected implies IsSecret. A protected variable sent with an empty Value
-// keeps its stored value (same key, already protected).
+// WorkspaceScriptVariableInput is one variable as the PUT body sends it. A
+// secret sent with an empty Value keeps the value stored under the same key
+// (secrets are write-only, so that is all a read gives back).
 type WorkspaceScriptVariableInput struct {
-	Key       string `json:"key"`
-	Value     string `json:"value"`
-	IsSecret  bool   `json:"isSecret"`
-	Protected bool   `json:"protected"`
+	Key      string `json:"key"`
+	Value    string `json:"value"`
+	IsSecret bool   `json:"isSecret"`
 }
 
 // UpdateWorkspaceScriptRequest is the PUT body. It is a full replacement:
@@ -66,19 +69,16 @@ func (r workspaceScriptResp) value() WorkspaceScript {
 	return *r.WorkspaceScript
 }
 
-// GetWorkspaceScript returns the workspace script. includeSecrets returns
-// secret values in clear; protected values are never returned. Gated on
+// GetWorkspaceScript returns the workspace script. Secret values are
+// write-only: only their MaskedValue is returned. Gated on
 // the workspace's Usage permission and on the feature being available for
 // the workspace (403 otherwise); Workspace API Tokens are refused.
 // Endpoint: GET /v1/workspaces/{workspaceId}/workspace-script.
-func (c *Client) GetWorkspaceScript(ctx context.Context, workspaceID string, includeSecrets bool) (WorkspaceScript, error) {
+func (c *Client) GetWorkspaceScript(ctx context.Context, workspaceID string) (WorkspaceScript, error) {
 	if workspaceID == "" {
 		return WorkspaceScript{}, fmt.Errorf("workspace ID is required")
 	}
 	p := wsPath(workspaceID, "/workspace-script")
-	if includeSecrets {
-		p += "?include_secrets=true"
-	}
 	var resp workspaceScriptResp
 	if err := c.getJSON(ctx, p, &resp); err != nil {
 		return WorkspaceScript{}, err

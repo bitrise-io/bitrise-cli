@@ -50,7 +50,7 @@ func renderList(w io.Writer, res listResult) error {
 		}
 		value := in.Value
 		if in.IsSecret {
-			value = "(hidden)"
+			value = maskOrHidden(in.MaskedValue)
 		}
 		rows = append(rows, []string{in.Key, secret, value, in.ID})
 	}

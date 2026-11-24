@@ -29,8 +29,8 @@ type WarmPool struct {
 	// drains the pool but keeps it usable as a configuration preset.
 	PoolSize int `json:"poolSize,omitempty"`
 	// SessionInputs are the values the warm sessions are created with.
-	// Secret values come back redacted (empty Value, IsSecret true) —
-	// the internal/rde mapper masks them again as defense-in-depth.
+	// Secret values are write-only (empty Value, IsSecret true, MaskedValue
+	// set) — the internal/rde mapper masks them again as defense-in-depth.
 	SessionInputs           []SessionInputValue `json:"sessionInputs,omitempty"`
 	EnabledFeatureFlagNames []string            `json:"enabledFeatureFlagNames,omitempty"`
 	// StackID, MachineType and Cluster override the template's; empty

@@ -11,39 +11,35 @@ func TestGetWorkspaceScript_PathQueryAndParse(t *testing.T) {
 		"configured":true,"enabled":true,"script":"echo hi\n",
 		"variables":[
 			{"key":"REGION","value":"eu"},
-			{"key":"TOKEN","value":"s3cret","isSecret":true},
-			{"key":"KEY","isSecret":true,"protected":true,"valueStored":true}
+			{"key":"TOKEN","isSecret":true,"protected":true,"valueStored":true,"maskedValue":"****5678 (20)"}
 		],
 		"updatedBy":"a@b.io","updatedAt":"2026-11-01T10:00:00Z"}}`)
 
-	ws, err := rs.client().GetWorkspaceScript(context.Background(), "ws-1", true)
+	ws, err := rs.client().GetWorkspaceScript(context.Background(), "ws-1")
 	if err != nil {
 		t.Fatalf("GetWorkspaceScript: %v", err)
 	}
 	if rs.lastMethod != http.MethodGet || rs.lastPath != "/v1/workspaces/ws-1/workspace-script" {
 		t.Errorf("request = %s %s", rs.lastMethod, rs.lastPath)
 	}
-	if rs.lastQuery != "include_secrets=true" {
-		t.Errorf("query = %q, want include_secrets=true", rs.lastQuery)
+	if rs.lastQuery != "" {
+		t.Errorf("query = %q, want none: secrets are write-only", rs.lastQuery)
 	}
 	if !ws.Configured || !ws.Enabled || ws.Script != "echo hi\n" || ws.UpdatedBy != "a@b.io" || ws.UpdatedAt != "2026-11-01T10:00:00Z" {
 		t.Errorf("script = %+v", ws)
 	}
-	if len(ws.Variables) != 3 || ws.Variables[1].Value != "s3cret" || !ws.Variables[2].Protected || !ws.Variables[2].ValueStored {
+	if len(ws.Variables) != 2 || ws.Variables[0].Value != "eu" || ws.Variables[1].Value != "" || ws.Variables[1].MaskedValue != "****5678 (20)" || !ws.Variables[1].ValueStored {
 		t.Errorf("variables = %+v", ws.Variables)
 	}
 }
 
-// Without secrets no query is sent; an empty object (nothing configured,
-// proto3 omits every zero value) decodes to the zero script.
-func TestGetWorkspaceScript_NoSecretsAndEmpty(t *testing.T) {
+// An empty object (nothing configured, proto3 omits every zero value)
+// decodes to the zero script.
+func TestGetWorkspaceScript_Empty(t *testing.T) {
 	rs := newRecordingServer(t, `{"workspaceScript":{}}`)
-	ws, err := rs.client().GetWorkspaceScript(context.Background(), "ws-1", false)
+	ws, err := rs.client().GetWorkspaceScript(context.Background(), "ws-1")
 	if err != nil {
 		t.Fatalf("GetWorkspaceScript: %v", err)
-	}
-	if rs.lastQuery != "" {
-		t.Errorf("query = %q, want none", rs.lastQuery)
 	}
 	if ws.Configured || ws.Enabled || ws.Script != "" || len(ws.Variables) != 0 {
 		t.Errorf("script = %+v, want zero", ws)
@@ -68,7 +64,7 @@ func TestUpdateWorkspaceScript_SendsFullBody(t *testing.T) {
 func TestWorkspaceScript_ForbiddenSurfacesMessage(t *testing.T) {
 	rs := newRecordingServer(t, `{"code":7,"message":"The workspace script is not available for this workspace."}`)
 	rs.status = http.StatusForbidden
-	_, err := rs.client().GetWorkspaceScript(context.Background(), "ws-1", false)
+	_, err := rs.client().GetWorkspaceScript(context.Background(), "ws-1")
 	if err == nil || err.Error() != "RDE API 403: The workspace script is not available for this workspace." {
 		t.Errorf("err = %v", err)
 	}

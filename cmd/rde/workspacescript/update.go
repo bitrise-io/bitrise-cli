@@ -30,9 +30,9 @@ func newUpdateCmd() *cobra.Command {
 runs first at each boot (see 'bitrise-cli rde workspace-script --help').
 
 Only what the flags name changes; everything else is kept. The CLI reads the
-current script (secret values included), applies the changes and saves the
-whole script back. Protected variables you don't touch keep their stored
-value.
+current script, applies the changes and saves the whole script back. Secret
+variables are write-only, so the ones you don't touch are sent back empty
+and keep their stored value.
 
 Saving changes what every member's sessions run at their next boot (while
 the script is enabled). Test a change first: save it disabled, create a test
@@ -43,11 +43,11 @@ This suits keeping the script in git and deploying it from CI with
 --script-file and a personal access token of someone with the workspace's
 Usage permission — Workspace API Tokens cannot edit the workspace script.
 
---set-var, --set-secret and --set-protected add a variable or replace an
-existing one's value and visibility (plain, secret, protected).
+--set-var and --set-secret add a variable or replace an existing one's
+value and visibility (plain or secret). --set-protected is a deprecated
+alias of --set-secret: every secret is write-only now.
 
-Pass secret and protected values on stdin: --set-secret KEY=- (or
---set-protected KEY=-) reads the value from stdin, with one trailing newline
+Pass secret values on stdin: --set-secret KEY=- reads the value from stdin, with one trailing newline
 trimmed, and keeps it out of shell history and process arguments. A value
 given inline is visible in both. Only one thing can read stdin per call: a
 single KEY=- value or --script-file -.`,
@@ -87,7 +87,7 @@ single KEY=- value or --script-file -.`,
 			}{
 				{"--set-var", setVars, internalrde.VariableVisibilityPlain},
 				{"--set-secret", setSecrets, internalrde.VariableVisibilitySecret},
-				{"--set-protected", setProtected, internalrde.VariableVisibilityProtected},
+				{"--set-protected", setProtected, internalrde.VariableVisibilitySecret},
 			} {
 				for i, raw := range group.values {
 					key, value, ok := strings.Cut(raw, "=")
@@ -118,7 +118,7 @@ single KEY=- value or --script-file -.`,
 				return fmt.Errorf("only one value can be read from stdin per call, got %s\nRun '%s --help' for usage", strings.Join(stdinUsers, " and "), cmd.CommandPath())
 			}
 			if changes.IsEmpty() {
-				return fmt.Errorf("nothing to update: pass at least one of --script-file, --enable, --disable, --set-var, --set-secret, --set-protected or --remove-var\nRun '%s --help' for usage", cmd.CommandPath())
+				return fmt.Errorf("nothing to update: pass at least one of --script-file, --enable, --disable, --set-var, --set-secret or --remove-var\nRun '%s --help' for usage", cmd.CommandPath())
 			}
 			// Everything checkable without the stored script fails here,
 			// before stdin is read and before any request.
@@ -155,7 +155,7 @@ single KEY=- value or --script-file -.`,
 			if err != nil {
 				return err
 			}
-			if err := output.Render(cmd.OutOrStdout(), format, ws, detailRenderer(false)); err != nil {
+			if err := output.Render(cmd.OutOrStdout(), format, ws, renderDetail); err != nil {
 				return err
 			}
 			if !cmdutil.IsQuiet(cmd) {
@@ -173,8 +173,9 @@ single KEY=- value or --script-file -.`,
 	c.Flags().BoolVar(&enable, "enable", false, "enable the script: every session runs it at its next boot")
 	c.Flags().BoolVar(&disable, "disable", false, "disable the script (draft): only sessions created with --workspace-script-test run it")
 	c.Flags().StringArrayVar(&setVars, "set-var", nil, "set a plain variable as KEY=VALUE (repeatable)")
-	c.Flags().StringArrayVar(&setSecrets, "set-secret", nil, "set a secret variable as KEY=VALUE: encrypted at rest, hidden unless viewed with --show-secrets; KEY=- reads the value from stdin (recommended) (repeatable)")
-	c.Flags().StringArrayVar(&setProtected, "set-protected", nil, "set a protected variable as KEY=VALUE: encrypted and write-only, never shown again; KEY=- reads the value from stdin (recommended) (repeatable)")
+	c.Flags().StringArrayVar(&setSecrets, "set-secret", nil, "set a secret variable as KEY=VALUE: encrypted at rest and write-only, never shown again; KEY=- reads the value from stdin (recommended) (repeatable)")
+	c.Flags().StringArrayVar(&setProtected, "set-protected", nil, "deprecated alias of --set-secret (repeatable)")
+	_ = c.Flags().MarkDeprecated("set-protected", "every secret is write-only now; use --set-secret")
 	c.Flags().StringArrayVar(&removeVars, "remove-var", nil, "remove the variable KEY (repeatable)")
 	c.MarkFlagsMutuallyExclusive("enable", "disable")
 	return c

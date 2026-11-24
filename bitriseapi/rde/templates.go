@@ -58,31 +58,30 @@ type TemplateHooks struct {
 
 // TemplateVariable is a baked-in template variable.
 //
-// Secret values (IsSecret=true) are only returned by the backend when a
-// request opts in with include_secrets=true. The CLI intentionally
-// never sets that flag on template reads — it has no use for the cleartext
-// (see ListTemplates / GetTemplate) and the internal/rde mapper masks any
-// secret value before the CLI hands templates to renderers. So `Value` is
-// empty for secret variables, and the mapper masks it again as
-// defense-in-depth in case the backend default ever changes.
+// Secret values (IsSecret=true) are write-only: the API never returns them
+// and carries MaskedValue instead. So `Value` is empty for secret
+// variables, and the internal/rde mapper masks it again as defense-in-depth
+// before the CLI hands templates to renderers.
 type TemplateVariable struct {
 	ID       string `json:"id,omitempty"`
 	Key      string `json:"key"`
 	Value    string `json:"value,omitempty"`
 	IsSecret bool   `json:"isSecret,omitempty"`
 	// ExposeAsEnvVar ("Also in terminal"): the value is also written to the
-	// session's shell profile when its scope's step runs. Refused on a
-	// protected variable.
+	// session's shell profile when its scope's step runs.
 	ExposeAsEnvVar bool `json:"exposeAsEnvVar,omitempty"`
 	// Hook is the scope that receives the variable: "" or "shared" reaches
 	// every hook; "on_create", "on_claim" or "on_restore" reach that hook
 	// only (templates with lifecycle hooks). Keys are unique per scope; the
 	// hook's own value wins over a shared value of the same key.
 	Hook string `json:"hook,omitempty"`
-	// Protected: write-only — the API never returns the value (reads give an
-	// empty Value with IsSecret true, whatever include_secrets says); an
-	// empty value on update keeps the stored one. Implies IsSecret.
+	// Protected is kept for compatibility: every secret is write-only, so
+	// reads report it equal to IsSecret.
 	Protected bool `json:"protected,omitempty"`
+	// MaskedValue is the masked view of a secret value, for display: "****",
+	// its last 4 characters when it is longer than 16 characters, and its
+	// length (e.g. "****5678 (20)"). Empty for a plain value.
+	MaskedValue string `json:"maskedValue,omitempty"`
 }
 
 // SessionInputDef defines an input the template prompts for at session
@@ -225,11 +224,8 @@ type UpdateTemplateRequest struct {
 // ListTemplates returns every template visible in the workspace.
 // Endpoint: GET /v1/workspaces/{workspaceId}/templates.
 //
-// Deliberately does not pass include_secrets: the only consumers —
-// the `template list` table and ResolveTemplateID's name→ID lookup — read
-// metadata only, never secret variable values. Add the query param here (and
-// thread it through internal/rde) only if a caller genuinely needs cleartext
-// secrets, which would also mean revisiting the masking in templateFromAPI.
+// Secret variable values are write-only: the API returns only their
+// MaskedValue.
 func (c *Client) ListTemplates(ctx context.Context, workspaceID string) ([]Template, error) {
 	if workspaceID == "" {
 		return nil, fmt.Errorf("workspace ID is required")
@@ -244,10 +240,8 @@ func (c *Client) ListTemplates(ctx context.Context, workspaceID string) ([]Templ
 // GetTemplate returns a single template by ID.
 // Endpoint: GET /v1/workspaces/{workspaceId}/templates/{templateId}.
 //
-// Deliberately does not pass include_secrets: its only consumer,
-// `template view`, prints each secret variable's key with a "(secret)" label
-// but never its value, so the cleartext is unwanted (and would leak into
-// stdout / JSON output / shell history). See the note on ListTemplates.
+// Secret variable values are write-only: the API returns only their
+// MaskedValue.
 func (c *Client) GetTemplate(ctx context.Context, workspaceID, templateID string) (Template, error) {
 	if workspaceID == "" {
 		return Template{}, fmt.Errorf("workspace ID is required")

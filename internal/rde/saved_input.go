@@ -2,23 +2,27 @@ package rde
 
 import (
 	"context"
+	"regexp"
 	"time"
 
 	rdeapi "github.com/bitrise-io/bitrise-cli/bitriseapi/rde"
 )
 
 // SavedInput is the CLI-facing saved-input record. `Value` is masked by
-// savedInputFromAPI when IsSecret=true — the backend omits secret values on
-// reads unless include_secrets=true is requested, which the CLI
-// never does, and the CLI blanks any value the backend does return before any
-// renderer sees it.
+// savedInputFromAPI when IsSecret=true — secrets are write-only, the backend
+// never returns them, and the CLI blanks any value it does return before any
+// renderer sees it. MaskedValue is what a secret displays as.
 type SavedInput struct {
-	ID        string     `json:"id"`
-	Key       string     `json:"key"`
-	Value     string     `json:"value,omitempty"`
-	IsSecret  bool       `json:"is_secret,omitempty"`
-	CreatedAt *time.Time `json:"created_at,omitempty"`
-	UpdatedAt *time.Time `json:"updated_at,omitempty"`
+	ID       string `json:"id"`
+	Key      string `json:"key"`
+	Value    string `json:"value,omitempty"`
+	IsSecret bool   `json:"is_secret,omitempty"`
+	// MaskedValue is the masked view of a secret value, for display: "****",
+	// its last 4 characters when it is longer than 16 characters, and its
+	// length (e.g. "****5678 (20)"). Empty for a plain value.
+	MaskedValue string     `json:"masked_value,omitempty"`
+	CreatedAt   *time.Time `json:"created_at,omitempty"`
+	UpdatedAt   *time.Time `json:"updated_at,omitempty"`
 }
 
 // CreateSavedInputRequest is the CLI-side create payload.
@@ -29,7 +33,8 @@ type CreateSavedInputRequest struct {
 }
 
 // UpdateSavedInputRequest is the CLI-side patch payload. Pointer fields
-// preserve "unset, leave alone" semantics.
+// preserve "unset, leave alone" semantics. Without a value the stored one is
+// kept, except that turning a secret plain needs a new value.
 type UpdateSavedInputRequest struct {
 	Value    *string
 	IsSecret *bool
@@ -107,21 +112,43 @@ func savedInputFromAPI(w rdeapi.SavedInput) SavedInput {
 	// Mask secret values at the CLI boundary: passing them through would
 	// leak the value into --output json, shell history, and log files. Keep
 	// the key + is_secret marker so callers can still see what was set.
-	// Because the CLI never opts into include_secrets on the read endpoints,
-	// the backend already omits these values on List/Get — this
-	// masking is the belt-and-suspenders second line of defense (and also
-	// covers the value create/update may echo back). Mirrors templateFromAPI
-	// / snapshotFromAPI.
+	// Secrets are write-only, so the backend never returns these values —
+	// this masking is the belt-and-suspenders second line of defense.
+	// Mirrors templateFromAPI / snapshotFromAPI.
 	val := w.Value
 	if w.IsSecret {
 		val = ""
 	}
 	return SavedInput{
-		ID:        w.ID,
-		Key:       w.Key,
-		Value:     val,
-		IsSecret:  w.IsSecret,
-		CreatedAt: parseTime(w.CreatedAt),
-		UpdatedAt: parseTime(w.UpdatedAt),
+		ID:          w.ID,
+		Key:         w.Key,
+		Value:       val,
+		IsSecret:    w.IsSecret,
+		MaskedValue: maskedValue(w.IsSecret, w.MaskedValue),
+		CreatedAt:   parseTime(w.CreatedAt),
+		UpdatedAt:   parseTime(w.UpdatedAt),
 	}
+}
+
+// secretMask is what a secret displays as when the backend sent no masked
+// value (an older backend, or nothing stored): the bare start of the
+// backend's own mask.
+const secretMask = "****"
+
+// backendMask matches the backend's masked_value: "****", the last 4
+// characters of a value longer than 16, and the length, e.g.
+// "****5678 (20)" or "**** (12)".
+var backendMask = regexp.MustCompile(`^\*\*\*\*(.{4})? \(\d+\)$`)
+
+// maskedValue is the masked view the CLI keeps for a value: the backend's
+// masked_value for a secret (never anything that is not a mask), nothing
+// for a plain value.
+func maskedValue(isSecret bool, wire string) string {
+	if !isSecret {
+		return ""
+	}
+	if !backendMask.MatchString(wire) {
+		return secretMask
+	}
+	return wire
 }

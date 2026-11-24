@@ -34,7 +34,7 @@ Optional fields:
                       expose_as_env_var, hook} — values callers supply when
                       creating (or claiming) a session; hook is the input's
                       scope (see "Scopes" below)
-  template_variables  array of {key, value, is_secret, protected,
+  template_variables  array of {key, value, is_secret, protected (= is_secret),
                       expose_as_env_var, hook} — baked-in values the scripts
                       receive; hook is the variable's scope (see below)
   feature_flags       array of {name, description}
@@ -92,14 +92,12 @@ inputs; whoever claims supplies the on_claim and on_restore ones. A
 template with the deprecated startup_script/warmup_script, and a spec
 without a hook key, keep every value shared.
 
-Variables: is_secret encrypts the value at rest and hides it in output
-(members with access can still read it with include_secrets). protected
-goes further — secret and write-only: the API never returns the value,
-'template view' shows the key only, and an empty value on update keeps the
-stored one (so the round-trip below keeps it). Use protected for secrets
-every warm pool of the template reuses, such as a registry credential. A
-protected value is never written to the machine, so expose_as_env_var is
-refused with it.
+Variables: is_secret encrypts the value at rest and makes it write-only:
+the API never returns it, 'template view' shows only a mask (e.g.
+"****5678 (20)": the last 4 characters of a value longer than 16, and its length), and a secret sent with an
+empty value on update keeps the one stored under the same scope and key (so
+the round-trip below keeps it). protected is kept for compatibility and
+only means is_secret.
 
 Also in terminal (expose_as_env_var, on variables and inputs of every
 scope): hooks always receive this value. Also in terminal additionally
@@ -163,8 +161,8 @@ bitrise-cli rde template create [flags]
   # Declare an iOS simulator every session from this template boots by default.
   bitrise-cli rde template create --file template.json --device-platform ios --device-model "iPhone 16"
   # Lifecycle hooks: On create clones and installs; On restore refreshes.
-  # GH_TOKEN is asked from whoever claims (on_claim) and again for On restore; REGISTRY_TOKEN is a protected On create variable.
-  echo '{"name":"hooks-dev","stack_id":"linux-ubuntu-24.04","machine_type":"standard","hooks":{"on_create":"git clone https://github.com/example-org/app.git ~/app && cd ~/app && npm ci","on_restore":"cd ~/app && git pull --ff-only"},"session_inputs":[{"key":"GH_TOKEN","required":true,"hook":"on_claim"},{"key":"GH_TOKEN","required":true,"hook":"on_restore"}],"template_variables":[{"key":"REGISTRY_TOKEN","value":"...","hook":"on_create","protected":true},{"key":"APP_ENV","value":"dev","expose_as_env_var":true}]}' | bitrise-cli rde template create --file -
+  # GH_TOKEN is asked from whoever claims (on_claim) and again for On restore; REGISTRY_TOKEN is a secret On create variable.
+  echo '{"name":"hooks-dev","stack_id":"linux-ubuntu-24.04","machine_type":"standard","hooks":{"on_create":"git clone https://github.com/example-org/app.git ~/app && cd ~/app && npm ci","on_restore":"cd ~/app && git pull --ff-only"},"session_inputs":[{"key":"GH_TOKEN","required":true,"hook":"on_claim"},{"key":"GH_TOKEN","required":true,"hook":"on_restore"}],"template_variables":[{"key":"REGISTRY_TOKEN","value":"...","hook":"on_create","is_secret":true},{"key":"APP_ENV","value":"dev","expose_as_env_var":true}]}' | bitrise-cli rde template create --file -
 ```
 
 ### Options

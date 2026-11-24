@@ -40,7 +40,7 @@ func renderDetail(w io.Writer, in internalrde.SavedInput) error {
 	ew.F("%s%s\n", lbl("Key:"), in.Key)
 	ew.F("%s%s\n", lbl("ID:"), s.Slug.Render(in.ID))
 	if in.IsSecret {
-		ew.F("%s%s\n", lbl("Value:"), s.Dim.Render("(hidden)"))
+		ew.F("%s%s\n", lbl("Value:"), s.Dim.Render(maskOrHidden(in.MaskedValue)))
 		ew.F("%s%s\n", lbl("Secret:"), "yes")
 	} else {
 		ew.F("%s%s\n", lbl("Value:"), in.Value)
@@ -49,4 +49,13 @@ func renderDetail(w io.Writer, in internalrde.SavedInput) error {
 		ew.F("%s%s\n", lbl("Updated:"), in.UpdatedAt.UTC().Format("2006-01-02 15:04 UTC"))
 	}
 	return ew.Err
+}
+
+// maskOrHidden is how a secret value displays: its mask (e.g.
+// "****5678 (20)"), or "(hidden)" without one.
+func maskOrHidden(masked string) string {
+	if masked == "" {
+		return "(hidden)"
+	}
+	return masked
 }

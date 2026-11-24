@@ -259,7 +259,13 @@ func renderSessionDetail(w io.Writer, sess internalrde.Session) error {
 			for _, in := range snap.SessionInputs {
 				val := in.Value
 				if in.IsSecret {
-					val = s.Dim.Render("(hidden)")
+					// Write-only: only the mask, with the last 4
+					// characters of a value longer than 16.
+					masked := in.MaskedValue
+					if masked == "" {
+						masked = "(hidden)"
+					}
+					val = s.Dim.Render(masked)
 				}
 				if in.SuppliedByPool {
 					// A pool-time value: the API never returns it to the
