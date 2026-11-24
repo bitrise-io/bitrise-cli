@@ -49,7 +49,7 @@ func TestListCmd_HappyPath_MasksSecrets(t *testing.T) {
 		}
 		_, _ = io.WriteString(w, `{"savedInputs":[
 			{"id":"sv-1","key":"repo","value":"my-app"},
-			{"id":"sv-2","key":"gh-token","isSecret":true,"value":"ghp_LEAK"}
+			{"id":"sv-2","key":"gh-token","isSecret":true,"value":"ghp_LEAK","maskedValue":"****1234"}
 		]}`)
 	}))
 	defer srv.Close()
@@ -58,7 +58,7 @@ func TestListCmd_HappyPath_MasksSecrets(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
-	for _, want := range []string{"repo", "my-app", "gh-token", "(hidden)", "sv-1", "sv-2"} {
+	for _, want := range []string{"repo", "my-app", "gh-token", "****1234", "sv-1", "sv-2"} {
 		if !strings.Contains(stdout, want) {
 			t.Errorf("stdout missing %q:\n%s", want, stdout)
 		}
@@ -138,7 +138,7 @@ func TestViewCmd_SecretHuman(t *testing.T) {
 		if r.URL.Path != "/v1/saved-inputs/sv-2" {
 			t.Errorf("unexpected path: %s", r.URL.Path)
 		}
-		_, _ = io.WriteString(w, `{"savedInput":{"id":"sv-2","key":"gh-token","isSecret":true,"value":"***"}}`)
+		_, _ = io.WriteString(w, `{"savedInput":{"id":"sv-2","key":"gh-token","isSecret":true,"value":"***","maskedValue":"not-a-mask"}}`)
 	}))
 	defer srv.Close()
 
@@ -146,10 +146,14 @@ func TestViewCmd_SecretHuman(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
-	for _, want := range []string{"gh-token", "sv-2", "(hidden)", "yes"} {
+	for _, want := range []string{"gh-token", "sv-2", "****", "yes"} {
 		if !strings.Contains(stdout, want) {
 			t.Errorf("stdout missing %q:\n%s", want, stdout)
 		}
+	}
+	// Only a mask is ever printed for a secret, whatever the backend sent.
+	if strings.Contains(stdout, "not-a-mask") {
+		t.Errorf("stdout prints something that is not a mask:\n%s", stdout)
 	}
 }
 

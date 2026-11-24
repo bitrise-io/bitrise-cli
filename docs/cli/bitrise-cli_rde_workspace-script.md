@@ -23,9 +23,9 @@ create NAME --workspace-script-test'. Test the script that way before
 enabling it: once enabled, every member's sessions run it at their next
 boot.
 
-Variables are plain (value shown), secret (encrypted at rest, shown only
-with --show-secrets) or protected (encrypted and write-only: never shown,
-only whether a value is set). Keys starting with RDE_ are reserved.
+Variables are plain (value shown) or secret (encrypted at rest and
+write-only: never shown, only a mask with the last 4 characters of a value
+longer than 16). Keys starting with RDE_ are reserved.
 
 Only people with the workspace's Usage permission (workspace owners and
 billing managers) can view or edit the script, with a personal access token

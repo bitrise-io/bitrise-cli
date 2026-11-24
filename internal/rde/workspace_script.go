@@ -34,23 +34,28 @@ type WorkspaceScript struct {
 const (
 	// VariableVisibilityPlain values are stored and returned as is.
 	VariableVisibilityPlain = "plain"
-	// VariableVisibilitySecret values are encrypted at rest and returned
-	// only when secrets are asked for.
+	// VariableVisibilitySecret values are encrypted at rest and write-only:
+	// never returned, only their masked view.
 	VariableVisibilitySecret = "secret"
-	// VariableVisibilityProtected values are encrypted and write-only:
-	// never returned.
+	// VariableVisibilityProtected is accepted on changes as an alias of
+	// VariableVisibilitySecret, kept for compatibility: every secret is
+	// write-only now. Reads never report it.
 	VariableVisibilityProtected = "protected"
 )
 
 // WorkspaceScriptVariable is one variable of the workspace script.
-// Visibility is plain, secret or protected. Value is empty for a secret
-// unless secrets were asked for, and always empty for a protected variable;
-// ValueStored says whether a protected variable has a stored value.
+// Visibility is plain or secret. Value is always empty for a secret: secrets
+// are write-only, MaskedValue is what one displays as, and ValueStored says
+// whether a value is stored.
 type WorkspaceScriptVariable struct {
 	Key         string `json:"key"`
 	Value       string `json:"value,omitempty"`
 	Visibility  string `json:"visibility"`
 	ValueStored bool   `json:"value_stored,omitempty"`
+	// MaskedValue: "****" followed by the secret's last 4 characters when it
+	// is longer than 16 characters (e.g. "****5678"); never the length. Empty
+	// for a plain value.
+	MaskedValue string `json:"masked_value,omitempty"`
 }
 
 // WorkspaceScriptVariableChange sets one variable: a new one is added, an
@@ -77,7 +82,7 @@ func (c WorkspaceScriptChanges) IsEmpty() bool {
 
 // Validate checks the changes on their own, without the stored script: it
 // rejects an empty change set, empty and reserved keys, a variable set twice
-// or both set and removed, an empty protected value and an unknown
+// or both set and removed, an empty secret value and an unknown
 // visibility. Callers run it before any request, so a flag mistake never
 // waits on the network. Errors name keys, never values. Whether a removed
 // variable exists can only be checked against the stored script, by
@@ -95,10 +100,10 @@ func (c WorkspaceScriptChanges) Validate() error {
 			return fmt.Errorf("variable %s is set more than once", ch.Key)
 		}
 		switch ch.Visibility {
-		case VariableVisibilityPlain, VariableVisibilitySecret:
-		case VariableVisibilityProtected:
+		case VariableVisibilityPlain:
+		case VariableVisibilitySecret, VariableVisibilityProtected:
 			if ch.Value == "" {
-				return fmt.Errorf("protected variable %s needs a value", ch.Key)
+				return fmt.Errorf("secret variable %s needs a value", ch.Key)
 			}
 		default:
 			return fmt.Errorf("variable %s: unknown visibility %q", ch.Key, ch.Visibility)
@@ -119,13 +124,13 @@ func (c WorkspaceScriptChanges) Validate() error {
 // reservedVariablePrefix starts the names the platform sets itself.
 const reservedVariablePrefix = "RDE_"
 
-// GetWorkspaceScript returns the workspace script. includeSecrets returns
-// secret values in clear; protected values are never returned.
-func (s *Service) GetWorkspaceScript(ctx context.Context, workspaceID string, includeSecrets bool) (WorkspaceScript, error) {
+// GetWorkspaceScript returns the workspace script. Secret values are
+// write-only: only their masked view is returned.
+func (s *Service) GetWorkspaceScript(ctx context.Context, workspaceID string) (WorkspaceScript, error) {
 	if s.client == nil {
 		return WorkspaceScript{}, errClient()
 	}
-	wire, err := s.client.GetWorkspaceScript(ctx, workspaceID, includeSecrets)
+	wire, err := s.client.GetWorkspaceScript(ctx, workspaceID)
 	if err != nil {
 		return WorkspaceScript{}, err
 	}
@@ -133,11 +138,11 @@ func (s *Service) GetWorkspaceScript(ctx context.Context, workspaceID string, in
 }
 
 // UpdateWorkspaceScript applies changes to the workspace script. The API
-// replaces the script as a whole, so this reads the current one (secret
-// values included), applies only the given changes and saves the full set:
-// untouched variables are sent back as they are, untouched protected ones
-// with an empty value so they keep their stored value. Returns the script
-// as saved (secret values masked).
+// replaces the script as a whole, so this reads the current one, applies
+// only the given changes and saves the full set: untouched plain variables
+// are sent back as they are, untouched secrets with an empty value so they
+// keep their stored value (secrets are write-only, a read never has it).
+// Returns the script as saved (secret values masked).
 func (s *Service) UpdateWorkspaceScript(ctx context.Context, workspaceID string, changes WorkspaceScriptChanges) (WorkspaceScript, error) {
 	if s.client == nil {
 		return WorkspaceScript{}, errClient()
@@ -145,7 +150,7 @@ func (s *Service) UpdateWorkspaceScript(ctx context.Context, workspaceID string,
 	if err := changes.Validate(); err != nil {
 		return WorkspaceScript{}, err
 	}
-	current, err := s.client.GetWorkspaceScript(ctx, workspaceID, true)
+	current, err := s.client.GetWorkspaceScript(ctx, workspaceID)
 	if err != nil {
 		return WorkspaceScript{}, err
 	}
@@ -161,7 +166,7 @@ func (s *Service) UpdateWorkspaceScript(ctx context.Context, workspaceID string,
 }
 
 // applyWorkspaceScriptChanges builds the full-replacement PUT body from the
-// current script (read with secrets) and changes that passed Validate. The
+// current script and changes that passed Validate. The
 // one check left for here is that a removed variable exists. Variables keep
 // their order; new ones are appended in the order given.
 func applyWorkspaceScriptChanges(current rdeapi.WorkspaceScript, changes WorkspaceScriptChanges) (rdeapi.UpdateWorkspaceScriptRequest, error) {
@@ -202,11 +207,10 @@ func applyWorkspaceScriptChanges(current rdeapi.WorkspaceScript, changes Workspa
 			delete(set, v.Key)
 			continue
 		}
-		// Unchanged: a protected value is never returned, so an empty value
-		// tells the backend to keep the stored one; a secret was read in
-		// clear and goes back as it is.
-		in := rdeapi.WorkspaceScriptVariableInput{Key: v.Key, Value: v.Value, IsSecret: v.IsSecret || v.Protected, Protected: v.Protected}
-		if v.Protected {
+		// Unchanged: a secret is never returned, so an empty value tells
+		// the backend to keep the stored one; a plain value goes back as is.
+		in := rdeapi.WorkspaceScriptVariableInput{Key: v.Key, Value: v.Value, IsSecret: v.IsSecret || v.Protected}
+		if in.IsSecret {
 			in.Value = ""
 		}
 		req.Variables = append(req.Variables, in)
@@ -221,10 +225,9 @@ func applyWorkspaceScriptChanges(current rdeapi.WorkspaceScript, changes Workspa
 
 func variableInput(ch WorkspaceScriptVariableChange) rdeapi.WorkspaceScriptVariableInput {
 	return rdeapi.WorkspaceScriptVariableInput{
-		Key:       ch.Key,
-		Value:     ch.Value,
-		IsSecret:  ch.Visibility != VariableVisibilityPlain,
-		Protected: ch.Visibility == VariableVisibilityProtected,
+		Key:      ch.Key,
+		Value:    ch.Value,
+		IsSecret: ch.Visibility != VariableVisibilityPlain,
 	}
 }
 
@@ -256,14 +259,14 @@ func workspaceScriptFromAPI(w rdeapi.WorkspaceScript) WorkspaceScript {
 
 func workspaceScriptVariableFromAPI(v rdeapi.WorkspaceScriptVariable) WorkspaceScriptVariable {
 	out := WorkspaceScriptVariable{Key: v.Key, Value: v.Value, Visibility: VariableVisibilityPlain}
-	switch {
-	case v.Protected:
+	if v.IsSecret || v.Protected {
 		// Write-only: never surface a value, even if one came back.
-		out.Visibility = VariableVisibilityProtected
+		out.Visibility = VariableVisibilitySecret
 		out.Value = ""
 		out.ValueStored = v.ValueStored
-	case v.IsSecret:
-		out.Visibility = VariableVisibilitySecret
+		if v.ValueStored {
+			out.MaskedValue = maskedValue(true, v.MaskedValue)
+		}
 	}
 	return out
 }

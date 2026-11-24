@@ -22,10 +22,10 @@ func newViewCmd() *cobra.Command {
 		Long: `Show the workspace script: whether it is enabled, who changed it last and
 when, its variables and the script itself.
 
-Secret variable values are hidden unless --show-secrets is given; protected
-variables are write-only and never shown — only whether a value is set.`,
+Secret variables are write-only: their values are never shown, only a
+mask — "****", followed by the last 4 characters of a value longer than 16
+characters, e.g. "****5678" — so you can tell which value is set.`,
 		Example: `  bitrise-cli rde workspace-script view
-  bitrise-cli rde workspace-script view --show-secrets
   # Compare the live script with the one in git.
   bitrise-cli rde workspace-script view -o json | jq -j .script | diff - workspace-script.sh`,
 		Args: cobra.NoArgs,
@@ -39,27 +39,21 @@ variables are write-only and never shown — only whether a value is set.`,
 			if err != nil {
 				return err
 			}
-			ws, err := internalrde.NewService(client).GetWorkspaceScript(cmd.Context(), workspaceID, showSecrets)
+			ws, err := internalrde.NewService(client).GetWorkspaceScript(cmd.Context(), workspaceID)
 			if err != nil {
 				return err
 			}
-			return output.Render(cmd.OutOrStdout(), format, ws, detailRenderer(showSecrets))
+			return output.Render(cmd.OutOrStdout(), format, ws, renderDetail)
 		},
 	}
-	c.Flags().BoolVar(&showSecrets, "show-secrets", false, "show secret variable values (protected values are never returned)")
+	// Secrets are write-only: there is nothing left to show. Kept so
+	// existing scripts that pass it keep working.
+	c.Flags().BoolVar(&showSecrets, "show-secrets", false, "no effect: secret values are write-only and never shown")
+	_ = c.Flags().MarkDeprecated("show-secrets", "secret values are write-only and never shown; only their mask is")
 	return c
 }
 
-// detailRenderer renders the workspace script for humans. revealed says
-// secret values were asked for, so an empty secret is shown as empty
-// rather than hidden.
-func detailRenderer(revealed bool) func(io.Writer, internalrde.WorkspaceScript) error {
-	return func(w io.Writer, ws internalrde.WorkspaceScript) error {
-		return renderDetail(w, ws, revealed)
-	}
-}
-
-func renderDetail(w io.Writer, ws internalrde.WorkspaceScript, revealed bool) error {
+func renderDetail(w io.Writer, ws internalrde.WorkspaceScript) error {
 	s := style.New(w)
 	ew := cmdutil.NewErrWriter(w)
 	if !ws.Configured {
@@ -95,7 +89,7 @@ func renderDetail(w io.Writer, ws internalrde.WorkspaceScript, revealed bool) er
 	} else {
 		rows := make([][]string, 0, len(ws.Variables))
 		for _, v := range ws.Variables {
-			rows = append(rows, []string{v.Key, v.Visibility, variableValue(v, revealed)})
+			rows = append(rows, []string{v.Key, v.Visibility, variableValue(v)})
 		}
 		const colValue = 2
 		styler := func(row, col int, content string) string {
@@ -124,20 +118,15 @@ func renderDetail(w io.Writer, ws internalrde.WorkspaceScript, revealed bool) er
 }
 
 // variableValue is what the VALUE column shows: the value of a plain
-// variable or a revealed secret, a placeholder otherwise.
-func variableValue(v internalrde.WorkspaceScriptVariable, revealed bool) string {
-	switch v.Visibility {
-	case internalrde.VariableVisibilityProtected:
-		if v.ValueStored {
-			return "(set)"
-		}
-		return "(not set)"
-	case internalrde.VariableVisibilitySecret:
-		if !revealed {
-			return "(hidden)"
-		}
+// variable, the mask of a secret.
+func variableValue(v internalrde.WorkspaceScriptVariable) string {
+	if v.Visibility != internalrde.VariableVisibilitySecret {
+		return v.Value
 	}
-	return v.Value
+	if !v.ValueStored || v.MaskedValue == "" {
+		return "(not set)"
+	}
+	return v.MaskedValue
 }
 
 // formatTime is the canonical timestamp format for human output; nil

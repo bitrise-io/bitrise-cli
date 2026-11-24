@@ -124,7 +124,7 @@ func renderDetail(w io.Writer, p internalrde.WarmPool) error {
 			case in.SavedInputID != "":
 				val = s.Dim.Render("saved input ") + s.Slug.Render(in.SavedInputID)
 			case in.IsSecret:
-				val = s.Dim.Render("(hidden)")
+				val = s.Dim.Render(maskOrHidden(in.MaskedValue))
 			}
 			key := in.Key
 			if in.Hook != "" {
@@ -179,4 +179,13 @@ func formatTime(t *time.Time) string {
 		return ""
 	}
 	return t.UTC().Format("2006-01-02 15:04 UTC")
+}
+
+// maskOrHidden is how a secret value displays: its mask (e.g.
+// "****5678"), or "(hidden)" without one.
+func maskOrHidden(masked string) string {
+	if masked == "" {
+		return "(hidden)"
+	}
+	return masked
 }

@@ -7,8 +7,9 @@ Show the workspace script, its state and its variables
 Show the workspace script: whether it is enabled, who changed it last and
 when, its variables and the script itself.
 
-Secret variable values are hidden unless --show-secrets is given; protected
-variables are write-only and never shown — only whether a value is set.
+Secret variables are write-only: their values are never shown, only a
+mask — "****", followed by the last 4 characters of a value longer than 16
+characters, e.g. "****5678" — so you can tell which value is set.
 
 ```
 bitrise-cli rde workspace-script view [flags]
@@ -18,7 +19,6 @@ bitrise-cli rde workspace-script view [flags]
 
 ```
   bitrise-cli rde workspace-script view
-  bitrise-cli rde workspace-script view --show-secrets
   # Compare the live script with the one in git.
   bitrise-cli rde workspace-script view -o json | jq -j .script | diff - workspace-script.sh
 ```
@@ -26,8 +26,7 @@ bitrise-cli rde workspace-script view [flags]
 ### Options
 
 ```
-  -h, --help           help for view
-      --show-secrets   show secret variable values (protected values are never returned)
+  -h, --help   help for view
 ```
 
 ### Options inherited from parent commands

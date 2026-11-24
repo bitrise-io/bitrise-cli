@@ -23,23 +23,19 @@ func TestMain(m *testing.M) { os.Exit(cmdtest.RunIsolated(m)) }
 
 const scriptPath = "/v1/workspaces/ws-1/workspace-script"
 
-// stored is the script as GET ?include_secrets=true returns it.
+// stored is the script as GET returns it: secrets are write-only, so only
+// their mask comes back (with the last 4 characters of a value longer than
+// 16), and every secret reads as protected.
 const stored = `{"workspaceScript":{"configured":true,"enabled":true,"script":"my-agent &\n",
 	"variables":[
 		{"key":"REGION","value":"eu"},
-		{"key":"TOKEN","value":"s3cret","isSecret":true},
-		{"key":"SIGNING_KEY","isSecret":true,"protected":true,"valueStored":true}
+		{"key":"TOKEN","isSecret":true,"protected":true,"valueStored":true,"maskedValue":"****"},
+		{"key":"SIGNING_KEY","isSecret":true,"protected":true,"valueStored":true,"maskedValue":"****5678"}
 	],
 	"updatedBy":"admin@example.com","updatedAt":"2026-11-01T10:00:00Z"}}`
 
-// masked is the same script without include_secrets.
-const masked = `{"workspaceScript":{"configured":true,"enabled":true,"script":"my-agent &\n",
-	"variables":[
-		{"key":"REGION","value":"eu"},
-		{"key":"TOKEN","isSecret":true},
-		{"key":"SIGNING_KEY","isSecret":true,"protected":true,"valueStored":true}
-	],
-	"updatedBy":"admin@example.com","updatedAt":"2026-11-01T10:00:00Z"}}`
+// masked is what the PUT answers: the same view.
+const masked = stored
 
 // run drives c against a Resolved context pointing at srvURL.
 func run(t *testing.T, c *cobra.Command, srvURL string, args []string, stdin string, format output.Format) (string, string, error) {
@@ -99,36 +95,41 @@ func TestViewCmd_MasksSecrets(t *testing.T) {
 		t.Fatalf("Execute: %v", err)
 	}
 	if f.getQuery != "" {
-		t.Errorf("query = %q, want none without --show-secrets", f.getQuery)
+		t.Errorf("query = %q, want none", f.getQuery)
 	}
 	for _, want := range []string{
 		"enabled", "admin@example.com", "2026-11-01 10:00 UTC",
 		"KEY", "VISIBILITY", "VALUE",
 		"REGION", "plain", "eu",
-		"TOKEN", "secret", "(hidden)",
-		"SIGNING_KEY", "protected", "(set)",
+		"TOKEN", "secret", "****",
+		"SIGNING_KEY", "****5678",
 		"my-agent &",
 	} {
 		if !strings.Contains(stdout, want) {
 			t.Errorf("stdout missing %q:\n%s", want, stdout)
 		}
 	}
+	if strings.Contains(stdout, "protected") {
+		t.Errorf("every secret is write-only, none reads as protected:\n%s", stdout)
+	}
 }
 
-func TestViewCmd_ShowSecrets(t *testing.T) {
+// --show-secrets is kept so existing scripts keep working, but secrets are
+// write-only: nothing is asked for and only the masks are shown.
+func TestViewCmd_ShowSecretsIsDeprecated(t *testing.T) {
 	f := &fakeBackend{getBody: stored}
-	stdout, _, err := run(t, newViewCmd(), f.server(t).URL, []string{"--show-secrets"}, "", output.Human)
+	stdout, stderr, err := run(t, newViewCmd(), f.server(t).URL, []string{"--show-secrets"}, "", output.Human)
 	if err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
-	if f.getQuery != "include_secrets=true" {
-		t.Errorf("query = %q, want include_secrets=true", f.getQuery)
+	if f.getQuery != "" {
+		t.Errorf("query = %q, want none", f.getQuery)
 	}
-	if !strings.Contains(stdout, "s3cret") || strings.Contains(stdout, "(hidden)") {
-		t.Errorf("secret not revealed:\n%s", stdout)
+	if !strings.Contains(stdout, "****5678") {
+		t.Errorf("mask not shown:\n%s", stdout)
 	}
-	if !strings.Contains(stdout, "(set)") {
-		t.Errorf("protected must stay write-only:\n%s", stdout)
+	if !strings.Contains(stdout+stderr, "deprecated") {
+		t.Errorf("no deprecation notice:\nstdout %s\nstderr %s", stdout, stderr)
 	}
 }
 
@@ -172,8 +173,8 @@ func TestViewCmd_JSONOutput(t *testing.T) {
 	}
 	want := []map[string]any{
 		{"key": "REGION", "value": "eu", "visibility": "plain"},
-		{"key": "TOKEN", "visibility": "secret"},
-		{"key": "SIGNING_KEY", "visibility": "protected", "value_stored": true},
+		{"key": "TOKEN", "visibility": "secret", "value_stored": true, "masked_value": "****"},
+		{"key": "SIGNING_KEY", "visibility": "secret", "value_stored": true, "masked_value": "****5678"},
 	}
 	for i, w := range want {
 		v, _ := vars[i].(map[string]any)
@@ -201,9 +202,9 @@ func TestViewCmd_ForbiddenIsAnError(t *testing.T) {
 	}
 }
 
-// Changing only the script reads with secrets and sends everything else
-// back as it was: enabled, the plain and secret values, and the protected
-// variable with "" so its stored value is kept. The exact body is pinned.
+// Changing only the script sends everything else back as it was: enabled,
+// the plain values, and every secret with "" so its stored value is kept
+// (secrets are write-only, a read never has them). The exact body is pinned.
 func TestUpdateCmd_ScriptOnlyKeepsTheRest(t *testing.T) {
 	dir := t.TempDir()
 	file := filepath.Join(dir, "ws.sh")
@@ -215,13 +216,13 @@ func TestUpdateCmd_ScriptOnlyKeepsTheRest(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
-	if f.getQuery != "include_secrets=true" {
-		t.Errorf("GET query = %q, want include_secrets=true", f.getQuery)
+	if f.getQuery != "" {
+		t.Errorf("GET query = %q, want none", f.getQuery)
 	}
 	want := `{"enabled":true,"script":"echo new\n","variables":[` +
-		`{"key":"REGION","value":"eu","isSecret":false,"protected":false},` +
-		`{"key":"TOKEN","value":"s3cret","isSecret":true,"protected":false},` +
-		`{"key":"SIGNING_KEY","value":"","isSecret":true,"protected":true}]}`
+		`{"key":"REGION","value":"eu","isSecret":false},` +
+		`{"key":"TOKEN","value":"","isSecret":true},` +
+		`{"key":"SIGNING_KEY","value":"","isSecret":true}]}`
 	if string(f.putBody) != want {
 		t.Errorf("PUT body\n got %s\nwant %s", f.putBody, want)
 	}
@@ -235,10 +236,9 @@ func TestUpdateCmd_ScriptOnlyKeepsTheRest(t *testing.T) {
 }
 
 type putVar struct {
-	Key       string `json:"key"`
-	Value     string `json:"value"`
-	IsSecret  bool   `json:"isSecret"`
-	Protected bool   `json:"protected"`
+	Key      string `json:"key"`
+	Value    string `json:"value"`
+	IsSecret bool   `json:"isSecret"`
 }
 
 type putBody struct {
@@ -271,7 +271,7 @@ func TestUpdateCmd_SetAndRemoveVariables(t *testing.T) {
 	got := decodePut(t, f.putBody)
 	want := putBody{Enabled: false, Script: "my-agent &\n", Variables: []putVar{
 		{Key: "REGION", Value: "us"},
-		{Key: "TOKEN", Value: "rotated", IsSecret: true, Protected: true},
+		{Key: "TOKEN", Value: "rotated", IsSecret: true},
 		{Key: "NEW_TOKEN", Value: "abc=def", IsSecret: true},
 	}}
 	if got.Enabled != want.Enabled || got.Script != want.Script || len(got.Variables) != len(want.Variables) {
@@ -284,8 +284,8 @@ func TestUpdateCmd_SetAndRemoveVariables(t *testing.T) {
 	}
 }
 
-// A protected variable turned plain needs its new value, which the flag
-// carries; the rest of the set is kept.
+// A secret turned plain needs its new value, which the flag carries; the
+// rest of the set is kept, the untouched secret sent empty.
 func TestUpdateCmd_VisibilityChange(t *testing.T) {
 	f := &fakeBackend{getBody: stored, putResp: masked}
 	if _, _, err := run(t, newUpdateCmd(), f.server(t).URL, []string{"--set-var", "SIGNING_KEY=public", "--set-secret", "REGION=eu"}, "", output.Human); err != nil {
@@ -294,7 +294,7 @@ func TestUpdateCmd_VisibilityChange(t *testing.T) {
 	got := decodePut(t, f.putBody)
 	want := []putVar{
 		{Key: "REGION", Value: "eu", IsSecret: true},
-		{Key: "TOKEN", Value: "s3cret", IsSecret: true},
+		{Key: "TOKEN", Value: "", IsSecret: true},
 		{Key: "SIGNING_KEY", Value: "public"},
 	}
 	if len(got.Variables) != len(want) {
@@ -410,7 +410,7 @@ func TestUpdateCmd_SecretValueFromStdin(t *testing.T) {
 		want  putVar
 	}{
 		{"secret", []string{"--set-secret", "TOKEN=-"}, "rotated\n", putVar{Key: "TOKEN", Value: "rotated", IsSecret: true}},
-		{"protected multi-line", []string{"--set-protected", "SIGNING_KEY=-"}, "line1\nline2\n\n", putVar{Key: "SIGNING_KEY", Value: "line1\nline2\n", IsSecret: true, Protected: true}},
+		{"protected multi-line", []string{"--set-protected", "SIGNING_KEY=-"}, "line1\nline2\n\n", putVar{Key: "SIGNING_KEY", Value: "line1\nline2\n", IsSecret: true}},
 		{"plain is literal", []string{"--set-var", "REGION=-"}, "ignored\n", putVar{Key: "REGION", Value: "-"}},
 	}
 	for _, tc := range cases {

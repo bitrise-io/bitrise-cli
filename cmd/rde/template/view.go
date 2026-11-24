@@ -117,16 +117,19 @@ func renderDetail(w io.Writer, t internalrde.Template) error {
 		ew.Ln(s.Dim.Render("Variables"))
 		for _, v := range t.TemplateVariables {
 			var tags []string
-			switch {
-			case v.Protected:
-				tags = append(tags, "protected")
-			case v.IsSecret:
+			if v.IsSecret {
 				tags = append(tags, "secret")
 			}
 			if showScopes {
 				tags = append(tags, scopeTag(v.Hook))
 			}
-			ew.F("  %s%s\n", v.Key, tagList(tags))
+			// A secret's value is write-only: only its mask is shown,
+			// with the last 4 characters of a value longer than 16.
+			masked := ""
+			if v.IsSecret && v.MaskedValue != "" {
+				masked = " " + s.Dim.Render(v.MaskedValue)
+			}
+			ew.F("  %s%s%s\n", v.Key, masked, tagList(tags))
 		}
 	}
 	return ew.Err

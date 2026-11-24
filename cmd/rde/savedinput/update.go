@@ -23,7 +23,9 @@ func newUpdateCmd() *cobra.Command {
 
 Pass --value VALUE to set a new value, or --value-stdin to read it from stdin
 without prompting (keeps secrets out of shell history). Omit both to change only
-the --secret flag.`,
+the --secret flag. Secrets are write-only, so turning a secret into a plain
+value (--secret=false) needs a new value too: the stored secret is never
+revealed.`,
 		Args: cmdutil.RequireArgs("SAVED_INPUT_ID"),
 		Example: `  bitrise-cli rde saved-input update ID --value new-value
   echo -n "ghp_xxx" | bitrise-cli rde saved-input update ID --value-stdin --secret`,

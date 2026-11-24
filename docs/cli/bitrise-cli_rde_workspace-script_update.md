@@ -8,9 +8,9 @@ Change the workspace script: the script every session in the workspace
 runs first at each boot (see 'bitrise-cli rde workspace-script --help').
 
 Only what the flags name changes; everything else is kept. The CLI reads the
-current script (secret values included), applies the changes and saves the
-whole script back. Protected variables you don't touch keep their stored
-value.
+current script, applies the changes and saves the whole script back. Secret
+variables are write-only, so the ones you don't touch are sent back empty
+and keep their stored value.
 
 Saving changes what every member's sessions run at their next boot (while
 the script is enabled). Test a change first: save it disabled, create a test
@@ -21,11 +21,11 @@ This suits keeping the script in git and deploying it from CI with
 --script-file and a personal access token of someone with the workspace's
 Usage permission — Workspace API Tokens cannot edit the workspace script.
 
---set-var, --set-secret and --set-protected add a variable or replace an
-existing one's value and visibility (plain, secret, protected).
+--set-var and --set-secret add a variable or replace an existing one's
+value and visibility (plain or secret). --set-protected is a deprecated
+alias of --set-secret: every secret is write-only now.
 
-Pass secret and protected values on stdin: --set-secret KEY=- (or
---set-protected KEY=-) reads the value from stdin, with one trailing newline
+Pass secret values on stdin: --set-secret KEY=- reads the value from stdin, with one trailing newline
 trimmed, and keeps it out of shell history and process arguments. A value
 given inline is visible in both. Only one thing can read stdin per call: a
 single KEY=- value or --script-file -.
@@ -52,14 +52,13 @@ bitrise-cli rde workspace-script update [flags]
 ### Options
 
 ```
-      --disable                     disable the script (draft): only sessions created with --workspace-script-test run it
-      --enable                      enable the script: every session runs it at its next boot
-  -h, --help                        help for update
-      --remove-var stringArray      remove the variable KEY (repeatable)
-      --script-file string          path to the bash script to save ('-' reads stdin)
-      --set-protected stringArray   set a protected variable as KEY=VALUE: encrypted and write-only, never shown again; KEY=- reads the value from stdin (recommended) (repeatable)
-      --set-secret stringArray      set a secret variable as KEY=VALUE: encrypted at rest, hidden unless viewed with --show-secrets; KEY=- reads the value from stdin (recommended) (repeatable)
-      --set-var stringArray         set a plain variable as KEY=VALUE (repeatable)
+      --disable                  disable the script (draft): only sessions created with --workspace-script-test run it
+      --enable                   enable the script: every session runs it at its next boot
+  -h, --help                     help for update
+      --remove-var stringArray   remove the variable KEY (repeatable)
+      --script-file string       path to the bash script to save ('-' reads stdin)
+      --set-secret stringArray   set a secret variable as KEY=VALUE: encrypted at rest and write-only, never shown again; KEY=- reads the value from stdin (recommended) (repeatable)
+      --set-var stringArray      set a plain variable as KEY=VALUE (repeatable)
 ```
 
 ### Options inherited from parent commands

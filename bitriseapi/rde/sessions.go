@@ -117,14 +117,10 @@ type SessionTemplateSnapshot struct {
 
 // SnapshotInput is a session-input value captured at session creation.
 //
-// Secret values (IsSecret=true) are only returned by GetSession/ListSessions
-// when a request opts in with include_secrets=true. The CLI
-// intentionally never sets that flag — its only consumer (`session view`)
-// prints "(hidden)" for secret inputs and renders the value of non-secret
-// ones only — and the internal/rde mapper (snapshotFromAPI) masks any secret
-// value before the CLI hands the snapshot to renderers. So `Value` is empty
-// for secret inputs, and the mapper masks it again as defense-in-depth in
-// case the backend default ever changes.
+// Secret values (IsSecret=true) are write-only: the API never returns them
+// and carries MaskedValue instead. So `Value` is empty for secret inputs,
+// and the internal/rde mapper (snapshotFromAPI) masks it again as
+// defense-in-depth before the CLI hands the snapshot to renderers.
 type SnapshotInput struct {
 	Key            string `json:"key"`
 	Value          string `json:"value,omitempty"`
@@ -135,8 +131,12 @@ type SnapshotInput struct {
 	Hook string `json:"hook,omitempty"`
 	// SuppliedByPool is set on a session a warm pool handed out for a value
 	// the pool supplied and the claimer never receives (the On create
-	// scope): Value is then always empty, whatever include_secrets says.
+	// scope): Value and MaskedValue are then always empty.
 	SuppliedByPool bool `json:"suppliedByPool,omitempty"`
+	// MaskedValue is the masked view of a secret value, for display: "****"
+	// followed by its last 4 characters when it is longer than 16 characters
+	// (e.g. "****5678"); never the length. Empty for a plain value.
+	MaskedValue string `json:"maskedValue,omitempty"`
 }
 
 // SnapshotFlag is a feature-flag state captured at session creation.
@@ -162,6 +162,9 @@ type SessionInputValue struct {
 	// Hook is the scope the value is for ("shared", "on_create", "on_claim"
 	// or "on_restore"); empty applies it to every scope that defines the key.
 	Hook string `json:"hook,omitempty"`
+	// MaskedValue is output only (warm pool reads): the masked view of a
+	// direct secret value, see SnapshotInput.MaskedValue. Never sent.
+	MaskedValue string `json:"maskedValue,omitempty"`
 }
 
 // AutoMappedInput records a template session input that was auto-filled
@@ -350,7 +353,8 @@ type TemplateConfigVariable struct {
 	ExposeAsEnvVar bool   `json:"exposeAsEnvVar,omitempty"`
 	// Hook is the scope that receives it (see TemplateVariable.Hook).
 	Hook string `json:"hook,omitempty"`
-	// Protected: write-only (see TemplateVariable.Protected).
+	// Protected is kept for compatibility; equal to IsSecret (see
+	// TemplateVariable.Protected).
 	Protected bool `json:"protected,omitempty"`
 }
 
@@ -391,10 +395,8 @@ func (c *Client) CompareSessionTemplate(ctx context.Context, workspaceID, sessio
 // ListSessionNotifications handles order.
 // Endpoint: GET /v1/workspaces/{workspaceId}/sessions.
 //
-// Deliberately does not pass include_secrets: its consumers — the
-// `session list` table and ResolveSessionID's name→ID lookup — read session
-// metadata only, never the snapshot's secret session-input values. See the
-// note on GetSession.
+// Secret session-input values are write-only: the API returns only their
+// MaskedValue.
 func (c *Client) ListSessions(ctx context.Context, workspaceID string, labelSelectors []string, scope string) ([]Session, error) {
 	if workspaceID == "" {
 		return nil, fmt.Errorf("workspace ID is required")
@@ -423,14 +425,8 @@ func (c *Client) ListSessions(ctx context.Context, workspaceID string, labelSele
 // GetSession returns a single session by ID.
 // Endpoint: GET /v1/workspaces/{workspaceId}/sessions/{sessionId}.
 //
-// Deliberately does not pass include_secrets: the snapshot's secret
-// session-input values are never consumed — `session view` prints "(hidden)"
-// for them, and the SSH/VNC dial paths (Execute, GetSessionVNC) read only the
-// session-level ssh/vnc credentials, not snapshot inputs. Requesting cleartext
-// here would only leak into stdout / --output json / shell history. Add the
-// query param (and thread it through internal/rde) only if a caller genuinely
-// needs the cleartext, which would also mean revisiting snapshotFromAPI's
-// masking. Mirrors GetTemplate.
+// Secret session-input values are write-only: the API returns only their
+// MaskedValue.
 func (c *Client) GetSession(ctx context.Context, workspaceID, sessionID string) (Session, error) {
 	if workspaceID == "" {
 		return Session{}, fmt.Errorf("workspace ID is required")

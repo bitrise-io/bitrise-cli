@@ -401,8 +401,12 @@ type SnapshotInput struct {
 	Hook string `json:"hook,omitempty"`
 	// SuppliedByPool: the pool supplied this value and the claimer never
 	// receives it (On create scope on a session a pool handed out); Value
-	// is empty.
+	// and MaskedValue are empty.
 	SuppliedByPool bool `json:"supplied_by_pool,omitempty"`
+	// MaskedValue is the masked view of a secret value, for display: "****"
+	// followed by its last 4 characters when it is longer than 16 characters
+	// (e.g. "****5678"); never the length. Empty for a plain value.
+	MaskedValue string `json:"masked_value,omitempty"`
 }
 
 // SnapshotFlag is a captured feature-flag state.
@@ -732,7 +736,8 @@ type TemplateConfigVariable struct {
 	ExposeAsEnvVar bool   `json:"expose_as_env_var,omitempty"`
 	// Hook is the variable's scope (see Scopes).
 	Hook string `json:"hook,omitempty"`
-	// Protected: write-only (see TemplateVariable.Protected).
+	// Protected is kept for compatibility; equal to IsSecret (see
+	// TemplateVariable.Protected).
 	Protected bool `json:"protected,omitempty"`
 }
 
@@ -1140,10 +1145,8 @@ func snapshotFromAPI(w rdeapi.SessionTemplateSnapshot) SessionTemplateSnapshot {
 		// Mask secret values at the CLI boundary: passing them through would
 		// leak the value into stdout, shell history, and log files. Keep the
 		// key + is_secret marker so callers can still see what was set.
-		// Because the CLI never opts into include_secrets on session reads,
-		// the backend already omits these values — this masking is
-		// the belt-and-suspenders second line of defense in case the backend
-		// default ever changes.
+		// Secrets are write-only, so the backend never returns these values
+		// — this masking is the belt-and-suspenders second line of defense.
 		val := i.Value
 		if i.IsSecret {
 			val = ""
@@ -1155,6 +1158,7 @@ func snapshotFromAPI(w rdeapi.SessionTemplateSnapshot) SessionTemplateSnapshot {
 			ExposeAsEnvVar: i.ExposeAsEnvVar,
 			Hook:           i.Hook,
 			SuppliedByPool: i.SuppliedByPool,
+			MaskedValue:    maskedValue(i.IsSecret && !i.SuppliedByPool, i.MaskedValue),
 		})
 	}
 	for _, f := range w.FeatureFlags {

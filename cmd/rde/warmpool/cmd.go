@@ -44,8 +44,9 @@ Warm sessions cost machine time while idle. Set the pool size to what
 demand needs and scale it with 'rde warm-pool set-size POOL N' — the
 intended way to warm a pool for business hours is a cron job that sets the
 size in the morning and back to 0 in the evening (a Workspace API Token
-works). Secret input values are never shown; 'view'
-reports each secret key as (hidden).
+works). Secret input values are write-only and never shown; 'view'
+shows each secret as a mask: "****", followed by the last 4 characters
+of a value longer than 16, e.g. "****5678".
 
 Commands that take a WARM_POOL_ID also accept a pool name — it's resolved to
 an ID for you. Names aren't unique, so if more than one pool shares the name

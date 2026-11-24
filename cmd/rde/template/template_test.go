@@ -244,12 +244,13 @@ func TestViewCmd_ShowsLifecycleHooks(t *testing.T) {
 }
 
 // On a hooks template every variable and input shows its scope (a missing
-// hook is shared) and a protected variable says so instead of "secret".
-func TestViewCmd_MarksScopesAndProtected(t *testing.T) {
+// hook is shared). A secret shows its mask; a protected variable is just a
+// secret (every secret is write-only).
+func TestViewCmd_MarksScopesAndSecrets(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = io.WriteString(w, `{"template":{"id":"t-1","name":"Hooks","lifecycleMode":"hooks","hooks":{"onCreate":"echo"},
 			"sessionInputs":[{"key":"GH_TOKEN","required":true,"hook":"on_claim"},{"key":"GH_TOKEN","required":true,"hook":"on_restore"},{"key":"REPO","hook":"shared"},{"key":"LEGACY"}],
-			"templateVariables":[{"key":"REGISTRY_TOKEN","isSecret":true,"protected":true,"hook":"on_create"},{"key":"TOKEN","isSecret":true},{"key":"APP","value":"demo","hook":"shared"}]}}`)
+			"templateVariables":[{"key":"REGISTRY_TOKEN","isSecret":true,"protected":true,"hook":"on_create","maskedValue":"****5678"},{"key":"TOKEN","isSecret":true,"protected":true,"maskedValue":"****"},{"key":"APP","value":"demo","hook":"shared"}]}}`)
 	}))
 	defer srv.Close()
 
@@ -259,7 +260,7 @@ func TestViewCmd_MarksScopesAndProtected(t *testing.T) {
 	}
 	for _, want := range []string{
 		"GH_TOKEN (required, on claim)", "GH_TOKEN (required, on restore)", "REPO (shared)", "LEGACY (shared)",
-		"REGISTRY_TOKEN (protected, on create)", "TOKEN (secret, shared)", "APP (shared)",
+		"REGISTRY_TOKEN ****5678 (secret, on create)", "TOKEN **** (secret, shared)", "APP (shared)",
 	} {
 		if !strings.Contains(stdout, want) {
 			t.Errorf("stdout missing %q:\n%s", want, stdout)
@@ -283,7 +284,7 @@ func TestViewCmd_LegacyTemplateShowsNoScopes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
-	for _, want := range []string{"REPO (required)\n", "TOKEN (secret)\n", "  APP\n"} {
+	for _, want := range []string{"REPO (required)\n", "TOKEN **** (secret)\n", "  APP\n"} {
 		if !strings.Contains(stdout, want) {
 			t.Errorf("stdout missing %q:\n%s", want, stdout)
 		}

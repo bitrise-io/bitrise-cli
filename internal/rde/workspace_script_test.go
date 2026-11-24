@@ -12,24 +12,25 @@ import (
 
 func ptr[T any](v T) *T { return &v }
 
-// storedWorkspaceScript is a stored script as GET ?include_secrets=true returns it.
+// storedWorkspaceScript is a stored script as GET returns it: secrets are
+// write-only, so only their mask comes back.
 var storedWorkspaceScript = rdeapi.WorkspaceScript{
 	Configured: true,
 	Enabled:    true,
 	Script:     "old\n",
 	Variables: []rdeapi.WorkspaceScriptVariable{
 		{Key: "REGION", Value: "eu"},
-		{Key: "TOKEN", Value: "s3cret", IsSecret: true},
-		{Key: "KEY", IsSecret: true, Protected: true, ValueStored: true},
+		{Key: "TOKEN", IsSecret: true, Protected: true, ValueStored: true, MaskedValue: "****"},
+		{Key: "KEY", IsSecret: true, Protected: true, ValueStored: true, MaskedValue: "****5678"},
 	},
 }
 
 func TestApplyWorkspaceScriptChanges(t *testing.T) {
 	unchanged := []rdeapi.WorkspaceScriptVariableInput{
 		{Key: "REGION", Value: "eu"},
-		{Key: "TOKEN", Value: "s3cret", IsSecret: true},
-		// Protected: re-sent with "" so the stored value is kept.
-		{Key: "KEY", Value: "", IsSecret: true, Protected: true},
+		// Secrets: re-sent with "" so the stored value is kept.
+		{Key: "TOKEN", Value: "", IsSecret: true},
+		{Key: "KEY", Value: "", IsSecret: true},
 	}
 	cases := []struct {
 		name    string
@@ -57,7 +58,7 @@ func TestApplyWorkspaceScriptChanges(t *testing.T) {
 			},
 			want: rdeapi.UpdateWorkspaceScriptRequest{Enabled: true, Script: "old\n", Variables: []rdeapi.WorkspaceScriptVariableInput{
 				{Key: "REGION", Value: "us"},
-				{Key: "KEY", Value: "", IsSecret: true, Protected: true},
+				{Key: "KEY", Value: "", IsSecret: true},
 				{Key: "NEW", Value: "1"},
 			}},
 		},
@@ -68,9 +69,10 @@ func TestApplyWorkspaceScriptChanges(t *testing.T) {
 				{Key: "TOKEN", Value: "rotated", Visibility: VariableVisibilityProtected},
 				{Key: "KEY", Value: "now-plain", Visibility: VariableVisibilityPlain},
 			}},
+			// The deprecated protected visibility is just a secret.
 			want: rdeapi.UpdateWorkspaceScriptRequest{Enabled: true, Script: "old\n", Variables: []rdeapi.WorkspaceScriptVariableInput{
 				{Key: "REGION", Value: "eu", IsSecret: true},
-				{Key: "TOKEN", Value: "rotated", IsSecret: true, Protected: true},
+				{Key: "TOKEN", Value: "rotated", IsSecret: true},
 				{Key: "KEY", Value: "now-plain"},
 			}},
 		},
@@ -105,6 +107,7 @@ func TestUpdateWorkspaceScript_ValidatesBeforeAnyRequest(t *testing.T) {
 		"set twice":          {WorkspaceScriptChanges{SetVariables: []WorkspaceScriptVariableChange{plain("A"), plain("A")}}, "more than once"},
 		"set and removed":    {WorkspaceScriptChanges{SetVariables: []WorkspaceScriptVariableChange{plain("REGION")}, RemoveVariables: []string{"REGION"}}, "both set and removed"},
 		"empty remove key":   {WorkspaceScriptChanges{RemoveVariables: []string{""}}, "must not be empty"},
+		"empty secret":       {WorkspaceScriptChanges{SetVariables: []WorkspaceScriptVariableChange{{Key: "P", Visibility: VariableVisibilitySecret}}}, "needs a value"},
 		"empty protected":    {WorkspaceScriptChanges{SetVariables: []WorkspaceScriptVariableChange{{Key: "P", Visibility: VariableVisibilityProtected}}}, "needs a value"},
 		"unknown visibility": {WorkspaceScriptChanges{SetVariables: []WorkspaceScriptVariableChange{{Key: "P", Value: "s3cret", Visibility: "public"}}}, "unknown visibility"},
 	}
@@ -134,20 +137,23 @@ func TestApplyWorkspaceScriptChanges_RemoveUnknown(t *testing.T) {
 	}
 }
 
-// The mapper names each variable's visibility and never lets a protected
-// value through, even if the backend sent one.
+// The mapper names each variable's visibility (a protected one is a
+// secret), keeps the mask, and never lets a secret value through, even if
+// the backend sent one.
 func TestGetWorkspaceScript_Mapping(t *testing.T) {
 	rs := newRecordingServer(t, `{"workspaceScript":{"configured":true,"script":"x",
-		"variables":[{"key":"A","value":"1"},{"key":"B","isSecret":true},{"key":"C","value":"leak","isSecret":true,"protected":true,"valueStored":true}],
+		"variables":[{"key":"A","value":"1"},{"key":"B","isSecret":true},{"key":"C","value":"leak","isSecret":true,"protected":true,"valueStored":true,"maskedValue":"****5678"},
+			{"key":"D","value":"leak","isSecret":true,"valueStored":true,"maskedValue":"not-a-mask"}],
 		"updatedBy":"a@b.io","updatedAt":"2026-11-01T10:00:00Z"}}`)
-	ws, err := rs.service().GetWorkspaceScript(context.Background(), "ws-1", false)
+	ws, err := rs.service().GetWorkspaceScript(context.Background(), "ws-1")
 	if err != nil {
 		t.Fatalf("GetWorkspaceScript: %v", err)
 	}
 	want := []WorkspaceScriptVariable{
 		{Key: "A", Value: "1", Visibility: VariableVisibilityPlain},
 		{Key: "B", Visibility: VariableVisibilitySecret},
-		{Key: "C", Visibility: VariableVisibilityProtected, ValueStored: true},
+		{Key: "C", Visibility: VariableVisibilitySecret, ValueStored: true, MaskedValue: "****5678"},
+		{Key: "D", Visibility: VariableVisibilitySecret, ValueStored: true, MaskedValue: "****"},
 	}
 	if !reflect.DeepEqual(ws.Variables, want) {
 		t.Errorf("variables = %+v, want %+v", ws.Variables, want)
